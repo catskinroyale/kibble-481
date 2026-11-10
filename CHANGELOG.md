@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-11-10
 
 - The old name, DDream, is gone: the binaries are `kibble-481` and `kibble-481-cli`,
   projects save as `.kibble`, and the environment variables are `KIBBLE_SOUNDFONTS`,
