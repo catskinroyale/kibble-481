@@ -24,6 +24,11 @@ and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/Kibble
 The bundle carries both binaries (`Contents/MacOS/kibble-481-cli` is the command line) and
 every SoundFont, including the optional extras.
 
+On **Windows** (64-bit), download `Kibble-481-<version>-windows-x64.zip`, unzip it anywhere
+and run `kibble-481.exe`; keep the `soundfonts` folder beside it. It is not signed either:
+if SmartScreen stops it, choose **More info › Run anyway**. `kibble-481-cli.exe` is the
+command line.
+
 ## Building
 
 You need [Rust](https://rustup.rs); `rust-toolchain.toml` pins the version (1.99.1) and
@@ -33,7 +38,11 @@ rustup fetches it. The seven bundled SoundFonts are in the repo.
 ./tools/fetch_soundfonts.sh            # optional: five more CC0 banks into soundfonts/extra
 cargo build --release                  # target/release/kibble-481 and kibble-481-cli
 ./tools/bundle_macos.sh                # dist/Kibble-481.app with the icon and SoundFonts
+./tools/bundle_windows.sh              # dist/Kibble-481-<version>-windows-x64.zip (cross-built)
 ```
+
+The Windows build cross-compiles from macOS or Linux with MinGW-w64 (`brew install
+mingw-w64`); on Windows itself, `cargo build --release` works as anywhere else.
 
 ## The composer
 
