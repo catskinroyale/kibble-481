@@ -23,7 +23,30 @@ fn main() -> eframe::Result {
             ),
         ..Default::default()
     };
-    // the settings are stored under the app's first name, so they carry over
-    let name = if std::env::var_os("DDREAM_SCREENSHOT").is_some() { "DDream (screenshot)" } else { "DDream" };
+    let name = if std::env::var_os("KIBBLE_SCREENSHOT").is_some() { "Kibble-481 (screenshot)" } else { "Kibble-481" };
+    carry_over_settings(name);
     eframe::run_native(name, options, Box::new(|cc| Ok(Box::new(app::App::new(cc)))))
+}
+
+/// Settings saved under the app's old name (DDream) move to the new one the first time
+/// Kibble-481 runs, so the palette, window and recent choices carry over.
+fn carry_over_settings(name: &str) {
+    let old_name = name.replace("Kibble-481", "DDream");
+    let (Some(new), Some(old)) = (eframe::storage_dir(name), eframe::storage_dir(&old_name)) else { return };
+    if new.exists() || !old.is_dir() {
+        return;
+    }
+    let copy = || -> std::io::Result<()> {
+        std::fs::create_dir_all(&new)?;
+        for entry in std::fs::read_dir(&old)? {
+            let entry = entry?;
+            if entry.file_type()?.is_file() {
+                std::fs::copy(entry.path(), new.join(entry.file_name()))?;
+            }
+        }
+        Ok(())
+    };
+    if let Err(e) = copy() {
+        eprintln!("couldn't carry over the settings from {}: {e}", old.display());
+    }
 }

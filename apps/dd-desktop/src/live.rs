@@ -114,7 +114,7 @@ impl MidiIn {
             input
                 .connect(
                     &port,
-                    "ddream-in",
+                    "kibble-481-in",
                     move |_, bytes, _| {
                         if let Some(m) = parse(bytes) {
                             live.play(m);

@@ -1,12 +1,12 @@
 [package]
 name = "dd-cli"
-description = "DDream from the command line: render, export MIDI, and build DaVinci Resolve gallery packages"
+description = "Kibble-481 from the command line: render, export MIDI, and build DaVinci Resolve gallery packages"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "ddream-cli"
+name = "kibble-481-cli"
 path = "src/main.rs"
 
 [dependencies]

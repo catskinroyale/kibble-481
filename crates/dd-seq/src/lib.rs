@@ -1,4 +1,4 @@
-//! DDream's sequencer: the project (tracks, notes, sections, mix), its timeline, the
+//! Kibble-481's sequencer: the project (tracks, notes, sections, mix), its timeline, the
 //! engine that plays and mixes it live or offline, SoundFont instruments, recording,
 //! and MIDI and WAV files.
 

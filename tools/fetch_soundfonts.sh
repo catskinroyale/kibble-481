@@ -1,5 +1,5 @@
 #!/bin/sh
-# Download optional, licence-clean SoundFonts into soundfonts/extra/, where DDream loads
+# Download optional, licence-clean SoundFonts into soundfonts/extra/, where Kibble-481 loads
 # them alongside the bundled ones. Every FreePats archive is pinned by SHA-256 and is
 # CC0 (public domain); MuseScore_General is MIT (its licence file is fetched with it).
 #

@@ -3,7 +3,7 @@
 Every font here may be redistributed with the app, and music made with it may be used
 commercially. Each licence travels with its font.
 
-| File | What it gives DDream | By | Licence |
+| File | What it gives Kibble-481 | By | Licence |
 |---|---|---|---|
 | `GeneralUser-GS.sf2` | the General MIDI set: piano, koto, shakuhachi, shamisen, choir, strings, timpani, taiko, drum kits | S. Christian Collins | GeneralUser GS licence v2.0: free for any music, private or commercial; may be bundled (`GeneralUser-GS-LICENSE.txt`) |
 | `Ambient-Electronic.sf2` | CS-style brass, pads, Smoky Lead, Crystal Bells, and the Trailer Kit and Trailer FX, which share the city kit's keys | synthesised by [Ambient MIDI Generator](https://github.com/catskinroyale/ambient-midi-generator); no recorded samples | MIT (`Ambient-Electronic-LICENSE.txt`) |

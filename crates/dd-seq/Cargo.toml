@@ -1,6 +1,6 @@
 [package]
 name = "dd-seq"
-description = "DDream's sequencer: project model, timeline, engine and mixer, SoundFonts, MIDI and WAV"
+description = "Kibble-481's sequencer: project model, timeline, engine and mixer, SoundFonts, MIDI and WAV"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,4 +1,4 @@
-//! ddream-cli: DDream without the window.
+//! kibble-481-cli: Kibble-481 without the window.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -9,22 +9,22 @@ use dd_gallery::resolve::PhotoOrder;
 use dd_gallery::slideshow::Fit;
 use dd_seq::fonts::{FontBank, soundfont_dir};
 
-const USAGE: &str = "ddream-cli: Kibble-481 from the command line
+const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 
-  ddream-cli demo <out.ddream>                 write the hand-written scene, Rain on Neon
-  ddream-cli compose <out.ddream> [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
+  kibble-481-cli demo <out.kibble>                 write the hand-written scene, Rain on Neon
+  kibble-481-cli compose <out.kibble> [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
                                                compose a new piece (a random seed if none given)
-  ddream-cli render <in.ddream|.mid> <out.wav> [--stem <track>]
+  kibble-481-cli render <in.kibble|.mid> <out.wav> [--stem <track>]
                                                render the mix (24-bit, 48 kHz), or one track
-  ddream-cli midi <in.ddream> <out.mid>        export a standard MIDI file
-  ddream-cli import <in.mid> <out.ddream>      turn any MIDI file into a project
-  ddream-cli resolve <in.ddream> <out-dir> [--photos <dir>] [--by-date] [--fps <n>]
+  kibble-481-cli midi <in.kibble> <out.mid>        export a standard MIDI file
+  kibble-481-cli import <in.mid> <out.kibble>      turn any MIDI file into a project
+  kibble-481-cli resolve <in.kibble> <out-dir> [--photos <dir>] [--by-date] [--fps <n>]
                      [--hold <secs>] [--fade <secs>] [--fit-track] [--stems]
                                                soundtrack, FCPXML timeline, EDL markers and cues
-  ddream-cli patches                           list the synth's factory patches
-  ddream-cli fonts                             list the loaded SoundFonts and their presets
+  kibble-481-cli patches                           list the synth's factory patches
+  kibble-481-cli fonts                             list the loaded SoundFonts and their presets
 
-SoundFonts are read from $DDREAM_SOUNDFONTS or the bundled soundfonts folder.";
+SoundFonts are read from $KIBBLE_SOUNDFONTS or the bundled soundfonts folder.";
 
 fn fonts() -> FontBank {
     let mut f = FontBank::default();

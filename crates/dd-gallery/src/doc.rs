@@ -1,4 +1,4 @@
-//! The `.ddream` document: a project and its gallery settings, as JSON.
+//! The `.kibble` document: a project and its gallery settings, as JSON.
 
 use std::path::Path;
 
@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::slideshow::{Accents, Fit, Grid, Plan, Slideshow};
 
-pub const EXTENSION: &str = "ddream";
+pub const EXTENSION: &str = "kibble";
+/// Projects saved before the rename; they open as before.
+pub const OLD_EXTENSION: &str = "ddream";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -19,7 +21,7 @@ pub struct Document {
 
 impl Default for Document {
     fn default() -> Self {
-        Document { app: format!("ddream {}", env!("CARGO_PKG_VERSION")), project: Project::default(), gallery: Slideshow::default() }
+        Document { app: format!("kibble-481 {}", env!("CARGO_PKG_VERSION")), project: Project::default(), gallery: Slideshow::default() }
     }
 }
 

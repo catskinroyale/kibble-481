@@ -1,4 +1,4 @@
-//! DDream's sound engine, free of any interface: the CS-style polysynth, the city kit,
+//! Kibble-481's sound engine, free of any interface: the CS-style polysynth, the city kit,
 //! and the effects (reverb, echo, ensemble) shared by every track.
 
 pub mod effects;

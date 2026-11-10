@@ -20,7 +20,7 @@ done
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/soundfonts"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-cp target/release/ddream target/release/ddream-cli "$APP/Contents/MacOS/"
+cp target/release/kibble-481 target/release/kibble-481-cli "$APP/Contents/MacOS/"
 cp soundfonts/*.sf2 soundfonts/*.txt soundfonts/*.md "$APP/Contents/Resources/soundfonts/" 2>/dev/null || true
 if [ -d soundfonts/extra ]; then cp -R soundfonts/extra "$APP/Contents/Resources/soundfonts/"; fi
 cp LICENSE "$APP/Contents/Resources/"
@@ -35,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>com.local.kibble481</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleExecutable</key><string>ddream</string>
+  <key>CFBundleExecutable</key><string>kibble-481</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>

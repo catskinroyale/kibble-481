@@ -1,12 +1,12 @@
 //! Automated UI checks, from Ambient MIDI Generator (`snapshot.rs`, MIT). With
-//! `DDREAM_SCREENSHOT=window.bmp` the app saves a picture of its window once the first
+//! `KIBBLE_SCREENSHOT=window.bmp` the app saves a picture of its window once the first
 //! frames have settled, then quits, without saving any settings.
-//! `DDREAM_SCREENSHOT_SHOW` can name things to show first, comma-separated: `mixer`,
+//! `KIBBLE_SCREENSHOT_SHOW` can name things to show first, comma-separated: `mixer`,
 //! `effects`, `score`, `gallery`, `about`, `sax` (select the sax track), `bells`
 //! (select the bells track), `layer2` (the synth's second layer), `long` (lengthen the
 //! piece to 48 bars), `fast` (124 bpm), `edited` (edit a note first),
 //! `bass`, `city`, `drone` (select that track), `added` (add a Neon section).
-//! `DDREAM_SCREENSHOT_INPUT` plays input first, `;`-separated, six frames apart:
+//! `KIBBLE_SCREENSHOT_INPUT` plays input first, `;`-separated, six frames apart:
 //! `c:x,y` clicks there, `w:x,y,dy` scrolls there (points).
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,14 +24,14 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn from_env() -> Option<Snapshot> {
-        let path = PathBuf::from(std::env::var_os("DDREAM_SCREENSHOT")?);
-        let show = std::env::var("DDREAM_SCREENSHOT_SHOW")
+        let path = PathBuf::from(std::env::var_os("KIBBLE_SCREENSHOT")?);
+        let show = std::env::var("KIBBLE_SCREENSHOT_SHOW")
             .unwrap_or_default()
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let input = std::env::var("DDREAM_SCREENSHOT_INPUT")
+        let input = std::env::var("KIBBLE_SCREENSHOT_INPUT")
             .unwrap_or_default()
             .split(';')
             .map(|s| s.trim().to_string())

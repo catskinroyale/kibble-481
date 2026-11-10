@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::JoinHandle;
 
-use dd_gallery::doc::{Document, EXTENSION};
+use dd_gallery::doc::{Document, EXTENSION, OLD_EXTENSION};
 use dd_seq::compose::{Recipe, compose, keep_sounds};
 use dd_seq::engine::{Cmd, MixSettings};
 use dd_seq::fonts::{FontBank, make_instrument, soundfont_dir};
@@ -193,7 +193,7 @@ impl App {
         let palette = storage
             .and_then(|s| eframe::get_value::<String>(s, KEY_PALETTE))
             .and_then(|k| Palette::from_key(&k))
-            .or_else(|| std::env::var("DDREAM_PALETTE").ok().and_then(|k| Palette::from_key(&k)))
+            .or_else(|| std::env::var("KIBBLE_PALETTE").ok().and_then(|k| Palette::from_key(&k)))
             .unwrap_or(Palette::Amber);
         let settings: Settings = storage.and_then(|s| eframe::get_value(s, KEY_SETTINGS)).unwrap_or_default();
         let recent: Vec<PathBuf> = storage.and_then(|s| eframe::get_value(s, KEY_RECENT)).unwrap_or_default();
@@ -210,7 +210,7 @@ impl App {
         };
         let live = Live::new(audio.as_ref().map(|a| a.sender()), audio.as_ref().map(|a| a.shared.clone()), cc.egui_ctx.clone());
         // a new piece every time it opens
-        let seed = if std::env::var_os("DDREAM_SCREENSHOT").is_some() { 7 } else { entropy() };
+        let seed = if std::env::var_os("KIBBLE_SCREENSHOT").is_some() { 7 } else { entropy() };
         let doc = Document::new(compose(&Recipe::random(seed), 66.0, (4, 4), 24));
         let mut app = App {
             saved: doc.clone(),
@@ -649,7 +649,9 @@ impl App {
     }
 
     pub(crate) fn open(&mut self) {
-        let Some(path) = rfd::FileDialog::new().add_filter("Kibble-481 project or MIDI", &[EXTENSION, "mid", "midi"]).pick_file() else {
+        let Some(path) =
+            rfd::FileDialog::new().add_filter("Kibble-481 project or MIDI", &[EXTENSION, OLD_EXTENSION, "mid", "midi"]).pick_file()
+        else {
             return;
         };
         self.open_path(path);
@@ -871,7 +873,7 @@ impl App {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Open…  ⌘O").on_hover_text("A .ddream project, or any MIDI file").clicked() {
+                if ui.button("Open…  ⌘O").on_hover_text("A Kibble-481 project, or any MIDI file").clicked() {
                     ui.close();
                     self.open();
                 }

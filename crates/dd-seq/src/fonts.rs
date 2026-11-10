@@ -204,12 +204,12 @@ pub fn patch_of(source: &Source) -> Option<&Patch> {
     }
 }
 
-/// Where to look for the bundled SoundFonts, in order: `$DDREAM_SOUNDFONTS`, the
+/// Where to look for the bundled SoundFonts, in order: `$KIBBLE_SOUNDFONTS` (or the older `$DDREAM_SOUNDFONTS`), the
 /// macOS app bundle's Resources, beside the executable, the working directory, and
 /// the source tree this was built from.
 pub fn soundfont_dir() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(d) = std::env::var_os("DDREAM_SOUNDFONTS") {
+    if let Some(d) = std::env::var_os("KIBBLE_SOUNDFONTS").or_else(|| std::env::var_os("DDREAM_SOUNDFONTS")) {
         candidates.push(d.into());
     }
     if let Ok(exe) = std::env::current_exe()

@@ -1,6 +1,6 @@
 # Kibble-481
 
-(Formerly DDream. The crates, binaries and `.ddream` project files keep that name.)
+(Formerly DDream. Projects saved as `.ddream` still open, and settings carry over.)
 
 A synthesiser and sequencer in one window, for writing neon-noir film scores in MIDI:
 rain on dark streets, sagging polysynth brass, bells falling like water, a lone sax at
@@ -21,7 +21,7 @@ Download `Kibble-481-<version>-macos-arm64.zip` from
 [Releases](https://github.com/catskinroyale/kibble-481/releases), unzip it and move
 `Kibble-481.app` to Applications. The app is not signed, so the first time, right-click it
 and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/Kibble-481.app`).
-The bundle carries both binaries (`Contents/MacOS/ddream-cli` is the command line) and
+The bundle carries both binaries (`Contents/MacOS/kibble-481-cli` is the command line) and
 every SoundFont, including the optional extras.
 
 ## Building
@@ -31,7 +31,7 @@ rustup fetches it. The seven bundled SoundFonts are in the repo.
 
 ```sh
 ./tools/fetch_soundfonts.sh            # optional: five more CC0 banks into soundfonts/extra
-cargo build --release                  # target/release/ddream and ddream-cli
+cargo build --release                  # target/release/kibble-481 and kibble-481-cli
 ./tools/bundle_macos.sh                # dist/Kibble-481.app with the icon and SoundFonts
 ```
 
@@ -175,13 +175,13 @@ echo; a string-machine ensemble; A = 440/432/415 Hz.
 ## Command line
 
 ```sh
-ddream-cli compose piece.ddream [--seed 42] [--bpm 72] [--bars 32] [--key 2]
-ddream-cli demo rain.ddream
-ddream-cli render rain.ddream rain.wav [--stem Brass]
-ddream-cli midi rain.ddream rain.mid
-ddream-cli import megacity.mid megacity.ddream
-ddream-cli resolve rain.ddream out/ --photos ~/Pictures/tokyo --fps 25 --hold 8 [--fit-track] [--stems]
-ddream-cli patches | fonts
+kibble-481-cli compose piece.kibble [--seed 42] [--bpm 72] [--bars 32] [--key 2]
+kibble-481-cli demo rain.kibble
+kibble-481-cli render rain.kibble rain.wav [--stem Brass]
+kibble-481-cli midi rain.kibble rain.mid
+kibble-481-cli import megacity.mid megacity.kibble
+kibble-481-cli resolve rain.kibble out/ --photos ~/Pictures/tokyo --fps 25 --hold 8 [--fit-track] [--stems]
+kibble-481-cli patches | fonts
 ```
 
 ## Layout
@@ -190,9 +190,9 @@ ddream-cli patches | fonts
 |---|---|
 | `crates/dd-dsp` | the polysynth (`poly.rs`, `patch.rs`), the city kit and its player, reverb, echo, ensemble. No UI. |
 | `crates/dd-seq` | project model, timeline, the engine and mixer (live and offline), SoundFont instruments, recording and quantise, MIDI and WAV |
-| `crates/dd-gallery` | slideshow timing, Resolve FCPXML/EDL, the `.ddream` document, the Resolve package export |
-| `apps/dd-desktop` | the egui app (`ddream`) |
-| `apps/dd-cli` | `ddream-cli` |
+| `crates/dd-gallery` | slideshow timing, Resolve FCPXML/EDL, the `.kibble` document, the Resolve package export |
+| `apps/dd-desktop` | the egui app (`kibble-481`) |
+| `apps/dd-cli` | `kibble-481-cli` |
 
 `./tools/bundle_macos.sh` builds `dist/Kibble-481.app` with the icon, both binaries and the
 SoundFonts.
@@ -212,7 +212,7 @@ be combined later; see `docs/decisions.md` (D2).
 ```sh
 cargo test --release --workspace
 cargo clippy --release --all-targets -- -D warnings
-DDREAM_SCREENSHOT=window.bmp cargo run --release -p dd-desktop   # picture of the window, then quit
+KIBBLE_SCREENSHOT=window.bmp cargo run --release -p dd-desktop   # picture of the window, then quit
 ```
 
 The tests cover the composer (40 seeds at five tempos, metres and lengths: it fills the

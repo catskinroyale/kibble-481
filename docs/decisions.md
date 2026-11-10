@@ -123,8 +123,7 @@ written in the default arrangement.
 
 ## D13 — Kibble-481, and a look from the mood board (2026-11-10)
 
-The app is renamed Kibble-481 (user-facing only: crates, binaries, settings storage and the
-`.ddream` extension keep the old name, so saved work and settings carry over). The look
+The app is renamed Kibble-481 (at first user-facing only; D14 renames the rest). The look
 follows the mood board: each palette is one ground, one panel tone, two supporting colours
 and a lead accent, and every colour in the interface is derived from them (`theme.rs`);
 tracks keep their stored colour and show it in the palette's tones. The board's palette
@@ -134,9 +133,19 @@ labels and text on the accent to WCAG contrast in all five. Typefaces as the boa
 suggests, all SIL OFL and bundled: Michroma, Share Tech Mono, VT323, Jost, Sorts Mill Goudy,
 Cutive Mono (OCR-A isn't bundled: its free builds' licences vary).
 
+## D14 — The old name goes from everything but the crates (2026-11-10)
+
+DDream is gone from the binaries (`kibble-481`, `kibble-481-cli`), the project extension
+(`.kibble`), the MIDI file's embedded project (`kibble-481-project:`), the settings storage
+(`Kibble-481`), the MIDI input's client name and the environment variables (`KIBBLE_*`).
+Nothing saved is lost: `.ddream` projects open, MIDI files with the old marker open
+exactly, `$DDREAM_SOUNDFONTS` is still read, and the settings stored under DDream are
+copied across the first time the app runs. The crates keep their short `dd-` names
+(internal, and renaming them would churn every `use`).
+
 ## Open
 
-- Bake the factory patches into a `DDream-Synths.sf2` (as midigen's `make_soundfont.rs` does)
+- Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)
   so exported MIDI sounds like the app in any DAW.
 - Tempo changes within a piece; per-note pitch curves (MPE); automation of synth parameters.
 - Ken Burns moves on gallery stills in the FCPXML.

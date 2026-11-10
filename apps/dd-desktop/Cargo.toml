@@ -1,12 +1,12 @@
 [package]
 name = "dd-desktop"
-description = "DDream: a neon-noir synthesiser and sequencer for scoring in MIDI"
+description = "Kibble-481: a neon-noir synthesiser and sequencer for scoring in MIDI"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "ddream"
+name = "kibble-481"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,6 +1,6 @@
 [package]
 name = "dd-dsp"
-description = "DDream's sound: a CS-style two-layer polysynth, the city kit, reverb, echo and ensemble"
+description = "Kibble-481's sound: a CS-style two-layer polysynth, the city kit, reverb, echo and ensemble"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

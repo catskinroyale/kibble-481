@@ -21,7 +21,9 @@ use crate::demo::GM_FONT;
 use crate::fonts::FontBank;
 use crate::project::{Ctrl, CtrlKind, Note, PPQ, Project, Section, Source, Track};
 
-pub const PROJECT_PREFIX: &str = "ddream-project:";
+pub const PROJECT_PREFIX: &str = "kibble-481-project:";
+/// The marker in MIDI files saved before the rename; they still open exactly.
+pub const OLD_PROJECT_PREFIX: &str = "ddream-project:";
 const MIDIGEN_PREFIX: &str = "midigen-recipe:";
 pub const KIT_PROGRAM: u8 = dd_dsp::kit::KIT_PROGRAM;
 pub const FX_PROGRAM: u8 = dd_dsp::kit::FX_PROGRAM;
@@ -171,7 +173,8 @@ pub fn from_bytes(data: &[u8], fonts: &FontBank) -> Result<Project, String> {
     // a file this app saved opens exactly as it was
     for ev in smf.tracks.iter().take(1).flatten() {
         if let TrackEventKind::Meta(MetaMessage::Text(t)) = ev.kind
-            && let Some(json) = std::str::from_utf8(t).ok().and_then(|s| s.strip_prefix(PROJECT_PREFIX))
+            && let Some(json) =
+                std::str::from_utf8(t).ok().and_then(|s| s.strip_prefix(PROJECT_PREFIX).or_else(|| s.strip_prefix(OLD_PROJECT_PREFIX)))
         {
             return Project::from_json(json);
         }
@@ -301,6 +304,25 @@ mod tests {
         let bytes = to_bytes(&p).unwrap();
         let q = from_bytes(&bytes, &FontBank::default()).unwrap();
         assert_eq!(p, q);
+    }
+
+    #[test]
+    fn files_saved_before_the_rename_open_exactly() {
+        let p = rain_on_neon();
+        let bytes = to_bytes(&p).unwrap();
+        let mut smf = Smf::parse(&bytes).unwrap();
+        let old = format!("{OLD_PROJECT_PREFIX}{}", serde_json::to_string(&p).unwrap());
+        for ev in smf.tracks[0].iter_mut() {
+            if let TrackEventKind::Meta(MetaMessage::Text(t)) = &mut ev.kind
+                && t.starts_with(PROJECT_PREFIX.as_bytes())
+            {
+                *t = old.as_bytes();
+            }
+        }
+        let mut out = Vec::new();
+        smf.write_std(&mut out).unwrap();
+        assert!(out.windows(PROJECT_PREFIX.len()).all(|w| w != PROJECT_PREFIX.as_bytes()));
+        assert_eq!(from_bytes(&out, &FontBank::default()).unwrap(), p);
     }
 
     #[test]
