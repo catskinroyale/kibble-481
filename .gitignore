@@ -1,0 +1,5 @@
+/target
+/dist
+/soundfonts/extra
+*.bmp
+.DS_Store

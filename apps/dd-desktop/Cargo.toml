@@ -1,0 +1,21 @@
+[package]
+name = "dd-desktop"
+description = "DDream: a neon-noir synthesiser and sequencer for scoring in MIDI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ddream"
+path = "src/main.rs"
+
+[dependencies]
+dd-dsp.workspace = true
+dd-seq.workspace = true
+dd-gallery.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+cpal = "0.18.2"
+eframe = { version = "0.37.0", features = ["persistence"] }
+rfd = "0.17.2"
+midir = "0.11.1"
