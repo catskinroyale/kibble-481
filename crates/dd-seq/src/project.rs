@@ -144,6 +144,51 @@ pub struct Track {
     pub strip: Strip,
     /// The part it plays (brass, pad, bass…), which decides the alternatives offered.
     pub role: Option<crate::palette::Role>,
+    /// Its volume set bar by bar, on top of the fader (see `Level`).
+    pub levels: Vec<Level>,
+}
+
+/// A track's volume from the start of a bar (from 0): 100 is as the fader has it, 0 is
+/// silent, 127 about 4 dB louder. Between two bars that have one, the volume ramps from
+/// one to the next; before the first it is the first, after the last it stays the last.
+/// So a bar that has none, a new one included, follows the bars either side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Level {
+    pub bar: u32,
+    pub value: u8,
+}
+
+/// The value 100 means "as the fader has it".
+pub const LEVEL_UNITY: u8 = 100;
+
+/// The gain of a level value: (value / 100)², like a MIDI volume controller.
+pub fn level_gain(value: f32) -> f32 {
+    let x = value.max(0.0) / LEVEL_UNITY as f32;
+    x * x
+}
+
+/// The level value at a position in bars (fractional), from points sorted by bar.
+pub fn level_at(levels: &[Level], bar: f64) -> f32 {
+    let Some(first) = levels.first() else { return LEVEL_UNITY as f32 };
+    if bar <= first.bar as f64 {
+        return first.value as f32;
+    }
+    for w in levels.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if bar < b.bar as f64 {
+            let t = (bar - a.bar as f64) / (b.bar - a.bar).max(1) as f64;
+            return a.value as f32 + (b.value as f32 - a.value as f32) * t as f32;
+        }
+    }
+    levels.last().map_or(LEVEL_UNITY as f32, |l| l.value as f32)
+}
+
+/// Set a bar's level, keeping the points sorted and one per bar.
+pub fn set_level(levels: &mut Vec<Level>, bar: u32, value: u8) {
+    match levels.binary_search_by_key(&bar, |l| l.bar) {
+        Ok(i) => levels[i].value = value,
+        Err(i) => levels.insert(i, Level { bar, value }),
+    }
 }
 
 impl Default for Track {
@@ -156,6 +201,7 @@ impl Default for Track {
             ctrls: Vec::new(),
             strip: Strip::default(),
             role: None,
+            levels: Vec::new(),
         }
     }
 }
@@ -429,6 +475,57 @@ impl Project {
         self.arrangement().into_iter().map(|b| b.part.map(|p| (p, b.bars))).collect()
     }
 
+    /// Lay out a new arrangement whose blocks came from the old one (`origin[i]` is the
+    /// old block new block `i` was, or none for a new one), moving each track's bar
+    /// levels with their sections. A block that got shorter keeps its last level at its
+    /// new end; a new block has none, so it follows its neighbours.
+    pub fn rearrange(&mut self, blocks: &[Block], origin: &[Option<usize>]) {
+        let old = self.arrangement();
+        if old.is_empty() {
+            self.set_arrangement(blocks);
+            return;
+        }
+        let starts = |bs: &[Block]| -> Vec<u32> {
+            let mut at = 0;
+            bs.iter()
+                .map(|b| {
+                    let s = at;
+                    at += b.bars.max(1);
+                    s
+                })
+                .collect()
+        };
+        let (old_starts, new_starts) = (starts(&old), starts(blocks));
+        let old_end = old_starts.last().zip(old.last()).map_or(0, |(s, b)| s + b.bars.max(1));
+        for t in self.tracks.iter_mut() {
+            if t.levels.is_empty() {
+                continue;
+            }
+            let mut moved: Vec<Level> = Vec::new();
+            for (i, from) in origin.iter().enumerate() {
+                let Some(j) = *from else { continue };
+                let (Some(&os), Some(ob)) = (old_starts.get(j), old.get(j)) else { continue };
+                let new_len = blocks[i].bars.max(1);
+                // the points in the old block, the last one standing for any cut off
+                let mut inside: Vec<Level> = t.levels.iter().filter(|l| l.bar >= os && l.bar < os + ob.bars.max(1)).copied().collect();
+                inside.sort_by_key(|l| l.bar);
+                for l in inside {
+                    let off = (l.bar - os).min(new_len - 1);
+                    set_level(&mut moved, new_starts[i] + off, l.value);
+                }
+            }
+            // points past the old arrangement's end (set beyond the sections) stay put
+            for l in t.levels.iter().filter(|l| l.bar >= old_end) {
+                let bar = l.bar - old_end + new_starts.last().zip(blocks.last()).map_or(0, |(s, b)| s + b.bars.max(1));
+                if moved.binary_search_by_key(&bar, |m| m.bar).is_err() {
+                    set_level(&mut moved, bar, l.value);
+                }
+            }
+            t.levels = moved;
+        }
+        self.set_arrangement(blocks);
+    }
+
     /// Change the length, sharing the change among the sections in proportion to their
     /// lengths (each keeps at least a bar).
     pub fn stretch_to(&mut self, bars: u32) {
@@ -454,7 +551,8 @@ impl Project {
             k += 1;
         }
         let blocks: Vec<Block> = blocks.into_iter().zip(fresh).map(|(b, n)| Block { bars: n, ..b }).collect();
-        self.set_arrangement(&blocks);
+        let origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
+        self.rearrange(&blocks, &origin);
     }
 
     /// Composed, and not edited by hand since.

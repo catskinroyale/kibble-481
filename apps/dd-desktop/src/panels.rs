@@ -8,7 +8,7 @@ use dd_dsp::sampler::KitKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
 use dd_gallery::slideshow::{Fit, MAX_FADE, MAX_HOLD, MIN_HOLD, timecode};
 use dd_seq::city;
-use dd_seq::compose::{KEY_NAMES, Mode};
+use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
 use dd_seq::palette::{Alt, Role, alternatives, apply, position};
 use dd_seq::project::{Block, NEON, Part, Source, Track};
@@ -61,6 +61,10 @@ pub fn toggle(ui: &mut egui::Ui, label: &str, on: &mut bool, color: Color32, hel
     clicked
 }
 
+/// Whether the track list offers **+ Add** (a new track of any role, the city or the drums).
+/// Off for now (D15): pieces come with their tracks. The menu is kept for when it returns.
+const ADD_TRACKS: bool = false;
+
 impl App {
     // ------------------------------------------------------------ tracks
 
@@ -69,6 +73,9 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Tracks").font(t.semibold(14.0)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if !ADD_TRACKS {
+                    return;
+                }
                 ui.menu_button("+ Add", |ui| {
                     let n = self.doc.project.tracks.len();
                     for role in Role::ALL.into_iter().filter(|r| !matches!(r, Role::City | Role::Drums)) {
@@ -132,7 +139,12 @@ impl App {
                     .corner_radius(4.0)
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .stroke(Stroke::new(1.0, if selected { rgb(self.doc.project.tracks[i].color) } else { t.divider }));
-                // the row's own click sits under its controls, so M, S and the name get theirs
+                // the row's own click sits under its controls, so M, S and the sound get theirs;
+                // the name is plain text until double-clicked, so a click on it selects the row
+                let renaming = self.renaming == Some(i);
+                let mut name_rect = Rect::NOTHING;
+                let mut rename_done = false;
+                let mut touched = false;
                 let resp = ui
                     .scope_builder(egui::UiBuilder::new().id_salt(("track", i)).sense(Sense::click()), |ui| {
                         frame.show(ui, |ui| {
@@ -146,12 +158,29 @@ impl App {
                                 }
                                 ui.vertical(|ui| {
                                     ui.spacing_mut().item_spacing.y = 1.0;
-                                    ui.add(
-                                        egui::TextEdit::singleline(&mut tr.name)
-                                            .frame(egui::Frame::NONE)
-                                            .font(t.semibold(12.5))
-                                            .desired_width(ui.available_width() - 56.0),
-                                    );
+                                    let name_w = ui.available_width() - 56.0;
+                                    if renaming {
+                                        let r = ui.add(
+                                            egui::TextEdit::singleline(&mut tr.name)
+                                                .id_salt(("rename", i))
+                                                .frame(egui::Frame::NONE)
+                                                .font(t.semibold(12.5))
+                                                .desired_width(name_w),
+                                        );
+                                        if !r.has_focus() && !r.gained_focus() {
+                                            r.request_focus();
+                                        }
+                                        rename_done = r.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                                    } else {
+                                        let (r, _) = ui.allocate_exact_size(vec2(name_w, 17.0), Sense::hover());
+                                        name_rect = r;
+                                        let galley = ui.painter().layout_no_wrap(tr.name.clone(), t.semibold(12.5), t.text);
+                                        ui.painter().with_clip_rect(r).galley(
+                                            r.left_center() - vec2(0.0, galley.size().y / 2.0),
+                                            galley,
+                                            t.text,
+                                        );
+                                    }
                                     let w = (ui.available_width() - 60.0).max(80.0);
                                     let col = if err.is_some() { t.caution } else { t.text_dim };
                                     let shown = |s: &str| egui::RichText::new(s).font(t.font(10.5)).color(col);
@@ -213,6 +242,7 @@ impl App {
                                     } else {
                                         ui.add(egui::Label::new(shown(&tr.source.label())).truncate())
                                     };
+                                    touched |= resp.clicked();
                                     let resp = resp.on_hover_text("The sound: pick another for this part");
                                     if let Some(e) = &err {
                                         resp.on_hover_text(e);
@@ -243,10 +273,21 @@ impl App {
                         })
                     })
                     .response;
-                if resp.clicked() {
+                if resp.clicked() || touched {
                     self.sel = i;
                 }
+                if resp.double_clicked() && resp.interact_pointer_pos().is_some_and(|p| name_rect.contains(p)) {
+                    self.renaming = Some(i);
+                }
+                if rename_done {
+                    self.renaming = None;
+                }
+                let resp = if renaming { resp } else { resp.on_hover_text("Click to select; double-click the name to rename") };
                 resp.context_menu(|ui| {
+                    if ui.button("Rename").clicked() {
+                        action = Some((i, "rename"));
+                        ui.close();
+                    }
                     if ui.button("Duplicate").clicked() {
                         action = Some((i, "dup"));
                         ui.close();
@@ -304,6 +345,7 @@ impl App {
             self.sel = i;
         }
         if let Some((i, what)) = action {
+            self.renaming = None;
             let tracks = &mut self.doc.project.tracks;
             match what {
                 "dup" => {
@@ -319,6 +361,10 @@ impl App {
                 "down" if i + 1 < tracks.len() => {
                     tracks.swap(i, i + 1);
                     self.sel = i + 1;
+                }
+                "rename" => {
+                    self.sel = i;
+                    self.renaming = Some(i);
                 }
                 "clear" => {
                     tracks[i].notes.clear();
@@ -534,80 +580,125 @@ impl App {
             );
             let mut blocks = p.arrangement();
             let before = blocks.clone();
-            let (mut remove, mut shift) = (None, None);
-            // where a section moves up or down to: past any copies of itself next to it,
-            // since trading places with one changes nothing
-            let target = |blocks: &[Block], i: usize, up: bool| -> Option<usize> {
-                let mut j = i;
-                loop {
-                    j = if up { j.checked_sub(1)? } else { Some(j + 1).filter(|j| *j < blocks.len())? };
-                    if blocks[j] != blocks[i] {
-                        return Some(j);
-                    }
-                }
-            };
-            widgets::inset(ui, |ui| {
-                let moves: Vec<(Option<usize>, Option<usize>)> =
-                    (0..blocks.len()).map(|i| (target(&blocks, i, true), target(&blocks, i, false))).collect();
-                for (i, b) in blocks.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{:>2}", i + 1)).font(egui::FontId::monospace(11.0)).color(t.text_dim));
-                        let shown = b.part.map_or_else(
-                            || if b.name.is_empty() { "(lead-in)".to_string() } else { b.name.clone() },
-                            |p| p.label().to_string(),
-                        );
-                        egui::ComboBox::from_id_salt(("section-part", i)).width(110.0).selected_text(shown).show_ui(ui, |ui| {
-                            for part in Part::ALL {
-                                if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
-                                    b.part = Some(part);
-                                    b.name = part.label().into();
+            // where each block came from, so the tracks' bar levels move with their sections
+            let mut origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
+            let mut remove = None;
+            let mut rows: Vec<Rect> = Vec::new();
+            let dragging = egui::DragAndDrop::payload::<SectionDrag>(ui.ctx()).map(|d| *d);
+            let pointer = ui.ctx().pointer_interact_pos();
+            let list = ui.scope(|ui| {
+                widgets::inset(ui, |ui| {
+                    for (i, b) in blocks.iter_mut().enumerate() {
+                        let row = ui.horizontal(|ui| {
+                            let grip = ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(format!("≡ {:>2}", i + 1))
+                                            .font(egui::FontId::monospace(11.0))
+                                            .color(t.text_dim),
+                                    )
+                                    .selectable(false)
+                                    .sense(Sense::drag()),
+                                )
+                                .on_hover_cursor(egui::CursorIcon::Grab)
+                                .on_hover_text("Drag to move this section");
+                            grip.dnd_set_drag_payload(SectionDrag::Move(i));
+                            let shown = b.part.map_or_else(
+                                || if b.name.is_empty() { "(lead-in)".to_string() } else { b.name.clone() },
+                                |p| p.label().to_string(),
+                            );
+                            egui::ComboBox::from_id_salt(("section-part", i)).width(110.0).selected_text(shown).show_ui(ui, |ui| {
+                                for part in Part::ALL {
+                                    if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
+                                        b.part = Some(part);
+                                        b.name = part.label().into();
+                                    }
                                 }
-                            }
+                            });
+                            ui.label(
+                                egui::RichText::new(format!("{} bar{}", b.bars, if b.bars == 1 { "" } else { "s" })).color(t.text_label),
+                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("×").on_hover_text("Remove this section").clicked() {
+                                    remove = Some(i);
+                                }
+                            });
                         });
-                        ui.label(egui::RichText::new(format!("{} bar{}", b.bars, if b.bars == 1 { "" } else { "s" })).color(t.text_label));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("×").on_hover_text("Remove this section").clicked() {
-                                remove = Some(i);
-                            }
-                            let (up, down) = moves[i];
-                            if ui.add_enabled(down.is_some(), egui::Button::new("▼").small()).on_hover_text("Move later").clicked() {
-                                shift = down.map(|j| (i, j));
-                            }
-                            if ui.add_enabled(up.is_some(), egui::Button::new("▲").small()).on_hover_text("Move earlier").clicked() {
-                                shift = up.map(|j| (i, j));
-                            }
-                        });
-                    });
-                }
-                if let Some((from, to)) = shift {
-                    let b = blocks.remove(from);
-                    blocks.insert(to, b);
-                }
-                if let Some(i) = remove {
-                    blocks.remove(i);
-                }
-                ui.add_space(2.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Add");
-                    for part in Part::ALL {
-                        if ui.button(format!("+ {}", part.label())).on_hover_text(part.help()).clicked() {
-                            if blocks.is_empty() {
-                                // the first section spans the piece
-                                blocks.push(Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) });
-                            } else {
-                                // as long as the last of its kind, or 8 bars
-                                let bars = blocks.iter().rev().find(|b| b.part == Some(part)).map_or(8, |b| b.bars);
-                                blocks.push(Block { name: part.label().into(), part: Some(part), bars });
+                        rows.push(row.response.rect);
+                    }
+                    if let Some(i) = remove {
+                        blocks.remove(i);
+                        origin.remove(i);
+                    }
+                    ui.add_space(2.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Add");
+                        for part in Part::ALL {
+                            let b = ui
+                                .add(egui::Button::new(format!("+ {}", part.label())).sense(Sense::click_and_drag()))
+                                .on_hover_text(format!("{}. Click to add it at the end, or drag it into place.", part.help()));
+                            b.dnd_set_drag_payload(SectionDrag::New(part));
+                            if b.clicked() {
+                                if blocks.is_empty() {
+                                    // the first section spans the piece
+                                    blocks.push(Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) });
+                                } else {
+                                    blocks.push(new_block(&blocks, part));
+                                }
+                                origin.push(None);
                             }
                         }
-                    }
-                });
+                    });
+                })
             });
+            // a section being dragged: show where it will land, and put it there on release
+            if let (Some(what), Some(at)) = (dragging, pointer)
+                && remove.is_none()
+            {
+                let area = list.response.rect.expand(8.0);
+                let slot = rows.iter().filter(|r| r.center().y < at.y).count();
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                let label = match what {
+                    SectionDrag::Move(i) => blocks.get(i).map_or(String::new(), |b| b.part.map_or(b.name.clone(), |p| p.label().into())),
+                    SectionDrag::New(part) => format!("+ {}", part.label()),
+                };
+                let ghost = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("section-ghost")));
+                ghost.text(at + vec2(14.0, 0.0), Align2::LEFT_CENTER, label, t.semibold(12.0), t.accent);
+                if area.contains(at) {
+                    let y = match (rows.get(slot), rows.last()) {
+                        (Some(r), _) => r.top() - 1.0,
+                        (None, Some(r)) => r.bottom() + 1.0,
+                        (None, None) => list.response.rect.top() + 6.0,
+                    };
+                    ui.painter().hline(list.response.rect.x_range(), y, Stroke::new(2.0, t.accent));
+                    if ui.input(|i| i.pointer.any_released()) {
+                        egui::DragAndDrop::clear_payload(ui.ctx());
+                        match what {
+                            SectionDrag::Move(i) if i < blocks.len() => {
+                                let to = if slot > i { slot - 1 } else { slot };
+                                let (b, o) = (blocks.remove(i), origin.remove(i));
+                                blocks.insert(to, b);
+                                origin.insert(to, o);
+                            }
+                            SectionDrag::New(part) => {
+                                let b = if blocks.is_empty() {
+                                    Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) }
+                                } else {
+                                    new_block(&blocks, part)
+                                };
+                                blocks.insert(slot.min(blocks.len()), b);
+                                origin.insert(slot.min(origin.len()), None);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
             if blocks != before {
                 if blocks.is_empty() {
                     p.sections.clear();
                 } else {
-                    p.set_arrangement(&blocks);
+                    p.rearrange(&blocks, &origin);
                 }
             }
         });
@@ -628,13 +719,14 @@ impl App {
 
     fn composer_ui(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let untouched = self.doc.project.untouched();
-        let (mut dice, mut again) = (false, false);
+        let (mut dice, mut again) = (None, false);
+        let mut new_style = None;
         widgets::section(ui, "composer", "Composer", true, |ui| {
             let Some(r) = &mut self.doc.project.recipe else {
                 widgets::note(ui, "This piece was written by hand or imported. 🎲 composes a new one at this tempo and length.", "");
                 widgets::inset(ui, |ui| {
                     if ui.button(egui::RichText::new("🎲 New piece").color(t.accent)).clicked() {
-                        dice = true;
+                        dice = Some(true);
                     }
                 });
                 return;
@@ -646,6 +738,16 @@ impl App {
             };
             widgets::note(ui, egui::RichText::new(status).color(if untouched { t.text_dim } else { t.caution }).text(), "");
             widgets::inset(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Style");
+                    for s in Style::ALL {
+                        let help = format!("{}. Choosing it sets {} bpm.", s.help(), s.tempo());
+                        if ui.selectable_label(r.style == s, s.label()).on_hover_text(help).clicked() && r.style != s {
+                            r.style = s;
+                            new_style = Some(s);
+                        }
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label("Key");
                     egui::ComboBox::from_id_salt("root").width(56.0).selected_text(KEY_NAMES[r.root as usize % 12]).show_ui(ui, |ui| {
@@ -674,9 +776,15 @@ impl App {
             amount(ui, "density", "Density", &mut r.density, 0.5, ("sparse", "busy"), "How busy the bells, plucks and drums are");
             widgets::inset(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(egui::RichText::new("🎲 New piece").color(t.accent)).on_hover_text("A new seed, key and mode").clicked()
+                    if ui
+                        .button(egui::RichText::new("🎲 New piece").color(t.accent))
+                        .on_hover_text("New notes (a new seed, key and mode) and a new arrangement of sections")
+                        .clicked()
                     {
-                        dice = true;
+                        dice = Some(true);
+                    }
+                    if ui.button("New notes").on_hover_text("New notes (a new seed, key and mode) to the sections as they are").clicked() {
+                        dice = Some(false);
                     }
                     if ui
                         .add_enabled(!untouched, egui::Button::new("Write again"))
@@ -691,8 +799,13 @@ impl App {
                 );
             });
         });
-        if dice {
-            self.new_piece();
+        if let Some(s) = new_style {
+            // the style's own tempo; the piece is written again for both together
+            self.doc.project.bpm = s.tempo();
+            self.status = format!("{}: {}, at {} bpm", s.label(), s.help(), s.tempo());
+        }
+        if let Some(sections) = dice {
+            self.new_piece(sections);
         } else if again && let Some(r) = self.doc.project.recipe {
             self.recompose(r, true);
         }
@@ -1200,4 +1313,17 @@ impl App {
         });
         self.about_open = open;
     }
+}
+
+/// A section being dragged in the Score tab: one of the arrangement's, or a new one.
+#[derive(Clone, Copy)]
+enum SectionDrag {
+    Move(usize),
+    New(Part),
+}
+
+/// A new section of a part: as long as the last of its kind, or 8 bars.
+fn new_block(blocks: &[Block], part: Part) -> Block {
+    let bars = blocks.iter().rev().find(|b| b.part == Some(part)).map_or(8, |b| b.bars);
+    Block { name: part.label().into(), part: Some(part), bars }
 }

@@ -13,7 +13,8 @@ cargo run --release -p dd-cli -- --help  # the same engine from the command line
 ```
 
 It opens on a newly composed piece every time: press Space to hear it, **🎲 New piece** for
-another. The hand-written **Rain on Neon** is under File.
+another (new notes and a new arrangement of sections), or **New notes** for new notes to
+the sections you have. The hand-written **Rain on Neon** is under File.
 
 ## Install
 
@@ -53,12 +54,41 @@ second as the piece recedes), in
 sections with their sounds and hall. There are four kinds of section: **Neon** (rain, the
 pad, the drone and bells), **Swell** (the brass and bass come in, with a heartbeat),
 **Night shift** (everything, with the lead melody, plucks and drums) and **Fade** (the
-answer as it recedes). A new piece runs Neon, Swell, Night shift, Fade; in the Score tab
-you can add sections of any kind in any order, as often as you like, reorder and remove
-them, and drag the end of a section on the Sections strip above the roll to make it a bar
-or more longer or shorter. A composed piece is written again to follow the arrangement. Set the key and mode
-(minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the density
-in the Score tab; the same settings always write the same piece.
+answer as it recedes). A new piece runs Neon, Swell, Night shift, Fade. In the Score tab's
+section list, drag a section by its ≡ grip to move it, drag one of the **+** buttons into
+place to add a section there (or click it to add one at the end), and × to remove one; drag
+the end of a section on the Sections strip above the roll to make it a bar or more longer
+or shorter. A composed piece is written again to follow the arrangement. Set the key and
+mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
+density in the Score tab; the same settings always write the same piece.
+
+There are four **styles**, each playing the same four kinds of section its own way, all
+with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
+
+- **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
+- **Pursuit** (104 bpm): driven. A sequenced bass runs in quavers or semiquavers with octave
+  and fifth jumps, an arpeggio climbs over it, the brass stabs on pushed beats in the night
+  shift, and the drums play four to the bar with a gated backbeat, quaver hats, a taiko fill
+  every four bars and a riser into each night shift. Chords move every four seconds or so.
+- **Blackout** (56 bpm): dark and low. The kit's analogue and sub drones under everything,
+  low root-and-fifth brass swells, a sub bass, a horn far off with long silences between
+  its phrases, sub booms on each new section, distant metal and grains, a slow deep pulse
+  with taiko. Chords last about ten seconds; no plucks.
+- **Momento** (72 bpm): romantic and swaying. Lush seventh and ninth chords that open
+  towards the relative major, an electric piano rolling each chord (sometimes anticipating
+  it), a soft swung groove (muted kick, half-time snare, shaker, tabla) with a walking
+  bass, and in the night shift a sax-like theme of long notes and wide leaps that slides
+  up into the top of each leap, the pad blooming an octave wider over a bed of horns and a
+  kalimba three against four. Chimes as it fades.
+
+Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
+seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
+notes keep the style.
+
+**🎲 New piece** draws a new arrangement too, at the piece's length: three to seven
+sections in whole chords, opening with a Neon (now and then a Swell), reaching at least
+one Night shift, never the same kind twice running, and ending on a Fade. **New notes**
+writes a new seed, key and mode to the sections as they stand.
 
 It follows the tempo, metre and length. Change any of them and a composed piece is written
 again to fit: the sections share a change of length in proportion, chords last about six seconds whatever the
@@ -148,10 +178,21 @@ Load any other `.sf2` from the Sound tab.
   drag the end to resize; double-click or right-click to delete; ⇧-drag to select. ↑ ↓
   transpose (⇧ by octaves), ← → nudge, Q quantise (⇧Q ends too), ⌘D duplicate, ⌘C ⌘V
   copy and paste at the playhead. The other tracks show faintly behind.
+- **Volume** (in the lane's menu): the selected track's volume bar by bar, on top of its
+  fader (100 is the fader's level). Drag to set bars, sweeping across several to set each;
+  the volume ramps between the bars you set and holds after the last, so bars you haven't
+  set, new sections included, follow their neighbours. Right-click a bar to let it follow
+  again; **Clear** sets them all back. The levels move with their sections when you
+  rearrange them, outlast a new seed or style, and reach the MIDI file as its volume
+  controller (CC7, a step a beat through ramps). In the mixer, a track with bar volumes
+  shows where they have it as the music plays: an orange marker on its fader and a ▸
+  readout, the fader itself staying where you set it.
 - **Lane** under the roll: velocities, or draw the mod wheel, touch, pitch bend, brightness
   (CC74, the synth's filter) or expression.
 - **Overview** of every track above the roll; **sections** on the strip above the ruler
   (drag a section's end to resize it, a bar at a time), ordered in the Score tab.
+- **Tracks**: click anywhere on a track to select it; double-click its name (or Rename in
+  its right-click menu) to rename it.
 - Undo and redo (⌘Z, ⇧⌘Z) for everything.
 
 ## Mixing
@@ -163,13 +204,17 @@ echo; a string-machine ensemble; A = 440/432/415 Hz.
 
 ## Getting it out
 
+Saves and exports suggest a name made of the piece's title, its seed and the time in UTC,
+such as `Last Monorail - seed 475994 - 2026-11-11T143233Z.wav`, so versions of one piece
+sort together and never overwrite each other (stems and the Resolve package's files too).
+
 - **MIDI file**: type 1, a track per track, with tempo, metre, section markers, programs,
   controllers and the mix. Synth tracks carry the nearest General MIDI program; the kit and
   city FX land on the Ambient Electronic SoundFont's Trailer Kit (48) and Trailer FX (119),
   which share their keys, so a DAW with that font plays them right. The project is embedded
   too, so Kibble-481 reopens its own MIDI files exactly.
 - **Soundtrack (WAV)**: 24-bit, 48 kHz (Resolve's native rate), the mix exactly as heard,
-  with a 4-second tail.
+  with its reverb and echo let ring out (up to a minute).
 - **Stems**: a WAV per track, each with its reverb and echo, for Resolve's Fairlight page.
 - **Gallery for DaVinci Resolve**: choose a photo folder in the Gallery tab and export. You
   get the soundtrack, an `.fcpxml` timeline with every photo at its change and a cross
@@ -184,7 +229,7 @@ echo; a string-machine ensemble; A = 440/432/415 Hz.
 ## Command line
 
 ```sh
-kibble-481-cli compose piece.kibble [--seed 42] [--bpm 72] [--bars 32] [--key 2]
+kibble-481-cli compose piece.kibble [--style momento] [--seed 42] [--bpm 72] [--bars 32] [--key 2]
 kibble-481-cli demo rain.kibble
 kibble-481-cli render rain.kibble rain.wav [--stem Brass]
 kibble-481-cli midi rain.kibble rain.mid
@@ -226,7 +271,7 @@ KIBBLE_SCREENSHOT=window.bmp cargo run --release -p dd-desktop   # picture of th
 
 The tests cover the composer (40 seeds at five tempos, metres and lengths: it fills the
 length exactly, keeps the rain falling throughout and uses only bundled sounds; chords about
-six seconds apart; edits detected), the granular rain (steady for far longer than its
+six seconds apart; edits detected), the recorded rain (steady for far longer than its
 recording, heavier when harder, dying away when released), every factory patch (it sounds, stays in level and dies away), glide, sag,
 sustain and voice stealing; the kit; event order and chasing; recording and quantise; MIDI
 round trips and import; deterministic, correctly levelled renders through the bundled

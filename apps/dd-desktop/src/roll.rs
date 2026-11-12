@@ -1,6 +1,6 @@
 //! The centre of the window: the ruler (bars, sections, loop, playhead), an overview of
 //! every track, the piano roll of the selected track, and a lane below it for
-//! velocities or a controller.
+//! velocities, a controller or the track's volume bar by bar.
 //!
 //! In the roll: click to add a note (drag to set its length), drag a note to move it
 //! (hold ⌥ to copy it), drag its right end to resize it, double-click or right-click
@@ -11,7 +11,7 @@
 
 use std::collections::BTreeSet;
 
-use dd_seq::project::{Block, Ctrl, CtrlKind, Note, PPQ, Project};
+use dd_seq::project::{Block, Ctrl, CtrlKind, LEVEL_UNITY, Note, PPQ, Project, level_at, level_gain, set_level};
 use dd_seq::record::quantize_notes;
 use dd_seq::timeline::Msg;
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
@@ -26,12 +26,15 @@ const LANE_H: f32 = 86.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lane {
     Velocity,
+    /// The track's volume, bar by bar.
+    Volume,
     Ctrl(CtrlKind),
 }
 
 impl Lane {
-    pub const ALL: [Lane; 6] = [
+    pub const ALL: [Lane; 7] = [
         Lane::Velocity,
+        Lane::Volume,
         Lane::Ctrl(CtrlKind::Cc(1)),
         Lane::Ctrl(CtrlKind::Pressure),
         Lane::Ctrl(CtrlKind::Bend),
@@ -42,6 +45,7 @@ impl Lane {
     pub fn label(self) -> String {
         match self {
             Lane::Velocity => "Velocity".into(),
+            Lane::Volume => "Volume (bar by bar)".into(),
             Lane::Ctrl(k) => k.label(),
         }
     }
@@ -63,10 +67,12 @@ enum Drag {
     LoopSet {
         from_bar: u32,
     },
-    /// The end of section `index` being dragged; the arrangement as it was.
+    /// The end of section `index` being dragged; the arrangement and the tracks' bar
+    /// levels as they were.
     SectionEnd {
         index: usize,
         orig: Vec<Block>,
+        levels: Vec<Vec<dd_seq::project::Level>>,
     },
     Lane,
 }
@@ -88,6 +94,8 @@ pub struct RollState {
     pending_fit: bool,
     /// Bar under the pointer when the ruler's menu opened.
     menu_bar: u32,
+    /// The bar and value last set while drawing volumes, to fill the bars between.
+    lane_last: Option<(u32, f32)>,
 }
 
 impl Default for RollState {
@@ -106,6 +114,7 @@ impl Default for RollState {
             seen_track: usize::MAX,
             pending_fit: true,
             menu_bar: 0,
+            lane_last: None,
         }
     }
 }
@@ -179,7 +188,7 @@ impl App {
         let full = ui.available_rect_before_wrap();
         ui.allocate_rect(full, Sense::hover());
         if self.doc.project.tracks.is_empty() {
-            ui.painter().text(full.center(), Align2::CENTER_CENTER, "Add a track on the left to start", t.font(15.0), t.text_dim);
+            ui.painter().text(full.center(), Align2::CENTER_CENTER, "No tracks: start a new piece from File", t.font(15.0), t.text_dim);
             return;
         }
         let switched = self.roll.seen_track != self.sel;
@@ -412,9 +421,10 @@ impl App {
                 painter.vline(x, rect.top()..=rect.top() + 20.0, Stroke::new(3.0, t.accent));
             }
             if h.drag_started() {
-                self.roll.drag = Some(Drag::SectionEnd { index: i, orig: blocks.clone() });
+                let levels = self.doc.project.tracks.iter().map(|t| t.levels.clone()).collect();
+                self.roll.drag = Some(Drag::SectionEnd { index: i, orig: blocks.clone(), levels });
             }
-            if let (Some(Drag::SectionEnd { index, orig }), Some(pp)) = (&self.roll.drag, h.interact_pointer_pos())
+            if let (Some(Drag::SectionEnd { index, orig, levels }), Some(pp)) = (&self.roll.drag, h.interact_pointer_pos())
                 && *index == i
             {
                 let start: u32 = orig[..i].iter().map(|b| b.bars).sum();
@@ -422,7 +432,13 @@ impl App {
                 let mut fresh = orig.clone();
                 fresh[i].bars = end_bar.saturating_sub(start).clamp(1, 999);
                 if fresh != self.doc.project.arrangement() {
-                    self.doc.project.set_arrangement(&fresh);
+                    // from the arrangement as it was, so the levels move with their sections
+                    self.doc.project.set_arrangement(orig);
+                    for (t, l) in self.doc.project.tracks.iter_mut().zip(levels) {
+                        t.levels = l.clone();
+                    }
+                    let origin: Vec<Option<usize>> = (0..fresh.len()).map(Some).collect();
+                    self.doc.project.rearrange(&fresh, &origin);
                     self.status = format!("{}: {} bars", fresh[i].part.map_or(fresh[i].name.as_str(), |p| p.label()), fresh[i].bars);
                 }
             }
@@ -970,18 +986,27 @@ impl App {
                     }
                 });
         });
-        if let Lane::Ctrl(_) = lane
+        if matches!(lane, Lane::Ctrl(_) | Lane::Volume)
             && ui
                 .put(
                     Rect::from_min_size(pos2(rect.left() + 3.0, rect.top() + 30.0), vec2(GUTTER - 6.0, 18.0)),
                     egui::Button::new(egui::RichText::new("Clear").font(t.font(10.0))),
                 )
-                .on_hover_text("Remove every point of this controller from the track")
+                .on_hover_text(if lane == Lane::Volume {
+                    "Set every bar back to the fader's level"
+                } else {
+                    "Remove every point of this controller from the track"
+                })
                 .clicked()
-            && let (Some(tr), Lane::Ctrl(k)) = (self.doc.project.tracks.get_mut(self.sel), lane)
+            && let Some(tr) = self.doc.project.tracks.get_mut(self.sel)
         {
-            tr.ctrls.retain(|c| c.kind != k);
+            match lane {
+                Lane::Ctrl(k) => tr.ctrls.retain(|c| c.kind != k),
+                _ => tr.levels.clear(),
+            }
         }
+        let bar_t = self.doc.project.bar_ticks();
+        let bars = self.doc.project.bars();
         let Some(tr) = self.doc.project.tracks.get(self.sel) else { return };
         let col = rgb(tr.color);
         let (lo, hi) = match lane {
@@ -1020,8 +1045,32 @@ impl App {
                 }
                 painter.hline(last.0..=grid.right(), last.1, Stroke::new(1.5, col));
             }
+            Lane::Volume => {
+                // the fader's level, then the volume ramping from bar to bar, filled below
+                painter.hline(grid.x_range(), y_of(LEVEL_UNITY as f32), Stroke::new(1.0, t.track));
+                let first = (v.tick(grid.left()).max(0.0) / bar_t as f64).floor() as u32;
+                let last = ((v.tick(grid.right()) / bar_t as f64).ceil() as u32).min(bars);
+                for b in first..last {
+                    let (x0, x1) = (v.x((b * bar_t) as f64), v.x(((b + 1) * bar_t) as f64));
+                    let (y0, y1) = (y_of(level_at(&tr.levels, b as f64)), y_of(level_at(&tr.levels, (b + 1) as f64)));
+                    let fill = col.gamma_multiply(0.18);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![pos2(x0, y0), pos2(x1, y1), pos2(x1, grid.bottom()), pos2(x0, grid.bottom())],
+                        fill,
+                        Stroke::NONE,
+                    ));
+                    painter.line_segment([pos2(x0, y0), pos2(x1, y1)], Stroke::new(1.5, col));
+                }
+                for l in tr.levels.iter().filter(|l| l.bar >= first && l.bar < last) {
+                    painter.circle_filled(pos2(v.x((l.bar * bar_t) as f64), y_of(l.value as f32)), 3.0, col);
+                }
+            }
         }
         let resp = ui.interact(grid, ui.scope_id().with("lane"), Sense::click_and_drag());
+        if lane == Lane::Volume {
+            self.volume_lane(&resp, grid, v, val_of, bar_t, bars);
+            return;
+        }
         if (resp.dragged() || resp.clicked())
             && let Some(pp) = resp.interact_pointer_pos()
         {
@@ -1048,6 +1097,8 @@ impl App {
                     tr.ctrls.push(Ctrl { tick: at, kind, value: value.round() as i16 });
                     tr.ctrls.sort_by_key(|c| c.tick);
                 }
+                // drawn by volume_lane
+                Lane::Volume => {}
             }
         }
         if resp.drag_stopped() {
@@ -1058,11 +1109,61 @@ impl App {
             _ => "Drag to draw the controller; it's played back and saved in the MIDI file",
         });
     }
+
+    /// Drawing the selected track's volume: click or drag to set bars (dragging across
+    /// bars sets each one it passes), right-click a bar to let it follow its neighbours.
+    fn volume_lane(&mut self, resp: &egui::Response, grid: Rect, v: View, val_of: impl Fn(f32) -> f32, bar_t: u32, bars: u32) {
+        let bar_at = |x: f32| ((v.tick(x).max(0.0) / bar_t as f64).floor() as u32).min(bars.saturating_sub(1));
+        let Some(tr) = self.doc.project.tracks.get_mut(self.sel) else { return };
+        if (resp.dragged() || resp.clicked())
+            && let Some(pp) = resp.interact_pointer_pos()
+        {
+            self.roll.drag = Some(Drag::Lane);
+            let (bar, value) = (bar_at(pp.x), val_of(pp.y).round());
+            // fill the bars between this one and the last, so a quick sweep leaves no gaps
+            let from = if resp.drag_started() || resp.clicked() { None } else { self.roll.lane_last };
+            match from {
+                Some((b0, v0)) if b0 != bar => {
+                    let (lo, hi) = (b0.min(bar), b0.max(bar));
+                    for b in lo..=hi {
+                        let k = (b as f32 - b0 as f32) / (bar as f32 - b0 as f32);
+                        set_level(&mut tr.levels, b, (v0 + (value - v0) * k).round().clamp(0.0, 127.0) as u8);
+                    }
+                }
+                _ => set_level(&mut tr.levels, bar, value.clamp(0.0, 127.0) as u8),
+            }
+            self.roll.lane_last = Some((bar, value));
+        }
+        if resp.secondary_clicked()
+            && let Some(pp) = resp.interact_pointer_pos()
+        {
+            let bar = bar_at(pp.x);
+            tr.levels.retain(|l| l.bar != bar);
+        }
+        if resp.drag_stopped() {
+            self.roll.drag = None;
+            self.roll.lane_last = None;
+        }
+        let hint = "Drag to set the track's volume bar by bar (100 is the fader's level); it ramps between the bars you set and holds after the last. Right-click a bar to let it follow its neighbours.";
+        match resp.hover_pos().filter(|p| grid.contains(*p)) {
+            Some(p) => {
+                let bar = bar_at(p.x);
+                let val = level_at(&tr.levels, bar as f64);
+                let db = 20.0 * level_gain(val).max(1e-6).log10();
+                let set = if tr.levels.iter().any(|l| l.bar == bar) { "set" } else { "following its neighbours" };
+                resp.clone().on_hover_text(format!("Bar {}: {:.0} ({db:+.1} dB), {set}\n\n{hint}", bar + 1, val));
+            }
+            None => {
+                resp.clone().on_hover_text(hint);
+            }
+        }
+    }
 }
 
 fn short(l: Lane) -> String {
     match l {
         Lane::Velocity => "Vel".into(),
+        Lane::Volume => "Vol".into(),
         Lane::Ctrl(CtrlKind::Cc(1)) => "Mod".into(),
         Lane::Ctrl(CtrlKind::Pressure) => "Touch".into(),
         Lane::Ctrl(CtrlKind::Bend) => "Bend".into(),

@@ -1,7 +1,7 @@
 //! The mixer: a channel strip per track and the master. The fader law, meters and
 //! knobs are Ambient MIDI Generator's (`mixer_ui.rs`, MIT).
 
-use dd_seq::project::SILENT_DB;
+use dd_seq::project::{SILENT_DB, level_at, level_gain};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
 use crate::app::App;
@@ -17,6 +17,8 @@ impl App {
         let t = Tokens::get(ui.ctx());
         let n = self.doc.project.tracks.len();
         let peaks: Vec<f32> = (0..n).map(|i| self.meter(i)).collect();
+        // where the playhead is, in bars, for each track's volume bar by bar
+        let at_bar = self.heard().max(0.0) / self.doc.project.bar_secs();
         let master = (self.meter(n), self.meter(n + 1));
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal_top(|ui| {
@@ -35,6 +37,11 @@ impl App {
                                 ui.spacing_mut().item_spacing.y = 2.0;
                                 let c = crate::theme::track_colour(tr.color);
                                 ui.add(egui::Label::new(egui::RichText::new(&tr.name).font(t.semibold(11.5)).color(c)).truncate());
+                                // the fader plus the track's bar volume where the music is
+                                let auto = (!tr.levels.is_empty()).then(|| {
+                                    let g = level_gain(level_at(&tr.levels, at_bar));
+                                    if g <= 1e-6 { SILENT_DB } else { tr.strip.gain_db + 20.0 * g.log10() }
+                                });
                                 let s = &mut tr.strip;
                                 knob(
                                     ui,
@@ -67,7 +74,7 @@ impl App {
                                 );
                                 knob(ui, "Echo", &mut s.echo, 0.0..=1.0, 0.0, |v| format!("{:.0}%", v * 100.0), "Send to the echo", &t);
                                 ui.horizontal(|ui| {
-                                    fader(ui, &mut s.gain_db, &t);
+                                    fader(ui, &mut s.gain_db, auto, &t);
                                     meter(ui, &[peaks[i]], true, &t);
                                     ui.vertical(|ui| {
                                         toggle(ui, "M", &mut s.mute, t.mute, "Mute");
@@ -75,7 +82,17 @@ impl App {
                                         toggle(ui, "E", &mut s.ensemble, t.accent, "Through the ensemble chorus (amount under Effects)");
                                     });
                                 });
-                                ui.label(egui::RichText::new(db_text(s.gain_db)).font(t.mono(10.5)).color(t.text_dim));
+                                match auto {
+                                    // the volume bar by bar is moving it: show where it is now
+                                    Some(a) => ui
+                                        .label(egui::RichText::new(format!("▸{}", db_text(a))).font(t.mono(10.5)).color(t.accent))
+                                        .on_hover_text(format!(
+                                            "Playing at {} now: the fader's {} and the track's volume bar by bar (the Vol lane)",
+                                            db_text(a),
+                                            db_text(s.gain_db)
+                                        )),
+                                    None => ui.label(egui::RichText::new(db_text(s.gain_db)).font(t.mono(10.5)).color(t.text_dim)),
+                                };
                             });
                         })
                     });
@@ -95,7 +112,7 @@ impl App {
                         ui.label(egui::RichText::new("Master").font(t.semibold(11.5)));
                         ui.add_space(4.0 * 18.0 + 6.0);
                         ui.horizontal(|ui| {
-                            fader(ui, &mut self.doc.project.master_db, &t);
+                            fader(ui, &mut self.doc.project.master_db, None, &t);
                             meter(ui, &[master.0, master.1], true, &t);
                         });
                         ui.label(egui::RichText::new(db_text(self.doc.project.master_db)).font(t.mono(10.5)).color(t.text_dim));
@@ -157,8 +174,9 @@ fn knob(
     resp.on_hover_text(format!("{label}: {} · {help}", value(*v)));
 }
 
-/// A vertical fader in dB. Double-click resets it to 0 dB.
-fn fader(ui: &mut Ui, db: &mut f32, t: &Tokens) {
+/// A vertical fader in dB. Double-click resets it to 0 dB. `auto` is the level the
+/// track's volume bar by bar puts it at, shown as a marker that moves with the music.
+fn fader(ui: &mut Ui, db: &mut f32, auto: Option<f32>, t: &Tokens) {
     let (r, resp) = ui.allocate_exact_size(vec2(18.0, FADER_H), Sense::click_and_drag());
     let y_of = |d: f32| r.bottom() - 6.0 - (r.height() - 12.0) * db_pos(d);
     if (resp.dragged() || resp.clicked())
@@ -180,6 +198,12 @@ fn fader(ui: &mut Ui, db: &mut f32, t: &Tokens) {
     let fill = if resp.hovered() || resp.dragged() { t.thumb_hover } else { t.thumb };
     painter.rect_filled(cap, 2.5, fill);
     painter.hline(cap.x_range().shrink(3.0), y, Stroke::new(1.0, t.inset));
+    if let Some(a) = auto {
+        // where the volume bar by bar has the track now: a bar in the accent beside the cap
+        let ya = y_of(a);
+        painter.rect_filled(Rect::from_center_size(pos2(r.center().x, ya), vec2(16.0, 3.0)), 1.0, t.accent);
+        painter.vline(r.center().x, y.min(ya)..=y.max(ya), Stroke::new(1.0, t.accent.gamma_multiply(0.6)));
+    }
     resp.on_hover_text(format!("{} · drag to set, double-click for 0 dB", db_text(*db)));
 }
 

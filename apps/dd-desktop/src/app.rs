@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::JoinHandle;
 
 use dd_gallery::doc::{Document, EXTENSION, OLD_EXTENSION};
-use dd_seq::compose::{Recipe, compose, keep_sounds};
+use dd_seq::compose::{Recipe, compose, keep_levels, keep_sounds};
 use dd_seq::engine::{Cmd, MixSettings};
 use dd_seq::fonts::{FontBank, make_instrument, soundfont_dir};
 use dd_seq::project::{PPQ, Project, Source};
@@ -170,6 +170,8 @@ pub struct App {
     job: Option<Job>,
     pub(crate) status: String,
     pub(crate) about_open: bool,
+    /// The track whose name is being edited (double-click a name).
+    pub(crate) renaming: Option<usize>,
     palette: Palette,
     title: String,
     pub(crate) recent: Vec<PathBuf>,
@@ -242,6 +244,7 @@ impl App {
             job: None,
             status: String::new(),
             about_open: false,
+            renaming: None,
             palette,
             title: String::new(),
             recent,
@@ -306,6 +309,26 @@ impl App {
             }
             if snap.wants("fast") {
                 app.doc.project.bpm = 124.0;
+            }
+            for (w, style) in [
+                ("pursuit", dd_seq::compose::Style::Pursuit),
+                ("blackout", dd_seq::compose::Style::Blackout),
+                ("momento", dd_seq::compose::Style::Momento),
+            ] {
+                if snap.wants(w)
+                    && let Some(r) = &mut app.doc.project.recipe
+                {
+                    r.style = style;
+                    app.doc.project.bpm = style.tempo();
+                }
+            }
+            if snap.wants("volume") {
+                // the volume lane, with the selected track rising over six bars and falling at the end
+                app.roll.lane = crate::roll::Lane::Volume;
+                let levels = &mut app.doc.project.tracks[app.sel].levels;
+                for (bar, value) in [(4, 30), (10, 110), (20, 110), (23, 20)] {
+                    dd_seq::project::set_level(levels, bar, value);
+                }
             }
         }
         app.send(Cmd::Metronome(app.settings.metronome));
@@ -453,7 +476,7 @@ impl App {
             return;
         }
         if self.doc.project.tracks.is_empty() {
-            self.status = "Add a track to record onto".into();
+            self.status = "No track to record onto: start a new piece from File".into();
             return;
         }
         let was_playing = self.playing();
@@ -560,15 +583,21 @@ impl App {
 
     /// Write the piece again for a recipe at the current tempo, metre and length.
     pub(crate) fn recompose(&mut self, recipe: Recipe, keep: bool) {
+        self.recompose_to(recipe, keep, None);
+    }
+
+    /// Write the piece again for a recipe, to an arrangement of sections if one is
+    /// given, else to the current one (if the composer can write it).
+    fn recompose_to(&mut self, recipe: Recipe, keep: bool, plan: Option<Vec<(dd_seq::project::Part, u32)>>) {
         let old = &self.doc.project;
-        // the arrangement of sections is kept, if it's one the composer can write
-        let mut p = match old.plan() {
+        let mut p = match plan.or_else(|| old.plan()) {
             Some(plan) => dd_seq::compose::compose_plan(&recipe, old.bpm, old.meter, &plan),
             None => compose(&recipe, old.bpm, old.meter, old.length_bars.max(2)),
         };
         if keep {
             keep_sounds(&mut p, old);
         }
+        keep_levels(&mut p, old);
         let bars = p.bars();
         p.loop_bars = old.loop_bars.filter(|(a, _)| *a < bars).map(|(a, b)| (a, b.min(bars)));
         self.doc.project = p;
@@ -605,12 +634,17 @@ impl App {
         self.meters.get(track).copied().unwrap_or(0.0)
     }
 
-    /// A new seed, key and mode: a new piece at this tempo and length.
-    pub(crate) fn new_piece(&mut self) {
-        let r = Recipe::random(entropy());
-        self.recompose(r, self.settings.keep_sounds);
+    /// A new seed, key and mode in the same style, at this tempo and length: with
+    /// `new_sections`, a new arrangement of sections too (🎲 New piece); without, the
+    /// sections as they are (New notes).
+    pub(crate) fn new_piece(&mut self, new_sections: bool) {
+        let style = self.doc.project.recipe.map(|r| r.style).unwrap_or_default();
+        let r = Recipe { style, ..Recipe::random(entropy()) };
+        let p = &self.doc.project;
+        let plan = new_sections.then(|| dd_seq::compose::random_plan(&r, p.bpm, p.meter, p.length_bars.max(2)));
+        self.recompose_to(r, self.settings.keep_sounds, plan);
         self.roll.fit_to(&self.doc.project);
-        self.status = format!("\u{201c}{}\u{201d}: {}, seed {}", self.doc.project.title, r.key_label(), r.seed);
+        self.status = format!("\u{201c}{}\u{201d}: {} in {}, seed {}", self.doc.project.title, r.style.label(), r.key_label(), r.seed);
     }
 
     /// When the tempo, metre, length or sections change, a composed piece that hasn't been
@@ -626,8 +660,8 @@ impl App {
         let before = std::mem::replace(&mut self.shape, now.clone());
         match (before.recipe, now.recipe) {
             (Some(old), Some(r)) if old != r => {
-                // a new seed brings new sounds, unless they're kept
-                let keep = r.seed == old.seed || self.settings.keep_sounds;
+                // a new seed or style brings new sounds, unless they're kept
+                let keep = (r.seed == old.seed && r.style == old.style) || self.settings.keep_sounds;
                 self.recompose(r, keep);
                 self.status = format!("\u{201c}{}\u{201d}: {}, seed {}", self.doc.project.title, r.key_label(), r.seed);
             }
@@ -691,7 +725,7 @@ impl App {
         let path = match (&self.path, as_new) {
             (Some(p), false) => p.clone(),
             _ => {
-                let name = format!("{}.{EXTENSION}", self.doc.project.title);
+                let name = format!("{}.{EXTENSION}", self.version_name());
                 match rfd::FileDialog::new().add_filter("Kibble-481 project", &[EXTENSION]).set_file_name(name).save_file() {
                     Some(p) => p.with_extension(EXTENSION),
                     None => return,
@@ -710,13 +744,18 @@ impl App {
         }
     }
 
+    /// The name a save or export suggests: the title, the seed and the time in UTC.
+    fn version_name(&self) -> String {
+        dd_gallery::export::version_name(&self.doc.project, std::time::SystemTime::now())
+    }
+
     pub(crate) fn dirty(&self) -> bool {
         self.doc != self.saved
     }
 
     pub(crate) fn save_midi(&mut self) {
         let Some(path) =
-            rfd::FileDialog::new().add_filter("MIDI", &["mid"]).set_file_name(format!("{}.mid", self.doc.project.title)).save_file()
+            rfd::FileDialog::new().add_filter("MIDI", &["mid"]).set_file_name(format!("{}.mid", self.version_name())).save_file()
         else {
             return;
         };
@@ -728,7 +767,7 @@ impl App {
 
     pub(crate) fn export_wav(&mut self) {
         let Some(path) =
-            rfd::FileDialog::new().add_filter("WAV", &["wav"]).set_file_name(format!("{}.wav", self.doc.project.title)).save_file()
+            rfd::FileDialog::new().add_filter("WAV", &["wav"]).set_file_name(format!("{}.wav", self.version_name())).save_file()
         else {
             return;
         };
@@ -741,14 +780,14 @@ impl App {
 
     pub(crate) fn export_stems(&mut self) {
         let Some(dir) = rfd::FileDialog::new().set_title("Choose a folder for the stems").pick_folder() else { return };
-        let (p, fonts) = (self.doc.project.clone(), self.fonts.clone());
+        let (p, fonts, name) = (self.doc.project.clone(), self.fonts.clone(), self.version_name());
         self.start_job("Rendering stems", move |progress, cancel| {
             let mut n = 0;
             for (i, t) in p.tracks.iter().enumerate() {
                 if t.notes.is_empty() {
                     continue;
                 }
-                let path = dir.join(format!("{} - {}.wav", p.title, t.name.replace(['/', '\\', ':'], "_")));
+                let path = dir.join(format!("{name} - {}.wav", dd_gallery::export::safe_name(&t.name)));
                 dd_seq::render::render_wav(&p, &fonts, Some(i), &path, progress, cancel)?;
                 n += 1;
             }
@@ -758,9 +797,9 @@ impl App {
 
     pub(crate) fn export_resolve(&mut self) {
         let Some(dir) = rfd::FileDialog::new().set_title("Choose a folder for the Resolve package").pick_folder() else { return };
-        let (doc, fonts, stems) = (self.doc.clone(), self.fonts.clone(), self.settings.stems_with_gallery);
+        let (doc, fonts, stems, name) = (self.doc.clone(), self.fonts.clone(), self.settings.stems_with_gallery, self.version_name());
         self.start_job("Exporting for Resolve", move |progress, cancel| {
-            let out = dd_gallery::export::export_for_resolve(&doc, &fonts, &dir, stems, progress, cancel)?;
+            let out = dd_gallery::export::export_for_resolve(&doc, &fonts, &dir, &name, stems, progress, cancel)?;
             Ok(match out.timeline {
                 Some(t) => format!("Exported {} with the soundtrack — in Resolve: File › Import › Timeline", t.display()),
                 None => format!("Exported the soundtrack and markers to {} (choose a photo folder for a timeline)", dir.display()),
@@ -860,8 +899,12 @@ impl App {
                 .on_hover_text("Neon-noir synthesiser and sequencer");
             ui.add_space(8.0);
             ui.menu_button("File", |ui| {
-                if ui.button("New composed piece  🎲").clicked() {
-                    self.new_piece();
+                if ui.button("New composed piece  🎲").on_hover_text("New notes and new sections").clicked() {
+                    self.new_piece(true);
+                    ui.close();
+                }
+                if ui.button("New notes, same sections").clicked() {
+                    self.new_piece(false);
                     ui.close();
                 }
                 if ui.button("New from Rain on Neon").on_hover_text("The hand-written starter scene").clicked() {
@@ -904,10 +947,19 @@ impl App {
             });
             if ui
                 .button(egui::RichText::new("🎲 New piece").color(t.accent))
-                .on_hover_text("Compose a new piece: a new seed, key and mode, at this tempo and length. Undo brings the last one back.")
+                .on_hover_text(
+                    "Compose a new piece: new notes (a new seed, key and mode) and a new arrangement of sections, at this tempo and length. Undo brings the last one back.",
+                )
                 .clicked()
             {
-                self.new_piece();
+                self.new_piece(true);
+            }
+            if ui
+                .button("New notes")
+                .on_hover_text("New notes (a new seed, key and mode) to the sections as they are. Undo brings the last ones back.")
+                .clicked()
+            {
+                self.new_piece(false);
             }
             ui.menu_button("Export", |ui| {
                 if ui.button("MIDI file…").on_hover_text("Standard MIDI, a track per track, for any DAW or notation app").clicked() {
@@ -1013,7 +1065,7 @@ fn entropy() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64)
 }
 
-/// Whether two projects play the same notes at the same times.
+/// Whether two projects play the same notes at the same times, at the same bar levels.
 fn same_music(a: &Project, b: &Project) -> bool {
     a.bpm == b.bpm
         && a.meter == b.meter
@@ -1022,7 +1074,7 @@ fn same_music(a: &Project, b: &Project) -> bool {
         && a.tracks
             .iter()
             .zip(&b.tracks)
-            .all(|(x, y)| x.notes == y.notes && x.ctrls == y.ctrls && x.source.is_drums() == y.source.is_drums())
+            .all(|(x, y)| x.notes == y.notes && x.ctrls == y.ctrls && x.levels == y.levels && x.source.is_drums() == y.source.is_drums())
 }
 
 impl eframe::App for App {

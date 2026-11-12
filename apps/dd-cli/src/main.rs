@@ -12,7 +12,7 @@ use dd_seq::fonts::{FontBank, soundfont_dir};
 const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 
   kibble-481-cli demo <out.kibble>                 write the hand-written scene, Rain on Neon
-  kibble-481-cli compose <out.kibble> [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
+  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
                                                compose a new piece (a random seed if none given)
   kibble-481-cli render <in.kibble|.mid> <out.wav> [--stem <track>]
                                                render the mix (24-bit, 48 kHz), or one track
@@ -64,13 +64,28 @@ fn run(args: Vec<String>) -> Result<(), String> {
             if let Some(n) = flag(&args, "--seed") {
                 r.seed = n.parse().map_err(|_| "--seed takes a number")?;
             }
+            if let Some(n) = flag(&args, "--style") {
+                r.style = *dd_seq::compose::Style::ALL
+                    .iter()
+                    .find(|s| s.label().eq_ignore_ascii_case(&n))
+                    .ok_or("--style takes nocturne, pursuit, blackout or momento")?;
+            }
             if let Some(n) = flag(&args, "--key") {
                 r.root = n.parse::<u8>().map_err(|_| "--key takes 0 (C) to 11 (B)")? % 12;
             }
-            let bpm = flag(&args, "--bpm").map_or(Ok(66.0), |n| n.parse::<f64>()).map_err(|_| "--bpm takes a number")?;
+            let bpm = flag(&args, "--bpm").map_or(Ok(r.style.tempo()), |n| n.parse::<f64>()).map_err(|_| "--bpm takes a number")?;
             let bars = flag(&args, "--bars").map_or(Ok(24), |n| n.parse::<u32>()).map_err(|_| "--bars takes a number")?;
             let p = dd_seq::compose::compose(&r, bpm, (4, 4), bars);
-            println!("\"{}\": seed {}, {}, {} bars at {} bpm, {} tracks", p.title, r.seed, r.key_label(), p.bars(), p.bpm, p.tracks.len());
+            println!(
+                "\"{}\": {}, seed {}, {}, {} bars at {} bpm, {} tracks",
+                p.title,
+                r.style.label(),
+                r.seed,
+                r.key_label(),
+                p.bars(),
+                p.bpm,
+                p.tracks.len()
+            );
             Document::new(p).save(&arg(1)?)?;
         }
         "render" => {
@@ -138,7 +153,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 plan.total,
                 plan.bars()
             );
-            let out = export_for_resolve(&doc, &f, &arg(2)?, args.iter().any(|a| a == "--stems"), &progress, &cancel)?;
+            let name = dd_gallery::export::version_name(&doc.project, std::time::SystemTime::now());
+            let out = export_for_resolve(&doc, &f, &arg(2)?, &name, args.iter().any(|a| a == "--stems"), &progress, &cancel)?;
             println!("{}", out.wav.display());
             if let Some(t) = &out.timeline {
                 println!("{}", t.display());

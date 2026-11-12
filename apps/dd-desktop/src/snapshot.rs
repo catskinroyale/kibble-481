@@ -5,9 +5,12 @@
 //! `effects`, `score`, `gallery`, `about`, `sax` (select the sax track), `bells`
 //! (select the bells track), `layer2` (the synth's second layer), `long` (lengthen the
 //! piece to 48 bars), `fast` (124 bpm), `edited` (edit a note first),
-//! `bass`, `city`, `drone` (select that track), `added` (add a Neon section).
+//! `bass`, `city`, `drone` (select that track), `added` (add a Neon section),
+//! `pursuit`, `blackout`, `momento` (write the piece in that style), `volume` (the volume lane,
+//! with some bars set).
 //! `KIBBLE_SCREENSHOT_INPUT` plays input first, `;`-separated, six frames apart:
-//! `c:x,y` clicks there, `w:x,y,dy` scrolls there (points).
+//! `c:x,y` clicks there, `w:x,y,dy` scrolls there (points); `p:x,y` presses there,
+//! `m:x,y` moves there and `r:x,y` lets go there, for drags.
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,13 +57,13 @@ impl Snapshot {
         let pos = egui::pos2(nums[0], nums[1]);
         raw.events.push(egui::Event::PointerMoved(pos));
         match (step.as_bytes()[0], f % 6) {
-            (b'c', 1) => raw.events.push(egui::Event::PointerButton {
+            (b'c' | b'p', 1) => raw.events.push(egui::Event::PointerButton {
                 pos,
                 button: egui::PointerButton::Primary,
                 pressed: true,
                 modifiers: Default::default(),
             }),
-            (b'c', 2) => raw.events.push(egui::Event::PointerButton {
+            (b'c', 2) | (b'r', 1) => raw.events.push(egui::Event::PointerButton {
                 pos,
                 button: egui::PointerButton::Primary,
                 pressed: false,

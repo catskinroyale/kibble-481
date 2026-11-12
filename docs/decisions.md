@@ -143,6 +143,39 @@ exactly, `$DDREAM_SOUNDFONTS` is still read, and the settings stored under DDrea
 copied across the first time the app runs. The crates keep their short `dd-` names
 (internal, and renaming them would churn every `use`).
 
+## D15 — No adding tracks, for now (2026-11-11)
+
+The track list's **+ Add** menu is hidden: a piece comes with its tracks (the composer's
+roles, the city and the drums), and the sounds are changed from each track's dropdown. The
+menu's code stays behind `ADD_TRACKS` in `panels.rs`, to bring back when it is wanted.
+Duplicate (the track's right-click menu) and File › Add tracks from a MIDI file still add
+tracks.
+
+## D16 — Volume bar by bar (2026-11-11)
+
+Each track has a list of bar levels (`Track::levels`: a bar and a value, 100 = the fader),
+kept apart from its notes and controllers so writing a piece again doesn't touch them and
+setting them doesn't count as editing the notes. Between two set bars the volume ramps; it
+holds before the first and after the last, so a new section's bars follow their
+neighbours without being set. The engine scales each strip by the level at the position
+(the timeline carries them), so live, offline and stems agree. Rearranging the sections
+moves each section's levels with it (`Project::rearrange`); a shortened section keeps its
+last level at its new end. The MIDI file carries them as CC7, the fader times the level, a
+step a beat through ramps. Rejected: writing CC7 or CC11 events into the track's
+controllers (the composer rewrites those, and instruments treat them differently).
+
+## D17 — Composer styles (2026-11-11)
+
+The composer has styles that play the same four parts their own way, so arrangements,
+sections and the Score tab work alike for all of them: Nocturne (as before, note for note
+for every recipe), Pursuit (driven), Blackout (dark, drone-led) and Momento (romantic,
+after the feel of Ambient MIDI Generator's swaying neon cue, not any one piece). New
+styles use only the bundled synth patches, kits and SoundFonts, to keep the download from
+growing. Choosing a style sets its tempo; New piece keeps the style. Momento adds a Keys
+track (electric piano), only to its own pieces, so the other styles' tracks and colours
+are unchanged. Its name was the user's choice: an ordinary Italian and Spanish word,
+noted here because it is one letter from a film title (D3).
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

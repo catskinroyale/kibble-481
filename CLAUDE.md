@@ -8,7 +8,7 @@ decision log `docs/decisions.md` (record product and scope decisions there).
 | Path | What |
 |---|---|
 | `crates/dd-dsp` | `poly.rs` (16-voice two-layer synth: polyBLEP, ZDF SVF, envelopes at a 16-sample control rate), `patch.rs` (Patch + factory), `sampler.rs` (city kit player), `kit.rs`/`reverb.rs` (copied from midigen), `effects.rs` (echo, ensemble, soft clip), `fx.rs` (effect types copied from midigen). Trait `Instrument`. |
-| `crates/dd-seq` | `project.rs` (Project/Track/Note/Ctrl/Source/Strip, PPQ 960), `timeline.rs` (events + chase), `engine.rs` (transport, mixer, metronome; `Cmd`; `Shared` atomics), `fonts.rs` (rustysynth instruments, `soundfont_dir`), `record.rs` (Take, quantise), `midi_file.rs`, `render.rs` (48 kHz/24-bit WAV), `demo.rs` (Rain on Neon) |
+| `crates/dd-seq` | `project.rs` (Project/Track/Note/Ctrl/Source/Strip, PPQ 960), `timeline.rs` (events + chase), `engine.rs` (transport, mixer, metronome; `Cmd`; `Shared` atomics), `fonts.rs` (rustysynth instruments, `soundfont_dir`), `record.rs` (Take, quantise), `midi_file.rs`, `render.rs` (48 kHz/24-bit WAV), `demo.rs` (Rain on Neon), `compose.rs` (the composer; styles Nocturne/Pursuit/Blackout/Momento, D17). Tracks' bar volumes are `Track::levels` (D16) |
 | `crates/dd-gallery` | `slideshow.rs`/`resolve.rs` (from midigen), `doc.rs` (`.kibble` = project + gallery), `export.rs` (Resolve package) |
 | `apps/dd-desktop` | `app.rs` (state, engine sync, transport, files, undo), `roll.rs`, `panels.rs`, `sound.rs`, `mixer_ui.rs`, `live.rs` (MIDI in via midir, QWERTY), `audio.rs` (cpal) |
 | `apps/dd-cli` | `kibble-481-cli` |

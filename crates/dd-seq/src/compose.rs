@@ -7,6 +7,13 @@
 //! lead, recede) are Neon, Swell, Night shift and Fade; by default they scale to the
 //! length, and a piece can also be written to any arrangement of them (`compose_plan`).
 //!
+//! There are four styles, each writing the same four kinds of section its own way:
+//! **Nocturne**, the slow, rain-soaked ballad; **Pursuit**, driven by a sequenced bass
+//! and an arpeggio, with stabbing brass and a backbeat; **Blackout**, dark and low, led
+//! by drones, sub booms and distant metal; and **Momento**, romantic and swaying, a
+//! sax-like theme over an electric piano and a soft swung groove. All use the same
+//! built-in sounds.
+//!
 //! Each musical layer draws from its own random stream (`rng.rs`, from Ambient MIDI
 //! Generator), so changing one setting doesn't reshuffle the rest.
 
@@ -49,6 +56,64 @@ impl Mode {
     }
 }
 
+/// How the composer writes: what each section plays, how fast the chords move and
+/// which sounds it reaches for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Style {
+    /// Slow and rain-soaked: brass swells, bells falling like water, a lone lead.
+    #[default]
+    Nocturne,
+    /// Driven: a sequenced bass and an arpeggio running under stabbing brass and a backbeat.
+    Pursuit,
+    /// Dark and low: drones, sub booms and distant metal, a horn far off.
+    Blackout,
+    /// Romantic and swaying: a sliding, leaping theme over an electric piano and a soft
+    /// swung groove, the pad blooming as it opens.
+    Momento,
+}
+
+impl Style {
+    pub const ALL: [Style; 4] = [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Style::Nocturne => "Nocturne",
+            Style::Pursuit => "Pursuit",
+            Style::Blackout => "Blackout",
+            Style::Momento => "Momento",
+        }
+    }
+
+    pub fn help(self) -> &'static str {
+        match self {
+            Style::Nocturne => "Slow and rain-soaked: brass swells, falling bells and a lone lead",
+            Style::Pursuit => "Driven: a sequenced bass and arpeggio under stabbing brass and a backbeat",
+            Style::Blackout => "Dark and low: drones, sub booms and distant metal, a horn far off",
+            Style::Momento => "Romantic and swaying: a sliding theme over electric piano and a soft swung groove",
+        }
+    }
+
+    /// The tempo it suits, which choosing it sets.
+    pub fn tempo(self) -> f64 {
+        match self {
+            Style::Nocturne => 66.0,
+            Style::Pursuit => 104.0,
+            Style::Blackout => 56.0,
+            Style::Momento => 72.0,
+        }
+    }
+
+    /// About how long a chord lasts, in seconds, and the most bars it may take.
+    fn chord_secs(self) -> (f64, u32) {
+        match self {
+            Style::Nocturne => (6.5, 4),
+            Style::Pursuit => (4.5, 4),
+            Style::Blackout => (10.0, 6),
+            Style::Momento => (5.5, 4),
+        }
+    }
+}
+
 pub const KEY_NAMES: [&str; 12] = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
 
 /// Everything that decides a composed piece apart from its tempo, metre and length,
@@ -62,11 +127,12 @@ pub struct Recipe {
     pub mode: Mode,
     /// How busy the bells, plucks and drums are: 0 = sparse, 1 = busy.
     pub density: f32,
+    pub style: Style,
 }
 
 impl Default for Recipe {
     fn default() -> Self {
-        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5 }
+        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Nocturne }
     }
 }
 
@@ -79,6 +145,7 @@ impl Recipe {
             root: r.range(0, 11) as u8,
             mode: *r.pick(&[Mode::Aeolian, Mode::Aeolian, Mode::Dorian, Mode::Phrygian, Mode::HarmonicMinor]),
             density: r.range_f(0.3, 0.75) as f32,
+            style: Style::Nocturne,
         }
     }
 
@@ -182,11 +249,25 @@ const PROGRESSIONS: [[usize; 4]; 10] = [
     [0, 6, 3, 5],
 ];
 const PHRYGIAN: [[usize; 4]; 2] = [[0, 1, 0, 6], [0, 1, 5, 0]];
+/// Minor progressions that push on: i–VI–VII and its relatives.
+const DRIVEN: [[usize; 4]; 6] = [[0, 5, 6, 0], [0, 6, 5, 6], [0, 3, 6, 5], [0, 5, 3, 6], [0, 0, 6, 5], [0, 2, 5, 6]];
+/// Progressions that barely move: the tonic, a step away and back, a sixth below.
+const DARK: [[usize; 4]; 5] = [[0, 1, 0, 5], [0, 5, 0, 1], [0, 0, 5, 0], [0, 3, 0, 1], [0, 5, 1, 0]];
+
+/// Progressions that open towards the relative major: VI, III and VII around the tonic.
+const ROMANTIC: [[usize; 4]; 6] = [[0, 5, 2, 6], [5, 6, 0, 0], [0, 3, 5, 6], [5, 2, 3, 0], [0, 5, 3, 4], [2, 5, 0, 6]];
 
 fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
     let mut rng = Rng::stream(r.seed, "harmony");
     let steps = r.mode.steps();
-    let prog = if r.mode == Mode::Phrygian && rng.chance(0.6) { *rng.pick(&PHRYGIAN) } else { *rng.pick(&PROGRESSIONS) };
+    let prog = match r.style {
+        Style::Nocturne if r.mode == Mode::Phrygian && rng.chance(0.6) => *rng.pick(&PHRYGIAN),
+        Style::Nocturne => *rng.pick(&PROGRESSIONS),
+        Style::Pursuit => *rng.pick(&DRIVEN),
+        Style::Blackout => *rng.pick(&DARK),
+        Style::Momento => *rng.pick(&ROMANTIC),
+    };
+    let centre = if r.style == Style::Blackout { 50 } else { 60 };
     let pc = |deg: usize| (r.root + steps[deg % 7]) % 12;
     let mut out: Vec<Chord> = Vec::new();
     let mut t = 0;
@@ -196,17 +277,38 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         let last = t + chord_ticks >= end;
         let deg = if last { 0 } else { prog[i % 4] };
         let (a, b, c) = (pc(deg), pc(deg + 2), pc(deg + 4));
-        // colour: add9, sus2 or sus4 (a cycle's last chord most often hangs on a sus4)
-        let pcs = match (last, i % 4 == 3, rng.weighted(&[3.0, 1.5, 1.0, 1.0])) {
-            (true, _, _) => vec![a, pc(deg + 1), c, b],
-            (_, true, _) if rng.chance(0.6) => vec![a, pc(deg + 3), c],
-            (_, _, 0) => vec![a, b, c, pc(deg + 1)],
-            (_, _, 1) => vec![a, pc(deg + 1), c],
-            (_, _, 2) => vec![a, pc(deg + 3), c],
-            _ => vec![a, b, c, pc(deg + 6)],
+        let pcs = match r.style {
+            // colour: add9, sus2 or sus4 (a cycle's last chord most often hangs on a sus4)
+            Style::Nocturne => match (last, i % 4 == 3, rng.weighted(&[3.0, 1.5, 1.0, 1.0])) {
+                (true, _, _) => vec![a, pc(deg + 1), c, b],
+                (_, true, _) if rng.chance(0.6) => vec![a, pc(deg + 3), c],
+                (_, _, 0) => vec![a, b, c, pc(deg + 1)],
+                (_, _, 1) => vec![a, pc(deg + 1), c],
+                (_, _, 2) => vec![a, pc(deg + 3), c],
+                _ => vec![a, b, c, pc(deg + 6)],
+            },
+            // plain triads, hanging on a sus4 before the cycle turns
+            Style::Pursuit => match (last, i % 4 == 3 && rng.chance(0.5)) {
+                (true, _) => vec![a, pc(deg + 1), c],
+                (_, true) => vec![a, pc(deg + 3), c],
+                _ => vec![a, b, c],
+            },
+            // bare: triads, open sus2s, and a last chord that never settles
+            Style::Blackout => match (last, rng.chance(0.4)) {
+                (true, _) => vec![a, pc(deg + 1), c],
+                (_, true) => vec![a, pc(deg + 1), c],
+                _ => vec![a, b, c],
+            },
+            // lush: sevenths and ninths, ending on an add9 left hanging
+            Style::Momento => match (last, rng.weighted(&[3.0, 2.0, 1.0])) {
+                (true, _) => vec![a, pc(deg + 1), b, c],
+                (_, 0) => vec![a, b, c, pc(deg + 6)],
+                (_, 1) => vec![a, b, c, pc(deg + 1)],
+                _ => vec![a, b, pc(deg + 6), pc(deg + 1)],
+            },
         };
         let prev = out.last().map(|c| c.voicing.clone());
-        let voicing = voice(&pcs, prev.as_deref(), 60);
+        let voicing = voice(&pcs, prev.as_deref(), centre);
         let len = chord_ticks.min(end - t);
         out.push(Chord { start: t, len, root_pc: a, voicing, pcs });
         t += chord_ticks;
@@ -219,17 +321,18 @@ fn chord_at(chords: &[Chord], tick: u32) -> &Chord {
     chords.iter().rev().find(|c| c.start <= tick).unwrap_or(&chords[0])
 }
 
-/// About six seconds a chord, in whole bars.
-fn chord_bars(bar_secs: f64, bars: u32) -> u32 {
-    ((6.5 / bar_secs).round() as u32).clamp(1, 4).min(bars.max(1))
+/// About six seconds a chord (four when driven, ten when dark), in whole bars.
+fn chord_bars(style: Style, bar_secs: f64, bars: u32) -> u32 {
+    let (secs, most) = style.chord_secs();
+    ((secs / bar_secs).round() as u32).clamp(1, most).min(bars.max(1))
 }
 
 /// The usual arrangement for a length: Neon, Swell, Night shift and Fade starting at
 /// a sixth, a half and five sixths, on chord changes (short pieces drop the later ones).
-pub fn default_plan(bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
-    let cb = chord_bars(p.bar_secs(), bars);
+    let cb = chord_bars(style, p.bar_secs(), bars);
     let snap = |frac: f64| ((bars as f64 * frac / cb as f64).round() as u32 * cb).min(bars);
     let mut bounds = vec![0, snap(1.0 / 6.0), snap(0.5), snap(5.0 / 6.0)];
     bounds.dedup();
@@ -237,10 +340,59 @@ pub fn default_plan(bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> 
     bounds.iter().enumerate().map(|(i, b)| (Part::ALL[i.min(3)], bounds.get(i + 1).unwrap_or(&bars) - b)).collect()
 }
 
+/// A fresh arrangement for a recipe at this length: three to seven sections in whole
+/// chords, opening quietly (a Neon, or now and then a Swell), reaching at least one
+/// night shift, never the same kind twice running, and ending on a fade. The same
+/// recipe always draws the same one.
+pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+    let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
+    let bars = p.length_bars;
+    let cb = chord_bars(r.style, p.bar_secs(), bars).max(1);
+    let units = (bars / cb).max(1);
+    let mut rng = Rng::stream(r.seed, "form");
+    if units < 3 {
+        return default_plan(r.style, bpm, meter, bars);
+    }
+    let most = units.min(7) as i32;
+    let n = rng.range(3.min(most), most.min(3 + units as i32 / 4)).max(3) as usize;
+    // the kinds: a quiet start, a fade to end, a night shift somewhere between
+    let mut parts = vec![if rng.chance(0.8) { Part::Neon } else { Part::Swell }];
+    while parts.len() < n - 1 {
+        let last = *parts.last().unwrap_or(&Part::Neon);
+        let options: Vec<Part> = [Part::Neon, Part::Swell, Part::NightShift].into_iter().filter(|p| *p != last).collect();
+        // building more often than falling back
+        let w: Vec<f64> = options.iter().map(|p| if *p == Part::Neon { 1.0 } else { 2.0 }).collect();
+        parts.push(options[rng.weighted(&w)]);
+    }
+    if !parts.contains(&Part::NightShift) {
+        let i = parts.len() - 1;
+        if parts[i] == Part::NightShift || i == 0 {
+            parts.push(Part::NightShift);
+        } else {
+            parts[i] = Part::NightShift;
+        }
+    }
+    parts.push(Part::Fade);
+    // whole chords each, the night shifts longest, any odd bars to the end
+    let mut lens: Vec<u32> = vec![1; parts.len()];
+    let mut left = units.saturating_sub(parts.len() as u32);
+    while left > 0 {
+        let w: Vec<f64> = parts.iter().map(|p| if *p == Part::NightShift { 3.0 } else { 1.0 }).collect();
+        lens[rng.weighted(&w)] += 1;
+        left -= 1;
+    }
+    let mut plan: Vec<(Part, u32)> = parts.into_iter().zip(lens).map(|(p, l)| (p, l * cb)).collect();
+    let total: u32 = plan.iter().map(|x| x.1).sum();
+    if let Some(last) = plan.last_mut() {
+        last.1 += bars.saturating_sub(total);
+    }
+    plan
+}
+
 /// Write a piece for this recipe at the project's tempo, metre and length, in the
 /// usual arrangement. The tracks, sounds, mix, sections and effects are all new.
 pub fn compose(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Project {
-    compose_plan(r, bpm, meter, &default_plan(bpm, meter, bars))
+    compose_plan(r, bpm, meter, &default_plan(r.style, bpm, meter, bars))
 }
 
 /// Write a piece for this recipe to an arrangement of sections, each a part and a
@@ -254,7 +406,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let beats_per_bar = meter.0.max(1);
     let end = bars * bar;
     let bar_secs = p.bar_secs();
-    let chord_bars = chord_bars(bar_secs, bars);
+    let style = r.style;
+    let chord_bars = chord_bars(style, bar_secs, bars);
     let chord_ticks = chord_bars * bar;
     let chords = chords(r, &p, chord_ticks, end);
     let density = r.density.clamp(0.0, 1.0) as f64;
@@ -276,8 +429,24 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let mut names_rng = Rng::stream(r.seed, "names");
     // (a draw that once chose the section names, kept so titles stay the same)
     let _ = names_rng.next_u64();
-    let adjectives = ["Neon", "Midnight", "Sodium", "Wet", "Electric", "Static", "Chrome", "Blue", "Distant", "Last"];
-    let nouns = ["Rain", "Overpass", "Avenue", "Skyline", "Arcade", "Monorail", "Harbour", "Signal", "Rooftops", "Memory"];
+    let (adjectives, nouns) = match style {
+        Style::Nocturne => (
+            ["Neon", "Midnight", "Sodium", "Wet", "Electric", "Static", "Chrome", "Blue", "Distant", "Last"],
+            ["Rain", "Overpass", "Avenue", "Skyline", "Arcade", "Monorail", "Harbour", "Signal", "Rooftops", "Memory"],
+        ),
+        Style::Pursuit => (
+            ["Red", "Burning", "Chrome", "Express", "Electric", "Fast", "Wet", "Low", "Neon", "Last"],
+            ["Interchange", "Freeway", "Tunnel", "Pursuit", "Underpass", "Expressway", "Getaway", "Overpass", "Run", "Lane"],
+        ),
+        Style::Blackout => (
+            ["Black", "Deep", "Drowned", "Hollow", "Silent", "Lower", "Cold", "Buried", "Dead", "Dark"],
+            ["Cistern", "Sublevel", "Undertow", "Reservoir", "Foundry", "Shaft", "Vault", "Water", "Tide", "Station"],
+        ),
+        Style::Momento => (
+            ["Slow", "Golden", "Last", "Warm", "Late", "Silver", "Quiet", "Velvet", "Borrowed", "Second"],
+            ["Dance", "Embrace", "Window", "Promise", "Rain", "Letter", "Hours", "Light", "Glance", "Waltz"],
+        ),
+    };
     p.title = format!("{} {}", names_rng.pick(&adjectives), names_rng.pick(&nouns));
 
     // ---------------------------------------------------------------- sounds
@@ -290,7 +459,11 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             // a stab can't hold a chord
             .filter(|a| a.bundled && a.label != "Dark Stab" && not.is_none_or(|n| !same_sound(n, &a.source)))
             .collect();
-        let w: Vec<f64> = (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect();
+        let w: Vec<f64> = match style {
+            Style::Nocturne => (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect(),
+            // the sounds the style is written for, most often
+            _ => alts.iter().map(|a| if prefers(style, role, a.label) { 3.0 } else { 0.4 }).collect(),
+        };
         alts[snd.weighted(&w)].clone()
     };
     let brass = pick(Role::Brass, None);
@@ -302,7 +475,13 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let pluck = pick(Role::Pluck, None);
     let drone = pick(Role::Drone, None);
     let mut fx = noir_fx();
-    fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&[6.0, 2.0, 1.5])];
+    let halls = match style {
+        Style::Nocturne => [6.0, 2.0, 1.5],
+        Style::Pursuit => [6.0, 2.0, 0.5],
+        Style::Blackout => [2.0, 3.0, 4.0],
+        Style::Momento => [5.0, 4.0, 0.5],
+    };
+    fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
     let beat_secs = p.tick_secs(beat);
     fx.echo.time = *EchoTime::ALL
@@ -319,19 +498,47 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         i
     };
     let s = Strip::default();
+    // the mix leans on what drives each style: the bass and drums, or the drones
+    let (lift_bass, lift_pluck, lift_drone, lift_drums) = match style {
+        Style::Nocturne => (0.0, 0.0, 0.0, 0.0),
+        Style::Pursuit => (-1.0, -3.0, -3.0, -1.5),
+        Style::Blackout => (-3.0, 0.0, 4.0, 0.0),
+        Style::Momento => (-1.0, -4.0, -5.0, -3.0),
+    };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
     let t_lead = add(Role::Lead, lead, Strip { reverb: 0.55, echo: 0.35, pan: 0.1, gain_db: 0.0, ..s });
-    let t_bass = add(Role::Bass, bass, Strip { reverb: 0.08, gain_db: 2.0, ..s });
+    let t_bass = add(Role::Bass, bass, Strip { reverb: 0.08, gain_db: 2.0 + lift_bass, ..s });
     let t_bells = add(Role::Bells, bells, Strip { reverb: 0.65, echo: 0.4, gain_db: -4.0, pan: -0.2, ..s });
-    let t_pluck = add(Role::Pluck, pluck, Strip { reverb: 0.5, echo: 0.3, pan: 0.35, gain_db: 0.0, ..s });
+    let t_pluck = add(Role::Pluck, pluck, Strip { reverb: 0.5, echo: 0.3, pan: 0.35, gain_db: lift_pluck, ..s });
     let t_answer = add(Role::Answer, answer, Strip { reverb: 0.6, echo: 0.3, pan: -0.15, gain_db: -1.0, ..s });
-    let t_drone = add(Role::Drone, drone, Strip { reverb: 0.5, gain_db: -7.0, width: 1.4, ..s });
+    let t_drone = add(Role::Drone, drone, Strip { reverb: 0.5, gain_db: -7.0 + lift_drone, width: 1.4, ..s });
     let city_alt = alternatives(Role::City).remove(0);
     let t_city = add(Role::City, city_alt, Strip { reverb: 0.25, gain_db: -6.0, width: 1.4, ..s });
     let drums_alt = alternatives(Role::Drums).remove(0);
-    let t_drums = add(Role::Drums, drums_alt, Strip { reverb: 0.4, echo: 0.15, gain_db: -5.0, ..s });
+    let t_drums = add(
+        Role::Drums,
+        drums_alt,
+        Strip { reverb: 0.4, echo: if style == Style::Pursuit { 0.05 } else { 0.15 }, gain_db: -5.0 + lift_drums, ..s },
+    );
+    let t_keys = (style == Style::Momento).then(|| {
+        // from its own stream, so the other parts' sounds stay as they were
+        let mut kr = Rng::stream(r.seed, "keys");
+        let alts: Vec<Alt> = alternatives(Role::Keys).into_iter().filter(|a| a.bundled).collect();
+        let w: Vec<f64> = alts.iter().map(|a| if prefers(style, Role::Keys, a.label) { 3.0 } else { 0.4 }).collect();
+        let alt = alts[kr.weighted(&w)].clone();
+        add(Role::Keys, alt, Strip { reverb: 0.45, echo: 0.2, pan: -0.25, gain_db: 1.0, ..s })
+    });
     p.tracks = tracks;
+    // the dark is quieter at heart: bring it up to sit with the others
+    if style == Style::Blackout {
+        p.master_db = 1.0;
+    }
+    // the romance is a lush bed under the theme
+    if style == Style::Momento {
+        p.tracks[t_pad].strip.gain_db += 2.0;
+        p.master_db = 0.5;
+    }
     let t = &mut p.tracks;
     let at = |tick: f64| tick.round().max(0.0) as u32;
     let push = |v: &mut Vec<Note>, start: u32, len: u32, key: u8, vel: u8| {
@@ -349,6 +556,39 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             push(&mut t[t_pad].notes, c.start, ring, k, 60);
         }
         let part = part_at(c.start);
+        if style == Style::Pursuit && part == Part::NightShift {
+            // stabs, pushed: on the one, the and of two, and the four, every bar
+            let pushes: Vec<u32> = [0.0, 1.5, 3.0].iter().map(|b| at(b * beat as f64)).filter(|o| *o < bar).collect();
+            for b in (c.start..c.start + c.len).step_by(bar as usize) {
+                for (j, o) in pushes.iter().enumerate() {
+                    for &k in &c.voicing {
+                        push(&mut t[t_brass].notes, b + o, beat / 2, k + 12, if j == 0 { 108 } else { 96 });
+                    }
+                }
+            }
+            continue;
+        }
+        if style == Style::Momento {
+            // the pad blooms an octave wider in the night shift, the horns a soft bed under it
+            if part == Part::NightShift {
+                let top = *c.voicing.last().unwrap_or(&72);
+                push(&mut t[t_pad].notes, c.start, ring, top + 12, 52);
+                for &k in &c.voicing {
+                    push(&mut t[t_brass].notes, c.start, c.len.saturating_sub(breath), k, 70);
+                }
+            }
+            continue;
+        }
+        if style == Style::Blackout {
+            // low swells of the root and fifth, through the swells and night shifts
+            if matches!(part, Part::Swell | Part::NightShift) {
+                let (root, fifth) = (near(c.root_pc, 48), near((c.root_pc + 7) % 12, 55));
+                for k in [root, fifth] {
+                    push(&mut t[t_brass].notes, c.start, c.len.saturating_sub(breath), k, if part == Part::NightShift { 96 } else { 80 });
+                }
+            }
+            continue;
+        }
         if matches!(part, Part::Swell | Part::NightShift) {
             let vel = if part == Part::NightShift { 104 } else { 88 };
             for &k in &c.voicing {
@@ -364,7 +604,20 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // ---------------------------------------------------------------- bass
     let mut brng = Rng::stream(r.seed, "bass");
     let bass_style = brng.range(0, 2);
-    for c in chords.iter().filter(|c| matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
+    match style {
+        Style::Pursuit => driven_bass(&mut t[t_bass].notes, &chords, &secs, &mut brng, beat, bar, beat_secs, end),
+        Style::Blackout => {
+            // a sub under every chord once the swells begin, held
+            let from = secs.iter().find(|s| s.0 != Part::Neon).map_or(end, |s| s.1);
+            for c in chords.iter().filter(|c| c.start + c.len > from) {
+                let a = c.start.max(from);
+                push(&mut t[t_bass].notes, a, c.start + c.len - a, near(c.root_pc, 33), 100);
+            }
+        }
+        Style::Momento => swaying_bass(&mut t[t_bass].notes, &chords, &secs, beat, bar, beats_per_bar, end),
+        Style::Nocturne => {}
+    }
+    for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
         match bass_style {
             0 => push(&mut t[t_bass].notes, c.start, c.len.saturating_sub(beat / 2), k, 96),
@@ -398,6 +651,24 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     };
     let mut tick = bells_from;
     let mut i = 0usize;
+    if style != Style::Nocturne {
+        // chimes rather than rain: a note on a chord's first beat now and then, in the
+        // quiet sections (Pursuit), or rarely and high in the dark (Blackout)
+        let chance = match style {
+            Style::Pursuit => 0.7,
+            Style::Momento => 0.55,
+            _ => 0.35,
+        };
+        for c in &chords {
+            if matches!(part_at(c.start), Part::Neon | Part::Fade) && bel.chance(chance) {
+                let k = c.voicing.last().copied().unwrap_or(72) + if style == Style::Pursuit { 12 } else { 24 };
+                // (off the beat the answer starts on, in the dark and the romance)
+                let (off, vel) = if style == Style::Pursuit { (beat, 60) } else { (beat * 2 + beat / 2, 48) };
+                push(&mut t[t_bells].notes, c.start + off, beat * 2, k.min(108), vel + bel.range(0, 20) as u8);
+            }
+        }
+        tick = end;
+    }
     while tick < end {
         let c = chord_at(&chords, tick);
         if let Some(sidx) = pattern[i % pattern.len()]
@@ -414,9 +685,18 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // ---------------------------------------------------------------- lead melody
     let mut mel = Rng::stream(r.seed, "melody");
     let steps = r.mode.steps();
-    let scale: Vec<u8> = (55..=81u8).filter(|k| steps.contains(&((k + 12 - r.root % 12) % 12))).collect();
+    let (lo, hi, from) = if style == Style::Blackout { (45u8, 70u8, 55u8) } else { (55, 81, 67) };
+    let scale: Vec<u8> = (lo..=hi).filter(|k| steps.contains(&((k + 12 - r.root % 12) % 12))).collect();
     let phrase_bars = if chord_bars >= 2 { chord_bars * 2 } else { 4 }.min(8);
-    let cells: [&[f64]; 7] = [&[3.0, 1.0], &[2.0, 2.0], &[4.0], &[1.0, 3.0], &[1.5, 0.5, 2.0], &[2.0, 1.0, 1.0], &[1.0, 1.0, 2.0]];
+    let cells: Vec<&[f64]> = match style {
+        Style::Nocturne => vec![&[3.0, 1.0], &[2.0, 2.0], &[4.0], &[1.0, 3.0], &[1.5, 0.5, 2.0], &[2.0, 1.0, 1.0], &[1.0, 1.0, 2.0]],
+        // short and pushed, with a held note now and then
+        Style::Pursuit => vec![&[1.0, 1.0], &[0.5, 0.5, 1.0], &[1.5, 0.5], &[2.0], &[1.0, 0.5, 0.5], &[0.5, 1.0, 0.5], &[3.0, 1.0]],
+        // long, low and few
+        Style::Blackout => vec![&[4.0], &[6.0, 2.0], &[3.0, 1.0], &[8.0]],
+        // a long note after a leap, then a fall in shorter ones
+        Style::Momento => vec![&[3.0, 1.0], &[2.0, 1.0, 1.0], &[4.0], &[1.5, 0.5, 2.0], &[2.0, 2.0], &[1.0, 1.0, 2.0]],
+    };
     let phrase_beats = (phrase_bars * beats_per_bar) as f64;
     let rhythm_a: Vec<f64> = {
         let mut v = Vec::new();
@@ -434,14 +714,20 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
         v
     };
-    let mut pos_idx = scale.iter().position(|k| *k >= 67).unwrap_or(scale.len() / 2) as i32;
+    let mut pos_idx = scale.iter().position(|k| *k >= from).unwrap_or(scale.len() / 2) as i32;
     let mut phrase_no = 0;
     for (s2, s3) in of(Part::NightShift) {
         let mut phrase_start = s2;
         while phrase_start < s3 {
             let mut t0 = phrase_start as f64;
-            // phrases A A' B A: B gets a fresh rhythm
-            let rhythm: Vec<f64> = if phrase_no % 4 == 2 { rhythm_a.iter().rev().copied().collect() } else { rhythm_a.clone() };
+            // phrases A A' B A: B gets a fresh rhythm (in the dark, every other phrase is silence)
+            let rhythm: Vec<f64> = if style == Style::Blackout && phrase_no % 2 == 1 {
+                Vec::new()
+            } else if phrase_no % 4 == 2 {
+                rhythm_a.iter().rev().copied().collect()
+            } else {
+                rhythm_a.clone()
+            };
             for (ni, d) in rhythm.iter().enumerate() {
                 let start = at(t0);
                 if start >= s3 {
@@ -449,7 +735,14 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
                 let c = chord_at(&chords, start);
                 let strong = (start - c.start).is_multiple_of(bar);
-                let mv = if mel.chance(0.25) { mel.range(-4, 4) } else { mel.range(-2, 2) };
+                let mv = if style == Style::Momento {
+                    // leap up a fifth or more, then fall by step
+                    if mel.chance(0.3) { mel.range(4, 6) } else { mel.range(-2, 1) }
+                } else if mel.chance(0.25) {
+                    mel.range(-4, 4)
+                } else {
+                    mel.range(-2, 2)
+                };
                 pos_idx = (pos_idx + mv).clamp(2, scale.len() as i32 - 3);
                 let mut k = scale[pos_idx as usize];
                 if strong || *d >= 3.0 || ni + 1 == rhythm.len() {
@@ -462,7 +755,13 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
                 let len = at(d * beat as f64).min(s3 - start);
                 push(&mut t[t_lead].notes, start, len, k, 84 + mel.range(0, 16) as u8);
-                if *d >= 3.0 {
+                if style == Style::Momento && mv >= 4 {
+                    // slide up into the note at the top of a leap
+                    for (dt, v) in [(0, -3000), (beat / 8, -1200), (beat / 4, 0)] {
+                        t[t_lead].ctrls.push(Ctrl { tick: start + dt.min(len), kind: CtrlKind::Bend, value: v });
+                    }
+                }
+                if *d >= if matches!(style, Style::Pursuit | Style::Momento) { 2.0 } else { 3.0 } {
                     // a slow vibrato swell on the long notes
                     for q in 0..=8 {
                         t[t_lead].ctrls.push(Ctrl { tick: start + len * q / 8, kind: CtrlKind::Cc(1), value: (q * 9) as i16 });
@@ -481,7 +780,24 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let penta: Vec<u8> = [0u8, 3, 5, 7, 10].iter().map(|x| (r.root + x) % 12).collect();
     let penta_keys: Vec<u8> = (60..=79u8).filter(|k| penta.contains(&(k % 12))).collect();
     let figure: Vec<usize> = (0..8).map(|_| pl.range(0, penta_keys.len() as i32 - 1) as usize).collect();
-    for (s2, s3) in of(Part::NightShift) {
+    if style == Style::Pursuit {
+        arpeggio(&mut t[t_pluck].notes, &chords, &secs, &mut pl, beat, beat_secs, density, end);
+    }
+    if style == Style::Momento {
+        // a kalimba in dotted quavers, three against the four, through each night shift
+        for (s2, s3) in of(Part::NightShift) {
+            let mut tick = s2;
+            let mut i = 0;
+            while tick < s3 {
+                if pl.chance(0.6 + density * 0.35) {
+                    push(&mut t[t_pluck].notes, tick, beat / 2, penta_keys[figure[i % 8]], 62 + pl.range(0, 14) as u8);
+                }
+                tick += beat * 3 / 4;
+                i += 1;
+            }
+        }
+    }
+    for (s2, s3) in of(Part::NightShift).filter(|_| style == Style::Nocturne) {
         // from halfway, on a beat
         let from = s2 + ((s3 - s2) / 2) / beat * beat;
         let mut tick = from;
@@ -515,12 +831,33 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
     }
 
+    // ---------------------------------------------------------------- electric piano
+    if let Some(tk) = t_keys {
+        // a rolled chord on each bar, and with some seeds the next chord anticipated half
+        // a beat early; through to the end, the last chord held
+        let mut kr = Rng::stream(r.seed, "keys-part");
+        let anticipate = kr.chance(0.5);
+        for (ci, c) in chords.iter().enumerate() {
+            let mut b = c.start;
+            while b < c.start + c.len {
+                let first = b == c.start;
+                let at_ = if anticipate && first && ci > 0 { b - beat / 2 } else { b };
+                let len = if ci == last_chord && b + bar >= c.start + c.len { end - b } else { bar - beat / 4 };
+                for (j, &k) in c.voicing.iter().enumerate() {
+                    let vel = if first { 70 } else { 56 } + kr.range(0, 8) as u8;
+                    push(&mut t[tk].notes, at_ + j as u32 * (beat / 24), len, k, vel);
+                }
+                b += bar;
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- the drone
     // the tonic and its fifth, struck again at each section so it swells with the form
     let tonic = near(r.root, 45);
     for (part, a, z) in &secs {
         push(&mut t[t_drone].notes, *a, z - a, tonic, 80);
-        if *part != Part::Neon {
+        if *part != Part::Neon || style == Style::Blackout {
             push(&mut t[t_drone].notes, *a, z - a, tonic + 7, 64);
         }
     }
@@ -566,9 +903,79 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
     }
 
+    // the depths: drones from the kit, booms, metal and grains (Blackout); a riser into
+    // each night shift (Pursuit)
+    let mut deep = Rng::stream(r.seed, "depths");
+    match style {
+        Style::Blackout => {
+            let pc = r.root % 12;
+            push(&mut t[t_city].notes, 0, end, fx::ANALOG_DRONE + pc, 70);
+            for (i, (part, a, z)) in secs.iter().enumerate() {
+                if *part != Part::Neon {
+                    push(&mut t[t_city].notes, *a, z - a, fx::DRONE + pc, 62);
+                }
+                if i > 0 && *part != secs[i - 1].0 {
+                    push(&mut t[t_city].notes, *a, beat * 2, fx::BOOM + pc, 78);
+                }
+                if *part == Part::NightShift && *a >= bar {
+                    push(&mut t[t_city].notes, a - bar, bar, fx::REVERSE_LONG, 70);
+                }
+                let mut b = *a;
+                while b < *z {
+                    match part {
+                        Part::NightShift | Part::Swell if deep.chance(0.2 + density * 0.2) => push(
+                            &mut t[t_city].notes,
+                            b + beat * deep.range(0, beats_per_bar as i32 - 1) as u32,
+                            bar,
+                            fx::METAL,
+                            60 + deep.range(0, 25) as u8,
+                        ),
+                        Part::Fade | Part::Neon if deep.chance(0.15) => push(&mut t[t_city].notes, b, bar * 2, fx::GRAINS + pc, 55),
+                        _ => {}
+                    }
+                    b += bar;
+                }
+            }
+        }
+        Style::Pursuit => {
+            for (i, (part, a, _)) in secs.iter().enumerate() {
+                if *part == Part::NightShift && (i == 0 || secs[i - 1].0 != Part::NightShift) && *a >= bar {
+                    push(&mut t[t_city].notes, a - bar, bar, fx::RISER, 80);
+                }
+            }
+        }
+        Style::Nocturne | Style::Momento => {}
+    }
+
     // ---------------------------------------------------------------- drums
     let mut dr = Rng::stream(r.seed, "drums");
-    if density > 0.2 {
+    match style {
+        Style::Pursuit => driven_drums(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
+        Style::Blackout => {
+            // a slow, deep pulse from the swells on, taiko at the night shift's phrases
+            for (part, a, z) in &secs {
+                let mut b = *a;
+                while b < *z {
+                    match part {
+                        Part::Swell | Part::Fade if (b - a) / bar % 2 == 0 => push(&mut t[t_drums].notes, b, beat, drum::DEEP_KICK, 90),
+                        Part::NightShift => {
+                            push(&mut t[t_drums].notes, b, beat, drum::DEEP_KICK, 90);
+                            if (b - a) / bar % 2 == 0 {
+                                push(&mut t[t_drums].notes, b, beat, drum::TOM_LOW, 80);
+                            } else if dr.chance(0.5 + density * 0.4) && beats_per_bar >= 3 {
+                                push(&mut t[t_drums].notes, b + beat * (beats_per_bar / 2), beat / 2, drum::GATED_SNARE, 52);
+                            }
+                        }
+                        _ => {}
+                    }
+                    b += bar;
+                }
+            }
+        }
+        Style::Momento => soft_groove(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
+        Style::Nocturne => {}
+    }
+    if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
         // the snare and ticks join it
         let mut b = 0;
@@ -608,6 +1015,299 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     p
 }
 
+/// Whether a sound is one a style is written for.
+fn prefers(style: Style, role: Role, label: &str) -> bool {
+    let liked: &[&str] = match (style, role) {
+        (Style::Pursuit, Role::Brass) => &["Chrome Fanfare", "Neon Brass", "Tidal Brass"],
+        (Style::Pursuit, Role::Pad | Role::Strings) => &["Neon Mist", "Rain Pad", "Orbital Haze", "Silk Strings"],
+        (Style::Pursuit, Role::Lead) => &["Wide Saw Lead", "Glass Lead", "Smoky Lead"],
+        (Style::Pursuit, Role::Answer) => &["Glass Lead", "Lonely Horn"],
+        (Style::Pursuit, Role::Bass) => &["Night Drive Bass", "Rubber Bass", "Sub Pulse Bass"],
+        (Style::Pursuit, Role::Bells) => &["Ring Bells", "Glass Chimes"],
+        (Style::Pursuit, Role::Pluck) => &["Lantern Pluck", "Rain Harp"],
+        (Style::Blackout, Role::Brass) => &["Velvet Horns", "Ember Horns", "Tidal Brass"],
+        (Style::Blackout, Role::Pad | Role::Strings) => &["Cathedral Sweep", "Night Choir", "Neon Mist", "Low Cloud Strings"],
+        (Style::Blackout, Role::Lead) => &["Lonely Horn", "Smoky Lead"],
+        (Style::Blackout, Role::Answer) => &["Lonely Horn", "Shakuhachi"],
+        (Style::Blackout, Role::Bass) => &["Pure Sub", "Undercity Bass"],
+        (Style::Blackout, Role::Bells) => &["Ring Bells", "Night Bells"],
+        (Style::Blackout, Role::Drone) => &["Abyss Drone", "Sodium Drone", "Choir Drone"],
+        (Style::Momento, Role::Brass) => &["Velvet Horns", "Ember Horns", "French Horns"],
+        (Style::Momento, Role::Pad | Role::Strings) => &["Neon Mist", "Rain Pad", "Warm Pad", "Halo Pad", "Silk Strings", "Memory Strings"],
+        (Style::Momento, Role::Lead) => &["Tenor Sax (FreePats)", "Lonely Horn"],
+        (Style::Momento, Role::Answer) => &["Lonely Horn", "Pan Flute", "Oboe", "Tenor Sax (FreePats)"],
+        (Style::Momento, Role::Bass) => &["Fretless", "Sub Pulse Bass", "Pure Sub"],
+        (Style::Momento, Role::Bells) => &["Celesta Glow", "Glass Chimes", "Music Box"],
+        (Style::Momento, Role::Pluck) => &["Kalimba", "Koto", "Lantern Pluck"],
+        (Style::Momento, Role::Drone) => &["Choir Drone", "Glass Drone"],
+        (Style::Momento, Role::Keys) => &["Neon Tine Piano", "Electric Piano", "FM Piano"],
+        _ => &[],
+    };
+    liked.is_empty() || liked.contains(&label)
+}
+
+/// The pulse that drives a Pursuit: the chord's root in quavers (semiquavers when the
+/// beat is slow), with octave and fifth jumps from a pattern the seed picks, from the
+/// first swell to halfway through each fade, and under the last stretch of a Neon.
+#[allow(clippy::too_many_arguments)]
+fn driven_bass(
+    out: &mut Vec<Note>,
+    chords: &[Chord],
+    secs: &[(Part, u32, u32)],
+    rng: &mut Rng,
+    beat: u32,
+    bar: u32,
+    beat_secs: f64,
+    end: u32,
+) {
+    // 0 root, 1 octave up, 2 fifth
+    const PATTERNS: [[u8; 8]; 5] =
+        [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1, 0, 1], [0, 0, 0, 2, 0, 0, 0, 2], [0, 1, 0, 1, 0, 1, 0, 1], [0, 0, 2, 0, 1, 0, 2, 0]];
+    let pattern = *rng.pick(&PATTERNS);
+    let step = if beat_secs > 0.7 { beat / 4 } else { beat / 2 }.max(1);
+    for (part, a, z) in secs {
+        let (from, to) = match part {
+            Part::Swell | Part::NightShift => (*a, *z),
+            Part::Fade => (*a, a + (z - a) / 2 / bar * bar),
+            Part::Neon => (a + (z - a) * 3 / 4 / bar * bar, *z),
+        };
+        let mut tick = from;
+        let mut i = 0usize;
+        while tick < to.min(end) {
+            let c = chord_at(chords, tick);
+            let root = near(c.root_pc, 40);
+            let k = match pattern[i % 8] {
+                1 => root + 12,
+                2 => near((c.root_pc + 7) % 12, 47),
+                _ => root,
+            };
+            let accent = (tick - from).is_multiple_of(beat);
+            let vel = if *part == Part::Neon {
+                70
+            } else if accent {
+                104
+            } else {
+                84
+            };
+            out.push(Note { start: tick, len: (step * 3 / 4).max(1).min(end - tick), key: k, vel });
+            tick += step;
+            i += 1;
+        }
+    }
+}
+
+/// The arpeggio over a Pursuit: the chord's tones an octave up, in semiquavers (quavers
+/// when the beat is quick), rising, rising and falling, or broken, quietly from three
+/// quarters of the way through a Neon, all through the swells and night shifts, and
+/// into the first quarter of a fade.
+#[allow(clippy::too_many_arguments)]
+fn arpeggio(
+    out: &mut Vec<Note>,
+    chords: &[Chord],
+    secs: &[(Part, u32, u32)],
+    rng: &mut Rng,
+    beat: u32,
+    beat_secs: f64,
+    density: f64,
+    end: u32,
+) {
+    let shape = rng.range(0, 2);
+    let step = if beat_secs > 0.5 { beat / 4 } else { beat / 2 }.max(1);
+    for (part, a, z) in secs {
+        let (from, to, vel) = match part {
+            Part::Neon => (a + (z - a) * 3 / 4 / beat * beat, *z, 54),
+            Part::Swell => (*a, *z, 74),
+            Part::NightShift => (*a, *z, 84),
+            Part::Fade => (*a, a + (z - a) / 4 / beat * beat, 60),
+        };
+        let mut tick = from;
+        let mut i = 0usize;
+        while tick < to.min(end) {
+            let c = chord_at(chords, tick);
+            let mut tones: Vec<u8> = c.voicing.iter().map(|k| k + 12).collect();
+            tones.sort_unstable();
+            let n = tones.len().max(1);
+            let idx = match shape {
+                0 => i % n,
+                1 => {
+                    let cyc = 2 * n - 2;
+                    let j = i % cyc.max(1);
+                    if j < n { j } else { cyc - j }
+                }
+                _ => [0, 2, 1, 3, 2, 0, 3, 1][i % 8] % n,
+            };
+            // the density thins the quiet ones off the beat
+            if (tick - from).is_multiple_of(beat) || rng.chance(0.55 + density * 0.45) {
+                let accent = if (tick - from).is_multiple_of(beat) { 10 } else { 0 };
+                out.push(Note { start: tick, len: step.min(end - tick), key: tones[idx].min(108), vel: vel + accent });
+            }
+            tick += step;
+            i += 1;
+        }
+    }
+}
+
+/// A Pursuit's drums: a kick on every beat as the swell builds; in a night shift the
+/// kick, a gated backbeat, quaver hats and a taiko fill to end every four bars, with a
+/// crash on its first beat; a heartbeat into the fade.
+#[allow(clippy::too_many_arguments)]
+fn driven_drums(out: &mut Vec<Note>, secs: &[(Part, u32, u32)], rng: &mut Rng, beat: u32, bar: u32, beats: u32, density: f64, end: u32) {
+    let mut put = |start: u32, len: u32, key: u8, vel: u8| {
+        if start < end {
+            out.push(Note { start, len: len.min(end - start).max(1), key, vel });
+        }
+    };
+    for (i, (part, a, z)) in secs.iter().enumerate() {
+        let mut b = *a;
+        while b < *z {
+            let nth = (b - a) / bar;
+            match part {
+                Part::Swell => {
+                    for k in 0..beats {
+                        put(b + k * beat, beat / 2, drum::DEEP_KICK, if k == 0 { 100 } else { 84 });
+                    }
+                    if b >= a + (z - a) / 2 {
+                        for k in 0..beats {
+                            if rng.chance(0.4 + density * 0.5) {
+                                put(b + k * beat + beat / 2, beat / 4, drum::HAT, 50);
+                            }
+                        }
+                    }
+                }
+                Part::NightShift => {
+                    if nth == 0 && (i == 0 || secs[i - 1].0 != Part::NightShift) {
+                        put(b, beat * 2, drum::CRASH, 76);
+                    }
+                    let fill = nth % 4 == 3 && b + bar <= *z;
+                    for k in 0..beats {
+                        put(b + k * beat, beat / 2, drum::KICK, if k == 0 { 108 } else { 92 });
+                        if beats >= 3 && (k == beats / 2 || (beats == 4 && k == 1) || k == beats - 1) && k % 2 == 1 {
+                            put(b + k * beat, beat / 2, drum::GATED_SNARE, 96);
+                        }
+                        if !(fill && k == beats - 1) {
+                            put(b + k * beat + beat / 2, beat / 4, drum::HAT, 56 + rng.range(0, 14) as u8);
+                            if density > 0.5 && rng.chance(density - 0.4) {
+                                put(b + k * beat + beat / 4, beat / 4, drum::HAT, 36);
+                            }
+                        }
+                    }
+                    if fill {
+                        // a taiko run down across the last beat
+                        let last = b + (beats - 1) * beat;
+                        for (j, key) in [drum::TOM_HIGH, drum::TOM_MID, drum::TOM_MID, drum::TOM_LOW].into_iter().enumerate() {
+                            put(last + j as u32 * beat / 4, beat / 4, key, 90 + j as u8 * 4);
+                        }
+                    }
+                }
+                Part::Fade if b < a + (z - a) / 2 => {
+                    put(b, beat / 2, drum::HEARTBEAT, 96);
+                    put(b + beat / 2, beat / 2, drum::HEARTBEAT, 68);
+                }
+                _ => {}
+            }
+            b += bar;
+        }
+    }
+}
+
+/// Momento's bass: the root held into the and of two, the fifth or octave answering it
+/// swung, and a step up into the next chord at the end of its last bar; from the swell
+/// to halfway through each fade.
+fn swaying_bass(out: &mut Vec<Note>, chords: &[Chord], secs: &[(Part, u32, u32)], beat: u32, bar: u32, beats: u32, end: u32) {
+    let swing = beat / 6;
+    let mut put = |start: u32, len: u32, key: u8, vel: u8| {
+        if start < end && len > 0 {
+            out.push(Note { start, len: len.min(end - start), key, vel });
+        }
+    };
+    for (part, a, z) in secs {
+        let to = match part {
+            Part::Swell | Part::NightShift => *z,
+            Part::Fade => a + (z - a) / 2 / bar * bar,
+            Part::Neon => continue,
+        };
+        let mut b = *a;
+        while b < to {
+            let c = chord_at(chords, b);
+            let root = near(c.root_pc, 43);
+            put(b, beat * 3 / 2, root, 92);
+            let answer = if ((b - c.start) / bar).is_multiple_of(2) { near((c.root_pc + 7) % 12, 50) } else { root + 12 };
+            if beat * 3 / 2 + swing < bar {
+                put(b + beat * 3 / 2 + swing, beat / 2, answer, 70);
+            }
+            // into the next chord, a semitone below its root
+            let next = chords.iter().find(|n| n.start == c.start + c.len);
+            if let Some(n) = next
+                && b + bar == n.start
+                && beats >= 3
+            {
+                put(b + (beats - 1) * beat + beat / 2 + swing, beat / 3, near(n.root_pc, 43) - 1, 64);
+            }
+            b += bar;
+        }
+    }
+}
+
+/// Momento's groove, soft and swung: a muted kick on the one and the and of two, a
+/// half-time snare, a shaker in swung quavers and tabla now and then, from halfway
+/// through a swell and all through a night shift; the shaker alone into a fade.
+#[allow(clippy::too_many_arguments)]
+fn soft_groove(out: &mut Vec<Note>, secs: &[(Part, u32, u32)], rng: &mut Rng, beat: u32, bar: u32, beats: u32, density: f64, end: u32) {
+    let swing = beat / 6;
+    let mut put = |start: u32, len: u32, key: u8, vel: u8| {
+        if start < end {
+            out.push(Note { start, len: len.min(end - start).max(1), key, vel });
+        }
+    };
+    for (part, a, z) in secs {
+        let mut b = *a;
+        while b < *z {
+            let (groove, shaker) = match part {
+                Part::Swell => (b >= a + (z - a) / 2 / bar * bar, b >= a + (z - a) / 2 / bar * bar),
+                Part::NightShift => (true, true),
+                Part::Fade => (false, b < a + (z - a) / 2),
+                Part::Neon => (false, false),
+            };
+            if groove {
+                put(b, beat / 2, drum::DEEP_KICK, 88);
+                if beat * 3 / 2 < bar {
+                    put(b + beat * 3 / 2 + swing, beat / 2, drum::DEEP_KICK, 66);
+                }
+                if beats >= 3 {
+                    put(b + beat * (beats / 2), beat / 2, drum::SNARE, 58);
+                }
+                if *part == Part::NightShift && rng.chance(0.3 + density * 0.3) {
+                    // tabla in dotted quavers across the bar's second half
+                    let mut t = b + bar / 2;
+                    while t < b + bar {
+                        put(t, beat / 4, if (t - b).is_multiple_of(beat) { drum::TABLA_LOW } else { drum::TABLA_HIGH }, 50);
+                        t += beat * 3 / 4;
+                    }
+                }
+            }
+            if shaker {
+                for k in 0..beats {
+                    put(b + k * beat, beat / 4, drum::SHAKER, 40);
+                    if rng.chance(0.5 + density * 0.5) {
+                        put(b + k * beat + beat / 2 + swing, beat / 4, drum::SHAKER, 54);
+                    }
+                }
+            }
+            b += bar;
+        }
+    }
+}
+
+/// Give a freshly composed piece the bar levels of the matching tracks (by name) of the
+/// one it replaces: they're the mix's shape, set by hand, and outlast a new seed.
+pub fn keep_levels(new: &mut Project, old: &Project) {
+    for t in new.tracks.iter_mut() {
+        if let Some(o) = old.tracks.iter().find(|o| o.name == t.name) {
+            t.levels = o.levels.clone();
+        }
+    }
+}
+
 /// Give a freshly composed piece the sounds, mix and colours of the matching tracks
 /// (by name) of the one it replaces.
 pub fn keep_sounds(new: &mut Project, old: &Project) {
@@ -636,6 +1336,7 @@ pub fn resize(p: &mut Project, old_bars: u32, new_bars: u32) {
             }
         }
         t.ctrls.retain(|c| c.tick < new_end);
+        t.levels.retain(|l| l.bar < new_bars);
     }
     p.sections.retain(|s| s.bar < new_bars);
     if let Some((a, b)) = p.loop_bars {
@@ -685,6 +1386,116 @@ mod tests {
                 assert_eq!(fingerprint(&p), p.composed);
             }
         }
+    }
+
+    /// Every style fills any length at any tempo and metre with bundled sounds.
+    #[test]
+    fn every_style_fits_any_tempo_metre_and_length() {
+        let f = fonts();
+        for style in [Style::Pursuit, Style::Blackout, Style::Momento] {
+            for seed in 0..15u64 {
+                let r = Recipe { style, ..Recipe::random(seed) };
+                for (bpm, meter, bars) in
+                    [(56.0, (4, 4), 8), (104.0, (4, 4), 24), (90.0, (3, 4), 40), (128.0, (6, 8), 17), (75.0, (5, 4), 3)]
+                {
+                    let p = compose(&r, bpm, meter, bars);
+                    assert_eq!(p.bars(), bars.max(2), "{style:?} seed {seed} {bpm} {meter:?} {bars}");
+                    for t in &p.tracks {
+                        assert!(t.notes.iter().all(|n| n.end() <= p.end_tick() && n.len > 0 && n.key <= 120), "{}", t.name);
+                        if let Source::SoundFont { font, bank, program, name } = &t.source {
+                            assert!(f.get(font).and_then(|lf| lf.find(*bank, *program)).is_some(), "{name} not in {font}");
+                        }
+                    }
+                    assert_eq!(fingerprint(&p), p.composed);
+                    assert_eq!(compose(&r, bpm, meter, bars), p);
+                }
+            }
+        }
+    }
+
+    /// Each style writes its own way: Pursuit drives (a running bass, an arpeggio, a
+    /// backbeat), Blackout broods (kit drones throughout, no plucks, slow chords).
+    #[test]
+    fn styles_sound_like_themselves() {
+        use Part::*;
+        let plan = [(Neon, 4), (Swell, 4), (NightShift, 8), (Fade, 4)];
+        for seed in 0..10 {
+            let r = Recipe { seed, style: Style::Pursuit, ..Recipe::default() };
+            let p = compose_plan(&r, 104.0, (4, 4), &plan);
+            let bar = p.bar_ticks();
+            let (ns, ne) = (8 * bar, 16 * bar);
+            let in_shift = |name: &str, key: Option<u8>| {
+                p.tracks
+                    .iter()
+                    .find(|t| t.name == name)
+                    .map_or(0, |t| t.notes.iter().filter(|n| n.start >= ns && n.start < ne && key.is_none_or(|k| n.key == k)).count())
+            };
+            assert!(in_shift("Bass", None) >= 8 * 8, "a running bass: {}", in_shift("Bass", None));
+            assert!(in_shift("Pluck", None) >= 8 * 8, "an arpeggio");
+            assert!(in_shift("Drums", Some(drum::GATED_SNARE)) >= 8 * 2, "a backbeat");
+            assert!(in_shift("Drums", Some(drum::KICK)) >= 8 * 4, "four to the bar");
+
+            let r = Recipe { seed, style: Style::Blackout, ..Recipe::default() };
+            let p = compose_plan(&r, 56.0, (4, 4), &plan);
+            assert!(p.tracks.iter().all(|t| t.name != "Pluck"));
+            let city = p.tracks.iter().find(|t| t.name == "City").unwrap();
+            assert!(
+                city.notes
+                    .iter()
+                    .any(|n| (fx::ANALOG_DRONE..fx::ANALOG_DRONE + 12).contains(&n.key) && n.start == 0 && n.end() == p.end_tick())
+            );
+            let pad = p.tracks.iter().find(|t| t.name == "Pad").unwrap();
+            assert!(pad.notes.iter().all(|n| n.key < 64), "low voicings");
+
+            // Momento: an electric piano throughout, a theme that slides into its leaps,
+            // and a kalimba three against four
+            let r = Recipe { seed, style: Style::Momento, ..Recipe::default() };
+            let m = compose_plan(&r, 72.0, (4, 4), &plan);
+            let keys = m.tracks.iter().find(|t| t.name == "Keys").expect("an electric piano");
+            assert!(keys.notes.iter().any(|n| n.start < 4 * bar) && keys.notes.iter().any(|n| n.end() == m.end_tick()));
+            let lead = m.tracks.iter().find(|t| t.name == "Lead").unwrap();
+            assert!(lead.notes.iter().all(|n| n.start >= ns && n.start < ne));
+            let pluck = m.tracks.iter().find(|t| t.name == "Pluck").unwrap();
+            assert!(pluck.notes.iter().all(|n| (n.start - ns) % (m.beat_ticks() * 3 / 4) == 0));
+            let drums = m.tracks.iter().find(|t| t.name == "Drums").unwrap();
+            assert!(drums.notes.iter().any(|n| n.key == drum::SHAKER) && drums.notes.iter().all(|n| n.start >= 6 * bar));
+            let mut starts: Vec<u32> = pad.notes.iter().map(|n| n.start).collect();
+            starts.dedup();
+            assert!(p.tick_secs(starts[1] - starts[0]) >= 8.0, "slow chords");
+        }
+    }
+
+    /// New arrangements: the length exactly, a quiet start, a night shift, a fade to end,
+    /// no kind twice running, and different ones for different seeds.
+    #[test]
+    fn random_arrangements_are_sound() {
+        let mut seen = std::collections::BTreeSet::new();
+        for style in Style::ALL {
+            for seed in 0..60u64 {
+                for (bpm, meter, bars) in
+                    [(66.0, (4, 4), 24), (104.0, (4, 4), 40), (56.0, (3, 4), 16), (72.0, (6, 8), 9), (90.0, (4, 4), 3)]
+                {
+                    let r = Recipe { seed, style, ..Recipe::default() };
+                    let plan = random_plan(&r, bpm, meter, bars);
+                    assert_eq!(plan.iter().map(|x| x.1).sum::<u32>(), bars, "{plan:?}");
+                    assert!(plan.iter().all(|x| x.1 >= 1));
+                    // (a piece too short for three chords takes the usual arrangement)
+                    if plan != default_plan(style, bpm, meter, bars) {
+                        assert!(matches!(plan[0].0, Part::Neon | Part::Swell), "{plan:?}");
+                        assert_eq!(plan.last().unwrap().0, Part::Fade);
+                        assert!(plan.iter().any(|x| x.0 == Part::NightShift), "{plan:?}");
+                        assert!(plan.windows(2).all(|w| w[0].0 != w[1].0), "{plan:?}");
+                    }
+                    assert_eq!(random_plan(&r, bpm, meter, bars), plan);
+                    let p = compose_plan(&r, bpm, meter, &plan);
+                    assert_eq!(p.bars(), bars.max(2));
+                    if bars == 24 && style == Style::Nocturne {
+                        seen.insert(format!("{plan:?}"));
+                    }
+                }
+            }
+        }
+        assert!(seen.len() > 20, "only {} arrangements", seen.len());
     }
 
     #[test]

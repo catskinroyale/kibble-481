@@ -3,7 +3,7 @@
 use dd_dsp::kit::fx;
 use dd_dsp::sampler::KitKind;
 
-use crate::project::{CtrlKind, Project, Source, TAIL_SECS};
+use crate::project::{CtrlKind, Project, Source, TAIL_SECS, level_at, level_gain};
 
 /// One message to a track's instrument.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +59,9 @@ pub struct Timeline {
     pub music: f64,
     /// The music and its reverb tail.
     pub duration: f64,
+    /// Each track's bar levels as (seconds, gain) points, ramping between them; empty
+    /// for a track at the fader's level throughout.
+    pub levels: Vec<Vec<(f64, f32)>>,
 }
 
 /// Whether a note is worth restarting part way through: sustained sounds are; hits,
@@ -108,7 +111,36 @@ impl Timeline {
         }
         events.sort_by(|a, b| a.t.total_cmp(&b.t).then(a.msg.rank().cmp(&b.msg.rank())).then(a.track.cmp(&b.track)));
         let music = p.music_secs();
-        Timeline { events, spans, music, duration: music + TAIL_SECS }
+        let bar_secs = p.bar_secs();
+        let levels = p
+            .tracks
+            .iter()
+            .map(|t| {
+                let mut ls = t.levels.clone();
+                ls.sort_by_key(|l| l.bar);
+                ls.iter().map(|l| (l.bar as f64 * bar_secs, level_gain(level_at(&ls, l.bar as f64)))).collect()
+            })
+            .collect();
+        Timeline { events, spans, music, duration: music + TAIL_SECS, levels }
+    }
+
+    /// A track's bar-level gain at `t` seconds (1 without any).
+    pub fn level(&self, track: usize, t: f64) -> f32 {
+        let Some(pts) = self.levels.get(track).filter(|p| !p.is_empty()) else { return 1.0 };
+        let i = pts.partition_point(|p| p.0 <= t);
+        if i == 0 {
+            return pts[0].1;
+        }
+        let a = pts[i - 1];
+        match pts.get(i) {
+            // ramp in the level's own units, so a fade sounds even
+            Some(b) => {
+                let (va, vb) = (a.1.sqrt(), b.1.sqrt());
+                let v = va + (vb - va) * ((t - a.0) / (b.0 - a.0).max(1e-9)) as f32;
+                v * v
+            }
+            None => a.1,
+        }
     }
 
     /// The index of the first event after `t`.

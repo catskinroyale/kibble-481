@@ -107,8 +107,13 @@ pub fn to_bytes(p: &Project) -> std::io::Result<Vec<u8>> {
         track.push(midi(0, cc(0, bank.min(127) as u8)));
         track.push(midi(0, MidiMessage::ProgramChange { program: u7::new(program) }));
         let s = &t.strip;
-        let vol = (s.gain().sqrt() * 100.0).round().clamp(0.0, 127.0) as u8;
-        track.push(midi(0, cc(7, vol)));
+        // the volume: the fader, times the bar levels, stepped a beat at a time through ramps
+        let fader = s.gain().sqrt();
+        let vol_at = |tick: u32| {
+            let lv = crate::project::level_at(&t.levels, tick as f64 / p.bar_ticks() as f64);
+            (fader * lv).round().clamp(0.0, 127.0) as u8
+        };
+        track.push(midi(0, cc(7, vol_at(0))));
         track.push(midi(0, cc(10, (64.0 + s.pan * 63.5).round().clamp(0.0, 127.0) as u8)));
         track.push(midi(0, cc(91, (s.reverb * 127.0).round() as u8)));
         track.push(midi(0, cc(93, if s.ensemble { 64 } else { 0 })));
@@ -118,6 +123,16 @@ pub fn to_bytes(p: &Project) -> std::io::Result<Vec<u8>> {
         for n in &t.notes {
             abs.push((n.start, 2, MidiMessage::NoteOn { key: u7::new(n.key.min(127)), vel: u7::new(n.vel.clamp(1, 127)) }));
             abs.push((n.end(), 0, MidiMessage::NoteOff { key: u7::new(n.key.min(127)), vel: u7::new(0) }));
+        }
+        if !t.levels.is_empty() {
+            let mut last = vol_at(0);
+            for tick in (p.beat_ticks()..end).step_by(p.beat_ticks().max(1) as usize) {
+                let v = vol_at(tick);
+                if v != last {
+                    abs.push((tick, 1, cc(7, v)));
+                    last = v;
+                }
+            }
         }
         for c in &t.ctrls {
             let m = match c.kind {

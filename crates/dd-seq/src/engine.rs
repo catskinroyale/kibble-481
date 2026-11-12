@@ -188,6 +188,10 @@ impl Gains {
         }
     }
 
+    fn scaled(self, k: f32) -> Gains {
+        Gains { ll: self.ll * k, lr: self.lr * k, rl: self.rl * k, rr: self.rr * k, reverb: self.reverb * k, echo: self.echo * k }
+    }
+
     fn lerp(a: Gains, b: Gains, t: f32) -> Gains {
         let m = |x: f32, y: f32| x + (y - x) * t;
         Gains {
@@ -546,8 +550,10 @@ impl Engine {
         right.fill(0.0);
         let inv = 1.0 / n.max(1) as f32;
         let ens_on = self.ensemble.active();
+        // the bar levels where this run ends (the gains glide there across it)
+        let at = self.pos + if self.playing { n as f64 / self.sr as f64 } else { 0.0 };
         for (ti, s) in self.slots.iter_mut().enumerate() {
-            let to = target_gains(&self.mix, ti);
+            let to = target_gains(&self.mix, ti).scaled(self.timeline.level(ti, at));
             let from = s.gains;
             s.gains = to;
             s.l.resize(n, 0.0);

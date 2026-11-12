@@ -190,3 +190,105 @@ fn export_lets_the_tail_ring_out() {
     let last = &samples[samples.len() - (0.2 * sr) as usize * 2..];
     assert!(last.iter().all(|s| s.abs() < 1e-4));
 }
+
+/// A synth track holding one chord for eight bars, for the bar-level tests.
+fn held_chord() -> crate::project::Project {
+    use crate::project::{Note, PPQ, Project, Track};
+    let mut p = Project { bpm: 120.0, length_bars: 8, ..Project::default() };
+    let mut t = Track::new("Pad", Source::Synth(dd_dsp::patch::by_name("Rain Pad")), 0);
+    t.strip.reverb = 0.0;
+    for k in [57, 60, 64] {
+        t.notes.push(Note { start: 0, len: 8 * 4 * PPQ, key: k, vel: 100 });
+    }
+    p.tracks.push(t);
+    p.fx.duck = 0.0;
+    p
+}
+
+/// RMS of the left channel over bar `b` (from 0), skipping its first quarter.
+fn bar_rms(l: &[f32], p: &crate::project::Project, sr: u32, b: u32) -> f32 {
+    let n = (p.bar_secs() * sr as f64) as usize;
+    let s = &l[b as usize * n + n / 4..(b as usize + 1) * n];
+    (s.iter().map(|x| x * x).sum::<f32>() / s.len() as f32).sqrt()
+}
+
+/// Bar levels: silent where set to 0, ramping between the bars set, holding after.
+#[test]
+fn bar_levels_shape_the_volume() {
+    use crate::project::{Level, set_level};
+    let f = fonts();
+    let sr = 24000;
+    let mut p = held_chord();
+    let (flat, _) = render_buffers(&p, &f, sr, None);
+    // silent in bar 1, ramping back up to the fader's level at bar 5, then held
+    p.tracks[0].levels = vec![Level { bar: 1, value: 0 }];
+    set_level(&mut p.tracks[0].levels, 5, 100);
+    let (shaped, _) = render_buffers(&p, &f, sr, None);
+    let (a, b) = (bar_rms(&flat, &p, sr, 6), bar_rms(&shaped, &p, sr, 6));
+    assert!((a - b).abs() < a * 0.05, "held after the last: {a} vs {b}");
+    // before the first point it is the first point's level (silent)
+    assert!(bar_rms(&shaped, &p, sr, 0) < bar_rms(&flat, &p, sr, 0) * 0.02);
+    let ramp: Vec<f32> = (1..5).map(|b| bar_rms(&shaped, &p, sr, b)).collect();
+    assert!(ramp.windows(2).all(|w| w[1] > w[0]), "ramps up: {ramp:?}");
+    let ratios: Vec<f32> = (1..5).map(|b| bar_rms(&shaped, &p, sr, b) / bar_rms(&flat, &p, sr, b)).collect();
+    assert!(ratios.windows(2).all(|w| w[1] > w[0]) && ratios[3] < 0.95, "below the fader's level until bar 5: {ratios:?}");
+}
+
+/// Moving a section takes its bar levels with it; a new section has none, so it follows.
+#[test]
+fn bar_levels_move_with_their_sections() {
+    use crate::project::{Block, Level, Part, Section};
+    let mut p = held_chord();
+    p.sections = vec![Section::new(0, Part::Neon), Section::new(4, Part::Swell)];
+    p.tracks[0].levels = vec![Level { bar: 1, value: 40 }, Level { bar: 5, value: 120 }];
+    // swap them and add a Fade of 3 bars at the start
+    let a = p.arrangement();
+    let fade = Block { name: "Fade".into(), part: Some(Part::Fade), bars: 3 };
+    p.rearrange(&[fade, a[1].clone(), a[0].clone()], &[None, Some(1), Some(0)]);
+    assert_eq!(p.length_bars, 11);
+    assert_eq!(p.tracks[0].levels, vec![Level { bar: 4, value: 120 }, Level { bar: 8, value: 40 }]);
+    // shortening a section keeps its last level at its new end
+    let mut a = p.arrangement();
+    a[1].bars = 1;
+    let origin: Vec<Option<usize>> = (0..a.len()).map(Some).collect();
+    p.rearrange(&a, &origin);
+    assert_eq!(p.tracks[0].levels, vec![Level { bar: 3, value: 120 }, Level { bar: 5, value: 40 }]);
+}
+
+/// The MIDI file's volume follows the bar levels a beat at a time.
+#[test]
+fn bar_levels_reach_the_midi_file() {
+    use crate::project::Level;
+    use midly::{MidiMessage, Smf, TrackEventKind};
+    let mut p = held_chord();
+    p.tracks[0].levels = vec![Level { bar: 0, value: 100 }, Level { bar: 2, value: 50 }];
+    let bytes = crate::midi_file::to_bytes(&p).unwrap();
+    let smf = Smf::parse(&bytes).unwrap();
+    let vols: Vec<u8> = smf.tracks[1]
+        .iter()
+        .filter_map(|e| match e.kind {
+            TrackEventKind::Midi { message: MidiMessage::Controller { controller, value }, .. } if controller == 7 => Some(value.as_int()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(vols.first(), Some(&100));
+    assert_eq!(vols.last(), Some(&50));
+    assert!(vols.len() >= 8 && vols.windows(2).all(|w| w[1] < w[0]), "{vols:?}");
+    // and the project comes back with them
+    assert_eq!(crate::midi_file::from_bytes(&bytes, &FontBank::default()).unwrap().tracks[0].levels, p.tracks[0].levels);
+}
+
+/// Every style renders at a healthy level, loud enough and short of the clipper.
+#[test]
+fn every_style_renders_at_a_healthy_level() {
+    use crate::compose::{Recipe, Style, compose};
+    let f = fonts();
+    for style in Style::ALL {
+        for seed in [3, 77] {
+            let p = compose(&Recipe { seed, style, ..Recipe::default() }, style.tempo(), (4, 4), 16);
+            let (l, r) = render_buffers(&p, &f, 24000, None);
+            let pk = peak(&l).max(peak(&r));
+            assert!(pk > 0.2 && pk < 0.98, "{style:?} {seed}: peak {pk}");
+        }
+    }
+}

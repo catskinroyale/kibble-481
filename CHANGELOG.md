@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 — 2026-11-12
+
+- Composer styles: **Nocturne** (the piece as before), **Pursuit** (driven: a sequenced
+  bass, an arpeggio, stabbing brass, a backbeat with taiko fills), **Blackout** (dark:
+  kit drones, sub booms, distant metal, low brass and a far-off horn) and **Momento**
+  (romantic: an electric piano, a swung groove and a sliding, leaping sax-like theme). They use only the
+  sounds already bundled. Choosing one sets its tempo; `kibble-481-cli compose --style`.
+- **Volume** bar by bar: a new lane draws each track's volume per bar, ramping between the
+  bars set and holding after the last; the levels move with their sections, survive new
+  seeds and styles, and are written to the MIDI file as CC7. While it plays, the mixer's
+  fader shows where the volume has the track (an orange marker and a ▸ readout).
+- Sections are dragged into order by their ≡ grip, and new ones dragged into place from
+  the **+** buttons; the ▲ ▼ buttons are gone.
+- **🎲 New piece** now writes a new arrangement of sections as well as new notes; **New
+  notes** (beside it, in the Composer and in File) keeps the sections.
+- Saves and exports are named with the title, the seed and a UTC time stamp.
+- Clicking anywhere on a track selects it; its name is renamed by double-clicking it (or
+  Rename in its menu).
+- The track list no longer offers **+ Add**: pieces come with their tracks (for now).
+
 ## 0.1.1 — 2026-11-10
 
 - The old name, DDream, is gone: the binaries are `kibble-481` and `kibble-481-cli`,
