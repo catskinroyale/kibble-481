@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use dd_dsp::Instrument;
-use dd_dsp::effects::{EchoFx, Ensemble, soft_clip};
+use dd_dsp::effects::{CutFilter, EchoFx, Ensemble, soft_clip};
 use dd_dsp::fx::Fx;
 use dd_dsp::patch::Patch;
 use dd_dsp::reverb::Reverb;
@@ -208,6 +208,8 @@ impl Gains {
 struct Slot {
     inst: Box<dyn Instrument>,
     gains: Gains,
+    /// The strip's low and high cut.
+    cut: CutFilter,
     l: Vec<f32>,
     r: Vec<f32>,
 }
@@ -309,7 +311,10 @@ impl Engine {
                 }
             }
             Cmd::Instruments(list) => {
-                self.slots = list.into_iter().map(|inst| Slot { inst, gains: Gains::default(), l: Vec::new(), r: Vec::new() }).collect();
+                self.slots = list
+                    .into_iter()
+                    .map(|inst| Slot { inst, gains: Gains::default(), cut: CutFilter::new(self.sr), l: Vec::new(), r: Vec::new() })
+                    .collect();
                 self.apply_tuning();
                 self.snap_gains();
             }
@@ -559,6 +564,12 @@ impl Engine {
             s.l.resize(n, 0.0);
             s.r.resize(n, 0.0);
             s.inst.render(&mut s.l, &mut s.r);
+            if let Some(st) = self.mix.strips.get(ti) {
+                s.cut.set(st.low_cut, st.high_cut);
+            }
+            if s.cut.active() {
+                s.cut.process(&mut s.l, &mut s.r);
+            }
             let chorus = ens_on && self.mix.strips.get(ti).is_some_and(|st| st.ensemble);
             let (out_l, out_r) = if chorus { (&mut ens_l[..], &mut ens_r[..]) } else { (&mut *left, &mut *right) };
             let mut peak = 0.0f32;

@@ -1,6 +1,7 @@
 //! A project: tracks of notes and controller moves on a beat grid at one tempo, the
 //! score's sections, and the mix (each track's channel strip and the shared effects).
 
+pub use dd_dsp::effects::{HIGH_CUT_OFF, LOW_CUT_OFF};
 use dd_dsp::fx::Fx;
 use dd_dsp::patch::Patch;
 use dd_dsp::sampler::KitKind;
@@ -115,11 +116,26 @@ pub struct Strip {
     pub ensemble: bool,
     pub mute: bool,
     pub solo: bool,
+    /// Low cut (high-pass) in Hz, 12 dB/octave; `LOW_CUT_OFF` (20) is off.
+    pub low_cut: f32,
+    /// High cut (low-pass) in Hz, 12 dB/octave; `HIGH_CUT_OFF` (20 kHz) is off.
+    pub high_cut: f32,
 }
 
 impl Default for Strip {
     fn default() -> Self {
-        Strip { gain_db: 0.0, pan: 0.0, width: 1.0, reverb: 0.35, echo: 0.0, ensemble: false, mute: false, solo: false }
+        Strip {
+            gain_db: 0.0,
+            pan: 0.0,
+            width: 1.0,
+            reverb: 0.35,
+            echo: 0.0,
+            ensemble: false,
+            mute: false,
+            solo: false,
+            low_cut: LOW_CUT_OFF,
+            high_cut: HIGH_CUT_OFF,
+        }
     }
 }
 
@@ -240,6 +256,8 @@ impl Track {
 /// piece can use them in any order, as often as it likes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Part {
+    /// Before the piece proper: the drone, a thin pad and the theme's first notes alone.
+    Intro,
     Neon,
     Swell,
     NightShift,
@@ -247,10 +265,11 @@ pub enum Part {
 }
 
 impl Part {
-    pub const ALL: [Part; 4] = [Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
+    pub const ALL: [Part; 5] = [Part::Intro, Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
 
     pub fn label(self) -> &'static str {
         match self {
+            Part::Intro => "Intro",
             Part::Neon => "Neon",
             Part::Swell => "Swell",
             Part::NightShift => "Night shift",
@@ -260,6 +279,7 @@ impl Part {
 
     pub fn help(self) -> &'static str {
         match self {
+            Part::Intro => "An opening: the drone and a thin pad, and the theme's first notes heard alone",
             Part::Neon => "Rain, the pad and the drone, with bells",
             Part::Swell => "The brass and bass come in, and a heartbeat",
             Part::NightShift => "Everything, with the lead melody, plucks and drums",
@@ -271,6 +291,7 @@ impl Part {
     pub fn from_name(name: &str) -> Option<Part> {
         let n = name.trim().to_lowercase();
         match n.as_str() {
+            "intro" | "opening" | "prelude" => Some(Part::Intro),
             "neon" | "rain" | "streets" | "drizzle" => Some(Part::Neon),
             "swell" | "brass" | "pulse" | "overpass" => Some(Part::Swell),
             "night shift" | "lone lead" | "ascent" | "skyline" => Some(Part::NightShift),

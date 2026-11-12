@@ -1267,52 +1267,6 @@ impl App {
         );
         sresp.on_hover_text("Click to hold or release the sustain pedal");
     }
-
-    // ------------------------------------------------------------ about
-
-    pub(crate) fn about_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.about_open;
-        egui::Window::new(format!("About {}", crate::theme::APP_NAME)).open(&mut open).resizable(true).default_width(520.0).show(ctx, |ui| {
-            let t = Tokens::get(ui.ctx());
-            ui.label(egui::RichText::new(crate::theme::WORDMARK).font(t.label(22.0)).color(t.accent));
-            ui.label(egui::RichText::new("A neon-noir synthesiser and sequencer for scoring in MIDI.").font(t.book(17.0)).color(t.text));
-            ui.label(egui::RichText::new(format!("VERSION {}", env!("CARGO_PKG_VERSION"))).font(t.mono(11.5)).color(t.text_dim));
-            ui.add_space(6.0);
-            ui.label("The code is under the MIT License. The bundled SoundFonts have their own licences, all of which allow music made with them to be used commercially:");
-            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                for f in &self.fonts.fonts {
-                    ui.label(egui::RichText::new(&f.name).font(t.semibold(12.0)));
-                    ui.label(egui::RichText::new(crate::sound::credit(&f.name)).color(t.text_dim));
-                }
-                ui.add_space(6.0);
-                for (what, who) in [
-                    ("Reverb, echo, ensemble, city kit, slideshow timing, Resolve export", "from Ambient MIDI Generator (catskinroyale) — MIT"),
-                    ("Interface theme and widgets", "adapted from BW Darkroom and LightCraft — MIT"),
-                    ("Rain recordings", "softwalls, BeeProductive, launemax, richwise, kyles, bastipictures, conleec (Freesound), kvgarlic and Extemporalist (Wikimedia Commons) — CC0"),
-                    ("Composer's random streams", "from Ambient MIDI Generator — MIT"),
-                    (
-                        "Typefaces",
-                        "Michroma (Vernon Adams), Share Tech Mono (Carrois Type Design), VT323 (Peter Hull), Cutive Mono (Vernon Adams), Sorts Mill Goudy (Barry Schwartz), Jost (Indestructible Type), Inter (Rasmus Andersson) — SIL Open Font License 1.1",
-                    ),
-                    ("SoundFont playback", "rustysynth — MIT"),
-                    ("MIDI files / MIDI input", "midly — Unlicense; midir — MIT"),
-                    ("Audio / WAV / interface", "cpal, hound, egui and eframe — Apache-2.0 or MIT"),
-                ] {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(what).font(t.semibold(11.5)));
-                        ui.label(egui::RichText::new(who).color(t.text_dim));
-                    });
-                }
-                ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new(format!("{} is an independent project. The factory sounds are original, written in the spirit of early-1980s polysynth film scores; no film, author, composer or instrument maker is affiliated with it.", crate::theme::APP_NAME))
-                        .font(t.typewriter(12.0))
-                        .color(t.text_dim),
-                );
-            });
-        });
-        self.about_open = open;
-    }
 }
 
 /// A section being dragged in the Score tab: one of the arrangement's, or a new one.

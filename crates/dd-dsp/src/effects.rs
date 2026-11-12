@@ -215,3 +215,142 @@ impl EchoFx {
         (out[0], out[1])
     }
 }
+
+/// Below this a low cut is off.
+pub const LOW_CUT_OFF: f32 = 20.0;
+/// At or above this a high cut is off.
+pub const HIGH_CUT_OFF: f32 = 20_000.0;
+
+/// One channel of a 12 dB/octave Butterworth state-variable filter (Andrew Simper's
+/// zero-delay-feedback design), giving its low- and high-pass outputs.
+#[derive(Clone, Copy, Default, Debug)]
+struct Pole2 {
+    ic1: f32,
+    ic2: f32,
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+struct Coefs {
+    a1: f32,
+    a2: f32,
+    a3: f32,
+}
+
+const BUTTERWORTH_K: f32 = std::f32::consts::SQRT_2;
+
+impl Coefs {
+    fn new(hz: f32, sr: f32) -> Coefs {
+        let g = (std::f32::consts::PI * hz.clamp(10.0, sr * 0.45) / sr).tan();
+        let a1 = 1.0 / (1.0 + g * (g + BUTTERWORTH_K));
+        let a2 = g * a1;
+        Coefs { a1, a2, a3: g * a2 }
+    }
+}
+
+impl Pole2 {
+    /// (low, high)
+    #[inline]
+    fn process(&mut self, c: &Coefs, x: f32) -> (f32, f32) {
+        let v3 = x - self.ic2;
+        let v1 = c.a1 * self.ic1 + c.a2 * v3;
+        let v2 = self.ic2 + c.a2 * self.ic1 + c.a3 * v3;
+        self.ic1 = 2.0 * v1 - self.ic1;
+        self.ic2 = 2.0 * v2 - self.ic2;
+        (v2, x - BUTTERWORTH_K * v1 - v2)
+    }
+}
+
+/// A track's low cut and high cut, on its output, so it works on any sound: the
+/// synth, the kits and SoundFonts alike. Each is 12 dB/octave and off at its end of
+/// the range ([`LOW_CUT_OFF`], [`HIGH_CUT_OFF`]). Allocation-free.
+#[derive(Clone, Copy, Debug)]
+pub struct CutFilter {
+    sr: f32,
+    low_hz: f32,
+    high_hz: f32,
+    low: Coefs,
+    high: Coefs,
+    hp: [Pole2; 2],
+    lp: [Pole2; 2],
+}
+
+impl CutFilter {
+    pub fn new(sr: f32) -> CutFilter {
+        CutFilter {
+            sr,
+            low_hz: LOW_CUT_OFF,
+            high_hz: HIGH_CUT_OFF,
+            low: Coefs::default(),
+            high: Coefs::default(),
+            hp: Default::default(),
+            lp: Default::default(),
+        }
+    }
+
+    /// Set the cut-offs in Hz (cheap when they haven't changed).
+    pub fn set(&mut self, low_hz: f32, high_hz: f32) {
+        if low_hz != self.low_hz {
+            if self.low_hz <= LOW_CUT_OFF {
+                self.hp = Default::default();
+            }
+            self.low_hz = low_hz;
+            self.low = Coefs::new(low_hz, self.sr);
+        }
+        if high_hz != self.high_hz {
+            if self.high_hz >= HIGH_CUT_OFF {
+                self.lp = Default::default();
+            }
+            self.high_hz = high_hz;
+            self.high = Coefs::new(high_hz, self.sr);
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.low_hz > LOW_CUT_OFF || self.high_hz < HIGH_CUT_OFF
+    }
+
+    /// Filter a block in place.
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+        let (lo, hi) = (self.low_hz > LOW_CUT_OFF, self.high_hz < HIGH_CUT_OFF);
+        for (ch, buf) in [l, r].into_iter().enumerate() {
+            for x in buf.iter_mut() {
+                if lo {
+                    *x = self.hp[ch].process(&self.low, *x).1;
+                }
+                if hi {
+                    *x = self.lp[ch].process(&self.high, *x).0;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cut_tests {
+    use super::*;
+
+    fn level(hz: f32, low: f32, high: f32) -> f32 {
+        let sr = 48_000.0;
+        let mut f = CutFilter::new(sr);
+        f.set(low, high);
+        let n = 48_000;
+        let mut l: Vec<f32> = (0..n).map(|i| (TAU * hz * i as f32 / sr).sin()).collect();
+        let mut r = l.clone();
+        f.process(&mut l, &mut r);
+        l[n / 2..].iter().fold(0.0f32, |m, x| m.max(x.abs()))
+    }
+
+    #[test]
+    fn cuts_where_asked_and_leaves_the_rest() {
+        // off: untouched
+        assert!((level(50.0, LOW_CUT_OFF, HIGH_CUT_OFF) - 1.0).abs() < 1e-3);
+        // a low cut at 200 Hz: -3 dB there, about -24 dB two octaves below, the top kept
+        assert!((level(200.0, 200.0, HIGH_CUT_OFF) - 0.707).abs() < 0.03);
+        assert!(level(50.0, 200.0, HIGH_CUT_OFF) < 0.07);
+        assert!(level(4000.0, 200.0, HIGH_CUT_OFF) > 0.99);
+        // a high cut at 2 kHz
+        assert!((level(2000.0, LOW_CUT_OFF, 2000.0) - 0.707).abs() < 0.03);
+        assert!(level(8000.0, LOW_CUT_OFF, 2000.0) < 0.07);
+        assert!(level(100.0, LOW_CUT_OFF, 2000.0) > 0.99);
+    }
+}

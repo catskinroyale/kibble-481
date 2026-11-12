@@ -1,6 +1,7 @@
 // No console window behind the app in Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod about;
 mod app;
 mod audio;
 mod live;
@@ -10,6 +11,7 @@ mod roll;
 mod snapshot;
 mod sound;
 mod theme;
+mod update;
 mod widgets;
 
 fn main() -> eframe::Result {

@@ -237,6 +237,12 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
                 trim_db: 10.0,
                 bundled: true,
             },
+            Alt {
+                label: "GM Brush Kit",
+                source: Source::SoundFont { font: GM_FONT.into(), bank: 128, program: 40, name: "Brush".into() },
+                trim_db: 10.0,
+                bundled: true,
+            },
         ],
     }
 }

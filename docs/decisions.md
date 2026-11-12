@@ -176,10 +176,40 @@ track (electric piano), only to its own pieces, so the other styles' tracks and 
 are unchanged. Its name was the user's choice: an ordinary Italian and Spanish word,
 noted here because it is one letter from a film title (D3).
 
+## D18 — Noir, intros, track cuts and About (2026-11-12)
+
+Noir was written to the user's brief: the melancholy of walking alone in the rain at
+night, evoked by harmony, melody, texture, space and pacing alone, with no rain recordings,
+weather or other literal sound effects, for YouTube video under voice-over. So a Noir piece
+has no City track at all (no rain, hum, neon buzz or thunder), and a composer test checks
+it. The visual references (neon reflections, alleys, taxis, crossings, lanterns,
+flickering tubes, a figure under an umbrella) shape the music only: the flicker is an
+arpeggio missing notes, the unease a faint tritone under the night shift. The tone
+references (late-70s/80s analogue sci-fi scores, synthwave and darkwave, ambient jazz noir)
+are for feel only; no melody or piece is copied, and none is named in the code (D3). To sit
+under a voice it is mixed at about -20 LUFS (the other styles -13 to -18), the lead pulled
+back and resting every other phrase, the pad's and arpeggio's tops cut. Its length is the
+project's, as for every style. Its brushes are GeneralUser GS's Brush kit (bank 128,
+program 40), already bundled.
+
+The Intro is a part like the others, so the Score tab, arrangements and stretching handle
+it unchanged. It draws from its own random streams ("intro", "intro-form"), so a piece with
+no Intro is written exactly as before (checked against the 72-piece Nocturne fingerprint).
+
+The track cuts are a filter on the track's output in the engine, not a message to the
+instrument: SoundFonts have no high-pass, and their low-pass is per voice and moved by
+CC74 only in some presets, so filtering the output is the one way that works the same for
+every source. They aren't written to MIDI files (no standard message); the embedded project
+keeps them.
+
+About now follows Ambient MIDI Generator's (and Film Darkroom's): build commit, licence
+texts, the full crate list (`tools/gen_licenses.py`) and an update check. The check contacts
+only GitHub's public releases API with a generic user agent and is on at startup by
+default, as in the other apps; it can be turned off in About.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)
   so exported MIDI sounds like the app in any DAW.
 - Tempo changes within a piece; per-note pitch curves (MPE); automation of synth parameters.
 - Ken Burns moves on gallery stills in the FCPXML.
-- An update check and full third-party licence list in About, as midigen has.

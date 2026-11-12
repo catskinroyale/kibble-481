@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 — 2026-11-12
+
+- **Noir**, a fifth composer style: the melancholy of walking alone at night in music
+  alone (no rain, city sounds or other effects). Minor ninths and major sevenths, an
+  electric piano, a slow walking upright bass, brushes, a flickering arpeggio and a lead
+  that leaves room for a voice; mixed quieter, to sit under voice-over. 64 bpm;
+  `kibble-481-cli compose --style noir`.
+- **Intro**, a new kind of section for every style: the drone, a thin pad and the
+  theme's first notes heard alone. Noir opens with one, and 🎲 New piece now and then
+  starts with one in the other styles. Pieces without one are written exactly as before.
+- **Low cut** and **high cut** on every track's mixer strip (12 dB an octave), on the
+  track's output so they work on SoundFont tracks too.
+- A fuller **About** window, laid out like Ambient MIDI Generator's: version and build
+  commit, what the app does, where its settings and SoundFonts are, every bundled licence
+  with its full text, and the 494 third-party crates with theirs. **Check for Updates…**
+  (and at startup, which can be turned off) asks GitHub for a newer release.
+- The GM Brush Kit is one of the drum kits to choose from.
+
 ## 0.2.0 — 2026-11-12
 
 - Composer styles: **Nocturne** (the piece as before), **Pursuit** (driven: a sequenced

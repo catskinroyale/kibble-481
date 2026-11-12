@@ -12,7 +12,7 @@ use dd_seq::fonts::{FontBank, soundfont_dir};
 const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 
   kibble-481-cli demo <out.kibble>                 write the hand-written scene, Rain on Neon
-  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
+  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento|noir] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
                                                compose a new piece (a random seed if none given)
   kibble-481-cli render <in.kibble|.mid> <out.wav> [--stem <track>]
                                                render the mix (24-bit, 48 kHz), or one track
@@ -68,7 +68,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 r.style = *dd_seq::compose::Style::ALL
                     .iter()
                     .find(|s| s.label().eq_ignore_ascii_case(&n))
-                    .ok_or("--style takes nocturne, pursuit, blackout or momento")?;
+                    .ok_or("--style takes nocturne, pursuit, blackout, momento or noir")?;
             }
             if let Some(n) = flag(&args, "--key") {
                 r.root = n.parse::<u8>().map_err(|_| "--key takes 0 (C) to 11 (B)")? % 12;

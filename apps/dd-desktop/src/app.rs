@@ -97,6 +97,8 @@ pub struct Settings {
     pub stems_with_gallery: bool,
     /// A new piece keeps the current tracks' sounds and mix.
     pub keep_sounds: bool,
+    /// Ask GitHub for a newer release when the app opens.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -116,6 +118,7 @@ impl Default for Settings {
             volume: 0.9,
             stems_with_gallery: false,
             keep_sounds: false,
+            check_updates: true,
         }
     }
 }
@@ -169,7 +172,9 @@ pub struct App {
     rec_from: f64,
     job: Option<Job>,
     pub(crate) status: String,
-    pub(crate) about_open: bool,
+    pub(crate) about: crate::about::About,
+    update: Option<crate::update::UpdateStatus>,
+    update_rx: Option<std::sync::mpsc::Receiver<crate::update::UpdateStatus>>,
     /// The track whose name is being edited (double-click a name).
     pub(crate) renaming: Option<usize>,
     palette: Palette,
@@ -243,7 +248,9 @@ impl App {
             rec_from: 0.0,
             job: None,
             status: String::new(),
-            about_open: false,
+            about: Default::default(),
+            update: None,
+            update_rx: None,
             renaming: None,
             palette,
             title: String::new(),
@@ -255,6 +262,9 @@ impl App {
             meters_at: 0.0,
             snapshot: crate::snapshot::Snapshot::from_env(),
         };
+        if app.settings.check_updates && app.snapshot.is_none() {
+            app.start_update_check(&cc.egui_ctx);
+        }
         if let Some(port) = app.settings.midi_port.clone()
             && app.midi_ports.contains(&port)
         {
@@ -293,7 +303,7 @@ impl App {
             if snap.wants("layer2") {
                 cc.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::unique("dd-edit-layer"), 1usize));
             }
-            app.about_open = snap.wants("about");
+            app.about.open = snap.wants("about");
             // these change the piece after it opens, as a user would
             if snap.wants("edited") {
                 app.doc.project.tracks[0].notes.pop();
@@ -314,6 +324,7 @@ impl App {
                 ("pursuit", dd_seq::compose::Style::Pursuit),
                 ("blackout", dd_seq::compose::Style::Blackout),
                 ("momento", dd_seq::compose::Style::Momento),
+                ("noir", dd_seq::compose::Style::Noir),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
@@ -1003,8 +1014,19 @@ impl App {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
-                if widgets::icon_button(ui, Icon::Info, self.about_open, &format!("About {APP_NAME}")).clicked() {
-                    self.about_open = !self.about_open;
+                if widgets::icon_button(ui, Icon::Info, self.about.open, "About, licences and updates").clicked() {
+                    self.about.open = !self.about.open;
+                }
+                if let Some(crate::update::UpdateStatus::Available { version, url }) = &self.update {
+                    let resp = ui
+                        .add(egui::Button::new(egui::RichText::new(format!("⬆ {version}")).color(Tokens::get(ui.ctx()).accent)).small())
+                        .on_hover_text(format!(
+                            "Version {version} is available (you have {}). Click to download.",
+                            crate::update::VERSION
+                        ));
+                    if resp.clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                    }
                 }
                 let resp = widgets::icon_button(ui, Icon::Palette, false, &format!("Colour palette: {}", self.palette.label()));
                 egui::Popup::menu(&resp).show(|ui| {
@@ -1077,6 +1099,32 @@ fn same_music(a: &Project, b: &Project) -> bool {
             .all(|(x, y)| x.notes == y.notes && x.ctrls == y.ctrls && x.levels == y.levels && x.source.is_drums() == y.source.is_drums())
 }
 
+impl App {
+    /// Ask GitHub for the latest release on a thread; the answer is picked up each frame.
+    fn start_update_check(&mut self, ctx: &egui::Context) {
+        if matches!(self.update, Some(crate::update::UpdateStatus::Checking)) {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::update::check());
+            ctx.request_repaint();
+        });
+        self.update = Some(crate::update::UpdateStatus::Checking);
+        self.update_rx = Some(rx);
+    }
+
+    fn poll_update_check(&mut self) {
+        if let Some(rx) = &self.update_rx
+            && let Ok(status) = rx.try_recv()
+        {
+            self.update = Some(status);
+            self.update_rx = None;
+        }
+    }
+}
+
 impl eframe::App for App {
     fn persist_egui_memory(&self) -> bool {
         self.snapshot.is_none()
@@ -1140,7 +1188,11 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(egui::Frame::central_panel(ui.style()).fill(tokens.canvas).inner_margin(0.0))
             .show(ui, |ui| self.roll_ui(ui));
-        self.about_window(&ctx);
+        self.poll_update_check();
+        self.about.show(&ctx, &self.update, &mut self.settings.check_updates, &self.fonts);
+        if std::mem::take(&mut self.about.check_requested) {
+            self.start_update_check(&ctx);
+        }
 
         let pointer_down = ctx.input(|i| i.pointer.any_down());
         self.sel = self.sel.min(self.doc.project.tracks.len().saturating_sub(1));

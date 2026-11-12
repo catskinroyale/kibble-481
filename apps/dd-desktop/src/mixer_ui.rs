@@ -1,7 +1,7 @@
 //! The mixer: a channel strip per track and the master. The fader law, meters and
 //! knobs are Ambient MIDI Generator's (`mixer_ui.rs`, MIT).
 
-use dd_seq::project::{SILENT_DB, level_at, level_gain};
+use dd_seq::project::{HIGH_CUT_OFF, LOW_CUT_OFF, SILENT_DB, level_at, level_gain};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
 use crate::app::App;
@@ -73,6 +73,35 @@ impl App {
                                     &t,
                                 );
                                 knob(ui, "Echo", &mut s.echo, 0.0..=1.0, 0.0, |v| format!("{:.0}%", v * 100.0), "Send to the echo", &t);
+                                // the cuts, on a log scale from 20 Hz to 20 kHz
+                                let (mut low, low0) = (hz_pos(s.low_cut), hz_pos(s.low_cut));
+                                knob(
+                                    ui,
+                                    "Lo cut",
+                                    &mut low,
+                                    0.0..=1.0,
+                                    0.0,
+                                    |v| if v <= 0.0 { "Off".into() } else { hz_text(pos_hz(v)) },
+                                    "Cut below this, 12 dB an octave: clears rumble and mud, or thins a sound out. Double-click for off",
+                                    &t,
+                                );
+                                if low != low0 {
+                                    s.low_cut = if low <= 0.0 { LOW_CUT_OFF } else { pos_hz(low) };
+                                }
+                                let (mut high, high0) = (hz_pos(s.high_cut), hz_pos(s.high_cut));
+                                knob(
+                                    ui,
+                                    "Hi cut",
+                                    &mut high,
+                                    0.0..=1.0,
+                                    1.0,
+                                    |v| if v >= 1.0 { "Off".into() } else { hz_text(pos_hz(v)) },
+                                    "Cut above this, 12 dB an octave: darkens or distances a sound, or keeps it out of a voice's way. Double-click for off",
+                                    &t,
+                                );
+                                if high != high0 {
+                                    s.high_cut = if high >= 1.0 { HIGH_CUT_OFF } else { pos_hz(high) };
+                                }
                                 ui.horizontal(|ui| {
                                     fader(ui, &mut s.gain_db, auto, &t);
                                     meter(ui, &[peaks[i]], true, &t);
@@ -110,7 +139,7 @@ impl App {
                         ui.set_width(52.0);
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         ui.label(egui::RichText::new("Master").font(t.semibold(11.5)));
-                        ui.add_space(4.0 * 18.0 + 6.0);
+                        ui.add_space(6.0 * 18.0 + 10.0);
                         ui.horizontal(|ui| {
                             fader(ui, &mut self.doc.project.master_db, None, &t);
                             meter(ui, &[master.0, master.1], true, &t);
@@ -121,6 +150,22 @@ impl App {
             });
         });
     }
+}
+
+/// Where a frequency sits on a cut knob: 0 at 20 Hz, 1 at 20 kHz, evenly by octave.
+fn hz_pos(hz: f32) -> f32 {
+    ((hz.max(LOW_CUT_OFF) / LOW_CUT_OFF).log10() / 3.0).clamp(0.0, 1.0)
+}
+
+fn pos_hz(x: f32) -> f32 {
+    // to two significant figures, so the values read cleanly
+    let hz = LOW_CUT_OFF * 1000f32.powf(x.clamp(0.0, 1.0));
+    let mag = 10f32.powf(hz.log10().floor() - 1.0);
+    (hz / mag).round() * mag
+}
+
+fn hz_text(hz: f32) -> String {
+    if hz >= 1000.0 { format!("{:.1} kHz", hz / 1000.0) } else { format!("{hz:.0} Hz") }
 }
 
 fn db_text(db: f32) -> String {

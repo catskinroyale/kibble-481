@@ -7,10 +7,10 @@ decision log `docs/decisions.md` (record product and scope decisions there).
 
 | Path | What |
 |---|---|
-| `crates/dd-dsp` | `poly.rs` (16-voice two-layer synth: polyBLEP, ZDF SVF, envelopes at a 16-sample control rate), `patch.rs` (Patch + factory), `sampler.rs` (city kit player), `kit.rs`/`reverb.rs` (copied from midigen), `effects.rs` (echo, ensemble, soft clip), `fx.rs` (effect types copied from midigen). Trait `Instrument`. |
-| `crates/dd-seq` | `project.rs` (Project/Track/Note/Ctrl/Source/Strip, PPQ 960), `timeline.rs` (events + chase), `engine.rs` (transport, mixer, metronome; `Cmd`; `Shared` atomics), `fonts.rs` (rustysynth instruments, `soundfont_dir`), `record.rs` (Take, quantise), `midi_file.rs`, `render.rs` (48 kHz/24-bit WAV), `demo.rs` (Rain on Neon), `compose.rs` (the composer; styles Nocturne/Pursuit/Blackout/Momento, D17). Tracks' bar volumes are `Track::levels` (D16) |
+| `crates/dd-dsp` | `poly.rs` (16-voice two-layer synth: polyBLEP, ZDF SVF, envelopes at a 16-sample control rate), `patch.rs` (Patch + factory), `sampler.rs` (city kit player), `kit.rs`/`reverb.rs` (copied from midigen), `effects.rs` (echo, ensemble, soft clip, the track cut filter), `fx.rs` (effect types copied from midigen). Trait `Instrument`. |
+| `crates/dd-seq` | `project.rs` (Project/Track/Note/Ctrl/Source/Strip, PPQ 960), `timeline.rs` (events + chase), `engine.rs` (transport, mixer, metronome; `Cmd`; `Shared` atomics), `fonts.rs` (rustysynth instruments, `soundfont_dir`), `record.rs` (Take, quantise), `midi_file.rs`, `render.rs` (48 kHz/24-bit WAV), `demo.rs` (Rain on Neon), `compose.rs` (the composer; styles Nocturne/Pursuit/Blackout/Momento/Noir, D17, D18; parts Intro/Neon/Swell/Night shift/Fade). Tracks' bar volumes are `Track::levels` (D16) |
 | `crates/dd-gallery` | `slideshow.rs`/`resolve.rs` (from midigen), `doc.rs` (`.kibble` = project + gallery), `export.rs` (Resolve package) |
-| `apps/dd-desktop` | `app.rs` (state, engine sync, transport, files, undo), `roll.rs`, `panels.rs`, `sound.rs`, `mixer_ui.rs`, `live.rs` (MIDI in via midir, QWERTY), `audio.rs` (cpal) |
+| `apps/dd-desktop` | `app.rs` (state, engine sync, transport, files, undo), `roll.rs`, `panels.rs`, `sound.rs`, `mixer_ui.rs`, `live.rs` (MIDI in via midir, QWERTY), `audio.rs` (cpal), `about.rs` + `assets/licences.json` (from `tools/gen_licenses.py`), `update.rs` |
 | `apps/dd-cli` | `kibble-481-cli` |
 
 ## Commands
@@ -26,6 +26,8 @@ ffmpeg -i out.wav -af ebur128=peak=true -f null -                 # loudness (de
 
 ## Rules
 
+- After changing dependencies run `./tools/gen_licenses.py` (a test checks the About list against `Cargo.lock`).
+- Noir has no City track: no rain, weather or literal sound effects (D18).
 - Licences: only bundle SoundFonts whose licence allows redistribution and commercial music
   (D4). Note provenance at the top of any file copied from another repo (D2).
 - No film, character, composer or trademark names in patches, presets or branding (D3).

@@ -292,3 +292,30 @@ fn every_style_renders_at_a_healthy_level() {
         }
     }
 }
+
+/// A track's low and high cuts work on its sound whatever plays it, a SoundFont
+/// included: the high cut takes the top off, the low cut the bottom.
+#[test]
+fn cuts_shape_soundfont_tracks() {
+    let f = fonts();
+    let mut p = rain_on_neon();
+    let i = p.tracks.iter().position(|t| matches!(t.source, Source::SoundFont { .. }) && !t.notes.is_empty()).expect("a SoundFont track");
+    p.tracks[i].strip.solo = true;
+    p.tracks[i].strip.reverb = 0.0;
+    p.tracks[i].strip.echo = 0.0;
+    // brightness: the energy of the sample-to-sample change against the energy itself
+    let bright = |p: &crate::project::Project| {
+        let (l, _) = render_buffers(p, &f, 24000, None);
+        let e: f64 = l.iter().map(|x| (*x as f64).powi(2)).sum();
+        let d: f64 = l.windows(2).map(|w| ((w[1] - w[0]) as f64).powi(2)).sum();
+        (e, d / e.max(1e-12))
+    };
+    let (e0, b0) = bright(&p);
+    p.tracks[i].strip.high_cut = 400.0;
+    let (_, b1) = bright(&p);
+    assert!(e0 > 0.0 && b1 < b0 * 0.3, "high cut: brightness {b0} -> {b1}");
+    p.tracks[i].strip.high_cut = crate::project::HIGH_CUT_OFF;
+    p.tracks[i].strip.low_cut = 2000.0;
+    let (e2, b2) = bright(&p);
+    assert!(b2 > b0 * 1.5 && e2 < e0, "low cut: brightness {b0} -> {b2}, energy {e0} -> {e2}");
+}
