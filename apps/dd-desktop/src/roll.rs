@@ -126,6 +126,58 @@ impl RollState {
     }
 }
 
+/// What a section's buttons (or its menu on the ruler) asked for.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SectionAct {
+    /// New notes for section `i`.
+    Regenerate(usize),
+    /// Copy section `i`, after it if true, else before.
+    Copy(usize, bool),
+    Delete(usize),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SectionIcon {
+    Regenerate,
+    CopyBefore,
+    CopyAfter,
+    Delete,
+}
+
+/// A section button's line icon in `r`.
+fn paint_section_icon(p: &egui::Painter, r: Rect, icon: SectionIcon, c: Color32) {
+    let st = Stroke::new(1.4, c);
+    let cen = r.center();
+    let rad = r.width() / 2.0;
+    match icon {
+        SectionIcon::Regenerate => {
+            // a circle chasing round to an arrowhead
+            let at = |a: f32| cen + vec2(a.cos(), a.sin()) * rad * 0.8;
+            let pts: Vec<Pos2> = (0..=18).map(|i| at(-0.3 + i as f32 * 0.29)).collect();
+            p.add(egui::Shape::line(pts, st));
+            let tip = at(-0.3);
+            p.line_segment([tip, tip + vec2(-3.5, -1.2)], st);
+            p.line_segment([tip, tip + vec2(0.4, -3.6)], st);
+        }
+        SectionIcon::CopyBefore | SectionIcon::CopyAfter => {
+            // a plus, with a chevron on the side the copy goes
+            let left = icon == SectionIcon::CopyBefore;
+            let px = if left { cen.x + rad * 0.35 } else { cen.x - rad * 0.35 };
+            let arm = rad * 0.55;
+            p.line_segment([pos2(px - arm, cen.y), pos2(px + arm, cen.y)], st);
+            p.line_segment([pos2(px, cen.y - arm), pos2(px, cen.y + arm)], st);
+            let (tip, back) = if left { (r.left(), r.left() + rad * 0.55) } else { (r.right(), r.right() - rad * 0.55) };
+            p.line_segment([pos2(back, cen.y - rad * 0.6), pos2(tip, cen.y)], st);
+            p.line_segment([pos2(tip, cen.y), pos2(back, cen.y + rad * 0.6)], st);
+        }
+        SectionIcon::Delete => {
+            let d = rad * 0.65;
+            p.line_segment([cen + vec2(-d, -d), cen + vec2(d, d)], st);
+            p.line_segment([cen + vec2(-d, d), cen + vec2(d, -d)], st);
+        }
+    }
+}
+
 fn is_black(key: u8) -> bool {
     matches!(key % 12, 1 | 3 | 6 | 8 | 10)
 }
@@ -372,6 +424,7 @@ impl App {
             _ => None,
         };
         let mut ends = Vec::new();
+        let mut boxes = Vec::new();
         let mut at = 0u32;
         for (i, b) in blocks.iter().enumerate() {
             let (x0, x1) = (v.x((at * bar_t) as f64), v.x(((at + b.bars) * bar_t) as f64));
@@ -388,6 +441,7 @@ impl App {
                 painter.vline(x0, rect.top()..=rect.top() + 20.0, Stroke::new(2.0, t.accent));
                 let name = b.part.map_or(b.name.as_str(), |p| p.label());
                 let label = format!("{name} · {}", b.bars);
+                boxes.push((i, r));
                 painter.with_clip_rect(r.intersect(rect)).text(
                     pos2(x0 + 5.0, rect.top() + 10.5),
                     Align2::LEFT_CENTER,
@@ -404,6 +458,67 @@ impl App {
         painter.text(pos2(rect.left() + 8.0, rect.bottom() - 11.0), Align2::LEFT_CENTER, "Bars", t.font(10.0), t.text_dim);
 
         let bar_at = |x: f32| (v.tick(x).max(0.0) / bar_t as f64) as u32;
+        // a hovered section's own buttons: new notes, copy before, copy after, delete
+        let can_regen = p.recipe.is_some() && p.plan().is_some();
+        let can_delete = blocks.len() > 1;
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        let mut act = None;
+        for &(i, r) in &boxes {
+            let r = r.intersect(grid);
+            let hovered = dragging.is_none() && pointer.is_some_and(|pp| r.contains(pp));
+            if !hovered || r.width() < 4.0 * 17.0 + 14.0 {
+                continue;
+            }
+            let name = blocks[i].part.map_or(blocks[i].name.as_str(), |p| p.label());
+            let buttons = [
+                (SectionIcon::Regenerate, can_regen, format!("New notes for this {name}, in the piece's style and key")),
+                (SectionIcon::CopyBefore, true, format!("Copy this {name}, notes and all, in front of it")),
+                (SectionIcon::CopyAfter, true, format!("Copy this {name}, notes and all, after it")),
+                (SectionIcon::Delete, can_delete, format!("Take this {name} out, notes and all")),
+            ];
+            let mut x = r.right() - 8.0 - 4.0 * 17.0;
+            // a backing so the buttons stand clear of the name
+            painter.rect_filled(
+                Rect::from_min_max(pos2(x - 3.0, r.top() + 1.0), pos2(r.right() - 7.0, r.bottom() - 1.0)),
+                3.0,
+                t.chrome.gamma_multiply(0.85),
+            );
+            for (icon, enabled, help) in buttons {
+                let br = Rect::from_min_size(pos2(x, r.center().y - 7.5), vec2(15.0, 15.0));
+                let resp = ui.interact(
+                    br,
+                    ui.scope_id().with(("section-btn", i, icon as u8)),
+                    if enabled { Sense::click() } else { Sense::hover() },
+                );
+                if resp.hovered() && enabled {
+                    painter.rect_filled(br, 3.0, t.hover);
+                }
+                let c = if !enabled {
+                    t.text_disabled
+                } else if resp.hovered() {
+                    t.accent
+                } else {
+                    t.text
+                };
+                paint_section_icon(&painter, br.shrink(2.5), icon, c);
+                let help = if enabled {
+                    help
+                } else if icon == SectionIcon::Delete {
+                    "The only section can't be taken out".into()
+                } else {
+                    "Only a composed piece, every section a part, can have new notes written".into()
+                };
+                if resp.on_hover_text(help).clicked() {
+                    act = Some(match icon {
+                        SectionIcon::Regenerate => SectionAct::Regenerate(i),
+                        SectionIcon::CopyBefore => SectionAct::Copy(i, false),
+                        SectionIcon::CopyAfter => SectionAct::Copy(i, true),
+                        SectionIcon::Delete => SectionAct::Delete(i),
+                    });
+                }
+                x += 17.0;
+            }
+        }
         // each section's end can be dragged a whole bar at a time
         for (i, x) in ends {
             if x < grid.left() - 4.0 || x > grid.right() + 4.0 {
@@ -484,10 +599,40 @@ impl App {
             self.roll.menu_bar = bar_at(pp.x);
         }
         let bar = self.roll.menu_bar;
+        // the section under a right-click, for its menu
+        let menu_section = {
+            let mut at = 0;
+            blocks.iter().position(|b| {
+                at += b.bars;
+                bar < at
+            })
+        }
+        .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
         resp.on_hover_text(
             "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section's end to change its length.",
         )
         .context_menu(|ui| {
+            if let Some(i) = menu_section {
+                let name = blocks[i].part.map_or(blocks[i].name.as_str(), |p| p.label());
+                ui.label(egui::RichText::new(name).strong());
+                if ui.add_enabled(can_regen, egui::Button::new("New notes for this section")).clicked() {
+                    act = Some(SectionAct::Regenerate(i));
+                    ui.close();
+                }
+                if ui.button("Copy before").clicked() {
+                    act = Some(SectionAct::Copy(i, false));
+                    ui.close();
+                }
+                if ui.button("Copy after").clicked() {
+                    act = Some(SectionAct::Copy(i, true));
+                    ui.close();
+                }
+                if ui.add_enabled(can_delete, egui::Button::new("Delete section")).clicked() {
+                    act = Some(SectionAct::Delete(i));
+                    ui.close();
+                }
+                ui.separator();
+            }
             ui.label(format!("Bar {}", bar + 1));
             if ui.button("Loop the next 4 bars").clicked() {
                 self.doc.project.loop_bars = Some((bar, bar + 4));
@@ -498,6 +643,9 @@ impl App {
                 ui.close();
             }
         });
+        if let Some(a) = act {
+            self.section_action(a);
+        }
     }
 
     // ------------------------------------------------------------ arrangement

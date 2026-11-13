@@ -7,16 +7,22 @@ use eframe::egui::{self, Align2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2
 use crate::app::App;
 use crate::panels::toggle;
 use crate::theme::Tokens;
+use crate::widgets::{self, DialLayout, DialSpec};
 
 const FADER_H: f32 = 110.0;
 const TOP_DB: f32 = 6.0;
-const STRIP_W: f32 = 92.0;
+pub(crate) const STRIP_W: f32 = 92.0;
+/// The space between a strip's groups: name, pan and width, fader, dials.
+const GAP: f32 = 4.0;
+/// Fader (18) + meter (5) + buttons (20) with 4-point gaps, centred in the strip.
+const FADER_INDENT: f32 = (STRIP_W - (18.0 + 5.0 + 20.0 + 2.0 * 4.0)) / 2.0;
 
 impl App {
     pub(crate) fn mixer(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let n = self.doc.project.tracks.len();
         let peaks: Vec<f32> = (0..n).map(|i| self.meter(i)).collect();
+        let lit: Vec<bool> = (0..n).map(|i| self.doc.project.audible(i)).collect();
         // where the playhead is, in bars, for each track's volume bar by bar
         let at_bar = self.heard().max(0.0) / self.doc.project.bar_secs();
         let master = (self.meter(n), self.meter(n + 1));
@@ -36,7 +42,12 @@ impl App {
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = 2.0;
                                 let c = crate::theme::track_colour(tr.color);
-                                ui.add(egui::Label::new(egui::RichText::new(&tr.name).font(t.semibold(11.5)).color(c)).truncate());
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 3.0;
+                                    track_lamp(ui, lit[i], c);
+                                    ui.add(egui::Label::new(egui::RichText::new(&tr.name).font(t.semibold(11.5)).color(c)).truncate());
+                                });
+                                ui.add_space(GAP);
                                 // the fader plus the track's bar volume where the music is
                                 let auto = (!tr.levels.is_empty()).then(|| {
                                     let g = level_gain(level_at(&tr.levels, at_bar));
@@ -62,47 +73,11 @@ impl App {
                                     &t,
                                 );
                                 knob(ui, "Width", &mut s.width, 0.0..=2.0, 1.0, |v| format!("{:.0}%", v * 100.0), "Mono to extra wide", &t);
-                                knob(
-                                    ui,
-                                    "Reverb",
-                                    &mut s.reverb,
-                                    0.0..=1.0,
-                                    0.35,
-                                    |v| format!("{:.0}%", v * 100.0),
-                                    "Send to the reverb",
-                                    &t,
-                                );
-                                knob(ui, "Echo", &mut s.echo, 0.0..=1.0, 0.0, |v| format!("{:.0}%", v * 100.0), "Send to the echo", &t);
-                                // the cuts, on a log scale from 20 Hz to 20 kHz
-                                let (mut low, low0) = (hz_pos(s.low_cut), hz_pos(s.low_cut));
-                                knob(
-                                    ui,
-                                    "Lo cut",
-                                    &mut low,
-                                    0.0..=1.0,
-                                    0.0,
-                                    |v| if v <= 0.0 { "Off".into() } else { hz_text(pos_hz(v)) },
-                                    "Cut below this, 12 dB an octave: clears rumble and mud, or thins a sound out. Double-click for off",
-                                    &t,
-                                );
-                                if low != low0 {
-                                    s.low_cut = if low <= 0.0 { LOW_CUT_OFF } else { pos_hz(low) };
-                                }
-                                let (mut high, high0) = (hz_pos(s.high_cut), hz_pos(s.high_cut));
-                                knob(
-                                    ui,
-                                    "Hi cut",
-                                    &mut high,
-                                    0.0..=1.0,
-                                    1.0,
-                                    |v| if v >= 1.0 { "Off".into() } else { hz_text(pos_hz(v)) },
-                                    "Cut above this, 12 dB an octave: darkens or distances a sound, or keeps it out of a voice's way. Double-click for off",
-                                    &t,
-                                );
-                                if high != high0 {
-                                    s.high_cut = if high >= 1.0 { HIGH_CUT_OFF } else { pos_hz(high) };
-                                }
+                                ui.add_space(GAP);
                                 ui.horizontal(|ui| {
+                                    // the fader, meter and buttons centred in the strip
+                                    ui.add_space(FADER_INDENT);
+                                    ui.spacing_mut().item_spacing.x = 4.0;
                                     fader(ui, &mut s.gain_db, auto, &t);
                                     meter(ui, &[peaks[i]], true, &t);
                                     ui.vertical(|ui| {
@@ -113,15 +88,17 @@ impl App {
                                 });
                                 match auto {
                                     // the volume bar by bar is moving it: show where it is now
-                                    Some(a) => ui
-                                        .label(egui::RichText::new(format!("▸{}", db_text(a))).font(t.mono(10.5)).color(t.accent))
-                                        .on_hover_text(format!(
-                                            "Playing at {} now: the fader's {} and the track's volume bar by bar (the Vol lane)",
-                                            db_text(a),
-                                            db_text(s.gain_db)
-                                        )),
-                                    None => ui.label(egui::RichText::new(db_text(s.gain_db)).font(t.mono(10.5)).color(t.text_dim)),
+                                    Some(a) => db_label(ui, format!("▸{}", db_text(a)), t.accent, &t).on_hover_text(format!(
+                                        "Playing at {} now: the fader's {} and the track's volume bar by bar (the Vol lane)",
+                                        db_text(a),
+                                        db_text(s.gain_db)
+                                    )),
+                                    None => db_label(ui, db_text(s.gain_db), t.text_dim, &t),
                                 };
+                                ui.add_space(GAP);
+                                rule(ui, &t);
+                                ui.add_space(GAP);
+                                sends_and_cuts(ui, s);
                             });
                         })
                     });
@@ -138,18 +115,105 @@ impl App {
                         // letter to a line and make the mixer tall
                         ui.set_width(52.0);
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                        ui.label(egui::RichText::new("Master").font(t.semibold(11.5)));
-                        ui.add_space(6.0 * 18.0 + 10.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
                         ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 3.0;
+                            track_lamp(ui, true, t.accent);
+                            ui.label(egui::RichText::new("Master").font(t.semibold(11.5)));
+                        });
+                        // level with the tracks' faders: under their pan and width
+                        ui.add_space(GAP + 2.0 * (18.0 + 2.0) + GAP);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
                             fader(ui, &mut self.doc.project.master_db, None, &t);
                             meter(ui, &[master.0, master.1], true, &t);
                         });
-                        ui.label(egui::RichText::new(db_text(self.doc.project.master_db)).font(t.mono(10.5)).color(t.text_dim));
+                        db_label(ui, db_text(self.doc.project.master_db), t.text_dim, &t);
                     });
                 });
             });
         });
     }
+}
+
+/// The strip's lamp: lit while the track is heard (not muted, nor silenced by
+/// another track's solo).
+fn track_lamp(ui: &mut Ui, lit: bool, c: egui::Color32) {
+    widgets::lamp(ui, lit, c, 12.0).on_hover_text(if lit { "Heard" } else { "Silent: muted, or another track is soloed" });
+}
+
+/// The level under a fader, centred across the strip.
+fn db_label(ui: &mut Ui, text: String, colour: egui::Color32, t: &Tokens) -> egui::Response {
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(vec2(w, 14.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+        ui.label(egui::RichText::new(text).font(t.mono(10.5)).color(colour))
+    })
+    .inner
+}
+
+/// A faint line across the strip between its groups.
+pub(crate) fn rule(ui: &mut Ui, t: &Tokens) {
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0, t.divider));
+}
+
+/// Reverb and echo over the low and high cuts, as small dials two by two. Each
+/// points straight up at its neutral setting: the reverb at its usual 35% (turn
+/// either way), the echo with none (turn right for more), the low cut off (turn
+/// right to cut higher) and the high cut off (turn left to cut lower).
+fn sends_and_cuts(ui: &mut Ui, s: &mut dd_seq::project::Strip) {
+    const REVERB: f32 = 0.35;
+    const R: f32 = 10.0;
+    let pct = |v: f32| format!("{:.0}%", v * 100.0);
+    ui.columns(2, |c| {
+        widgets::unit_dial(
+            &mut c[0],
+            "Reverb",
+            "Send to the reverb. Straight up is the usual 35%",
+            &mut s.reverb,
+            REVERB,
+            R,
+            DialLayout::Under,
+            pct,
+        );
+        widgets::unit_dial(&mut c[1], "Echo", "Send to the echo. Straight up is none", &mut s.echo, 0.0, R, DialLayout::Under, pct);
+    });
+    ui.add_space(3.0);
+    // the cuts, evenly by octave from 20 Hz to 20 kHz
+    ui.columns(2, |c| {
+        let spec = DialSpec {
+            label: "Lo cut",
+            help: "Cut below this, 12 dB an octave: clears rumble and mud, or thins a sound out. Straight up is off",
+            neutral: LOW_CUT_OFF,
+            turns: 0.0..=1.0,
+            radius: R,
+            layout: DialLayout::Under,
+        };
+        widgets::dial(
+            &mut c[0],
+            &spec,
+            &mut s.low_cut,
+            hz_pos,
+            |x| if x <= 0.0 { LOW_CUT_OFF } else { pos_hz(x) },
+            |hz| if hz <= LOW_CUT_OFF { "Off".into() } else { hz_text(hz) },
+        );
+        let spec = DialSpec {
+            label: "Hi cut",
+            help: "Cut above this, 12 dB an octave: darkens or distances a sound, or keeps it out of a voice's way. Straight up is off",
+            neutral: HIGH_CUT_OFF,
+            turns: -1.0..=0.0,
+            radius: R,
+            layout: DialLayout::Under,
+        };
+        widgets::dial(
+            &mut c[1],
+            &spec,
+            &mut s.high_cut,
+            |hz| hz_pos(hz) - 1.0,
+            |x| if x >= 0.0 { HIGH_CUT_OFF } else { pos_hz(x + 1.0) },
+            |hz| if hz >= HIGH_CUT_OFF { "Off".into() } else { hz_text(hz) },
+        );
+    });
 }
 
 /// Where a frequency sits on a cut knob: 0 at 20 Hz, 1 at 20 kHz, evenly by octave.

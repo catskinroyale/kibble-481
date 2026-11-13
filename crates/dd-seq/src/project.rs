@@ -576,6 +576,120 @@ impl Project {
         self.rearrange(&blocks, &origin);
     }
 
+    /// Where each block of the arrangement starts and ends, in ticks.
+    pub fn block_ticks(&self) -> Vec<(u32, u32)> {
+        let bar_t = self.bar_ticks();
+        let mut at = 0;
+        self.arrangement()
+            .iter()
+            .map(|b| {
+                let a = at;
+                at += b.bars.max(1);
+                (a * bar_t, at * bar_t)
+            })
+            .collect()
+    }
+
+    /// Copy section `i` with its notes, its controllers and its tracks' bar levels,
+    /// putting the copy straight before or after it; what follows moves up to make room.
+    /// A note held across where the copy goes is cut there.
+    pub fn copy_section(&mut self, i: usize, after: bool) {
+        let blocks = self.arrangement();
+        let Some(&(a, b)) = self.block_ticks().get(i) else { return };
+        let len = b - a;
+        let at = if after { b } else { a };
+        for t in self.tracks.iter_mut() {
+            let seg: Vec<Note> = t
+                .notes
+                .iter()
+                .filter(|n| n.start >= a && n.start < b)
+                .map(|n| Note { start: n.start - a + at, len: n.len.min(b - n.start), ..*n })
+                .collect();
+            let seg_c: Vec<Ctrl> =
+                t.ctrls.iter().filter(|c| c.tick >= a && c.tick < b).map(|c| Ctrl { tick: c.tick - a + at, ..*c }).collect();
+            for n in t.notes.iter_mut() {
+                if n.start >= at {
+                    n.start += len;
+                } else if n.end() > at {
+                    n.len = at - n.start;
+                }
+            }
+            for c in t.ctrls.iter_mut().filter(|c| c.tick >= at) {
+                c.tick += len;
+            }
+            t.notes.extend(seg);
+            t.notes.sort_by_key(|n| (n.start, n.key));
+            t.ctrls.extend(seg_c);
+            t.ctrls.sort_by_key(|c| c.tick);
+        }
+        let mut fresh = blocks.clone();
+        let mut origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
+        let k = if after { i + 1 } else { i };
+        fresh.insert(k, blocks[i].clone());
+        origin.insert(k, Some(i));
+        self.rearrange(&fresh, &origin);
+    }
+
+    /// Take section `i` out with its notes, controllers and bar levels; what follows
+    /// moves back to close the gap. A note held into it from before is cut where it
+    /// began. The last section left can't be taken out.
+    pub fn delete_section(&mut self, i: usize) {
+        let blocks = self.arrangement();
+        if blocks.len() < 2 {
+            return;
+        }
+        let Some(&(a, b)) = self.block_ticks().get(i) else { return };
+        let len = b - a;
+        for t in self.tracks.iter_mut() {
+            t.notes.retain(|n| n.start < a || n.start >= b);
+            for n in t.notes.iter_mut() {
+                if n.start >= b {
+                    n.start -= len;
+                } else if n.end() > a {
+                    n.len = a - n.start;
+                }
+            }
+            t.ctrls.retain(|c| c.tick < a || c.tick >= b);
+            for c in t.ctrls.iter_mut().filter(|c| c.tick >= b) {
+                c.tick -= len;
+            }
+        }
+        let mut fresh = blocks;
+        let mut origin: Vec<Option<usize>> = (0..fresh.len()).map(Some).collect();
+        fresh.remove(i);
+        origin.remove(i);
+        self.rearrange(&fresh, &origin);
+        if let Some((x, y)) = self.loop_bars
+            && y > self.length_bars
+        {
+            self.loop_bars = (x < self.length_bars).then_some((x, self.length_bars));
+        }
+    }
+
+    /// Put `from`'s notes and controllers in section `i` in place of this piece's,
+    /// track by track (matched by name, else by place). `from` has the same
+    /// arrangement. A note held into the section from before is cut where it begins,
+    /// and the new notes end with it.
+    pub fn replace_section(&mut self, i: usize, from: &Project) {
+        let Some(&(a, b)) = self.block_ticks().get(i) else { return };
+        let same_count = self.tracks.len() == from.tracks.len();
+        for (j, t) in self.tracks.iter_mut().enumerate() {
+            let src = from.tracks.iter().find(|f| f.name == t.name).or_else(|| same_count.then(|| &from.tracks[j]));
+            t.notes.retain(|n| n.start < a || n.start >= b);
+            for n in t.notes.iter_mut().filter(|n| n.start < a && n.end() > a) {
+                n.len = a - n.start;
+            }
+            t.ctrls.retain(|c| c.tick < a || c.tick >= b);
+            if let Some(src) = src {
+                t.notes
+                    .extend(src.notes.iter().filter(|n| n.start >= a && n.start < b).map(|n| Note { len: n.len.min(b - n.start), ..*n }));
+                t.ctrls.extend(src.ctrls.iter().filter(|c| c.tick >= a && c.tick < b).copied());
+            }
+            t.notes.sort_by_key(|n| (n.start, n.key));
+            t.ctrls.sort_by_key(|c| c.tick);
+        }
+    }
+
     /// Composed, and not edited by hand since.
     pub fn untouched(&self) -> bool {
         self.recipe.is_some() && crate::compose::fingerprint(self) == self.composed

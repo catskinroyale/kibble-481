@@ -569,6 +569,464 @@ pub fn paint_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
+/// How a dial looks: its label, hover help, size, and whether its value is always
+/// shown under the label (else only while hovered, in the label's place).
+pub struct DialSpec<'a> {
+    pub label: &'a str,
+    pub help: &'a str,
+    /// The value it returns to on a double-click, shown straight up.
+    pub neutral: f32,
+    /// How far it turns: -1 is fully left (7:30), 0 straight up, 1 fully right (4:30).
+    pub turns: std::ops::RangeInclusive<f32>,
+    pub radius: f32,
+    pub layout: DialLayout,
+}
+
+/// Where a dial's name and value go.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DialLayout {
+    /// The dial at the left of a row, its name and then its value after it, as a
+    /// slider row reads.
+    Beside,
+    /// The name under the dial; the value shows in its place while hovered.
+    Under,
+    /// The name under the dial and the value, smaller, under that.
+    UnderWithValue,
+}
+
+/// A rotary dial that points straight up (12 o'clock) at its neutral setting.
+/// `to_turn` and `from_turn` map a value to a turn (-1..1) and back. Drag up or right
+/// to turn it clockwise; double-click for neutral. It writes `v` only when it moves,
+/// and says whether it did.
+pub fn dial(
+    ui: &mut Ui,
+    spec: &DialSpec,
+    v: &mut f32,
+    to_turn: impl Fn(f32) -> f32,
+    from_turn: impl Fn(f32) -> f32,
+    value: impl Fn(f32) -> String,
+) -> bool {
+    const SWEEP: f32 = 0.75 * std::f32::consts::PI; // either side of straight up
+    let t = Tokens::get(ui.ctx());
+    let r = spec.radius;
+    let h = match spec.layout {
+        DialLayout::Beside => 2.0 * r + 10.0,
+        DialLayout::Under => 2.0 * r + 4.0 + 15.0,
+        DialLayout::UnderWithValue => 2.0 * r + 4.0 + 27.0,
+    };
+    let (cell, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::click_and_drag());
+    let id = resp.id.with("turn");
+    let mut changed = false;
+    if resp.drag_started() {
+        // the unrounded turn, held while dragging, so values that round still move smoothly
+        ui.data_mut(|d| d.insert_temp(id, to_turn(*v)));
+    }
+    if resp.dragged() {
+        let d = resp.drag_delta();
+        let held: f32 = ui.data(|m| m.get_temp(id)).unwrap_or_else(|| to_turn(*v));
+        // a full sweep is about 150 points of drag
+        let x = (held + (d.x - d.y) / 75.0).clamp(*spec.turns.start(), *spec.turns.end());
+        ui.data_mut(|m| m.insert_temp(id, x));
+        let nv = from_turn(x);
+        changed = nv != *v;
+        *v = nv;
+    }
+    if resp.double_clicked() && *v != spec.neutral {
+        *v = spec.neutral;
+        changed = true;
+    }
+    let turn = to_turn(*v).clamp(-1.0, 1.0);
+    let c = if spec.layout == DialLayout::Beside {
+        pos2(cell.left() + r + 3.0, cell.center().y + 1.0)
+    } else {
+        pos2(cell.center().x, cell.top() + r + 2.0)
+    };
+    let at = |a: f32, rr: f32| c + vec2(a.sin(), -a.cos()) * rr;
+    let arc = |from: f32, to: f32, rr: f32| -> Vec<Pos2> {
+        let n = ((to - from).abs() / 0.12).ceil().max(1.0) as usize;
+        (0..=n).map(|i| at(from + (to - from) * i as f32 / n as f32, rr)).collect()
+    };
+    let painter = ui.painter();
+    let active = resp.hovered() || resp.dragged();
+    let w = if r >= 13.0 { 2.5 } else { 2.0 };
+    // the whole sweep faintly, the travel this dial has, then how far it is from neutral
+    let (lo, hi) = (*spec.turns.start() * SWEEP, *spec.turns.end() * SWEEP);
+    painter.add(egui::Shape::line(arc(-SWEEP, SWEEP, r), Stroke::new(1.0, t.track.gamma_multiply(0.6))));
+    painter.add(egui::Shape::line(arc(lo, hi, r), Stroke::new(w, t.track)));
+    if turn.abs() > 1e-3 {
+        painter.add(egui::Shape::line(arc(0.0, turn * SWEEP, r), Stroke::new(w, t.accent)));
+    }
+    painter.line_segment([at(0.0, r + 2.0), at(0.0, r + 4.0)], Stroke::new(1.0, t.text_dim));
+    let body = r - 3.0 - (w - 2.0);
+    painter.circle(c, body, if active { t.hover } else { t.button }, Stroke::new(1.0, t.button_border));
+    let tip = if active { t.thumb_hover } else { t.thumb };
+    painter.line_segment([c + (at(turn * SWEEP, body) - c) * 0.25, at(turn * SWEEP, body)], Stroke::new(w, tip));
+    let name_c = if active { t.text } else { t.text_label };
+    match spec.layout {
+        DialLayout::Beside => {
+            // as a slider row: the name, and the value at the right
+            let x = c.x + r + 8.0;
+            painter.text(pos2(x, cell.center().y), Align2::LEFT_CENTER, spec.label, t.font(13.0), name_c);
+            painter.text(pos2(cell.right() - 2.0, cell.center().y), Align2::RIGHT_CENTER, value(*v), t.mono(12.5), t.text_dim);
+        }
+        DialLayout::Under => {
+            let text = if active { value(*v) } else { spec.label.to_string() };
+            painter.text(pos2(cell.center().x, c.y + r + 4.0), Align2::CENTER_TOP, text, t.font(10.5), name_c);
+        }
+        DialLayout::UnderWithValue => {
+            painter.text(pos2(cell.center().x, c.y + r + 4.0), Align2::CENTER_TOP, spec.label, t.font(11.5), name_c);
+            painter.text(pos2(cell.center().x, c.y + r + 18.0), Align2::CENTER_TOP, value(*v), t.mono(10.0), t.text_dim);
+        }
+    }
+    resp.on_hover_text(format!(
+        "{}: {} · {}. Drag up or right to turn clockwise; double-click for neutral",
+        spec.label,
+        value(*v),
+        spec.help
+    ));
+    changed
+}
+
+/// The turn for a 0..1 value whose neutral is `d`: the left half of the dial covers
+/// 0..d and the right half d..1 (one side only when `d` is at an end).
+pub fn unit_turn(v: f32, d: f32) -> f32 {
+    if d <= 0.0 {
+        v
+    } else if d >= 1.0 {
+        v - 1.0
+    } else if v < d {
+        v / d - 1.0
+    } else {
+        (v - d) / (1.0 - d)
+    }
+}
+
+/// The 0..1 value at a turn, the inverse of [`unit_turn`].
+pub fn unit_value(x: f32, d: f32) -> f32 {
+    if d <= 0.0 {
+        x.clamp(0.0, 1.0)
+    } else if d >= 1.0 {
+        (1.0 + x).clamp(0.0, 1.0)
+    } else if x < 0.0 {
+        d * (1.0 + x)
+    } else {
+        d + x * (1.0 - d)
+    }
+}
+
+/// How far a dial for a 0..1 value with neutral `d` turns.
+pub fn unit_turns(d: f32) -> std::ops::RangeInclusive<f32> {
+    if d <= 0.0 {
+        0.0..=1.0
+    } else if d >= 1.0 {
+        -1.0..=0.0
+    } else {
+        -1.0..=1.0
+    }
+}
+
+/// A 0..1 amount as a dial with its neutral straight up.
+#[allow(clippy::too_many_arguments)]
+pub fn unit_dial(
+    ui: &mut Ui,
+    label: &str,
+    help: &str,
+    v: &mut f32,
+    neutral: f32,
+    radius: f32,
+    layout: DialLayout,
+    value: impl Fn(f32) -> String,
+) -> bool {
+    let spec = DialSpec { label, help, neutral, turns: unit_turns(neutral), radius, layout };
+    dial(ui, &spec, v, |v| unit_turn(v, neutral), |x| unit_value(x, neutral), value)
+}
+
+// ---- piano-key push buttons, as on a 1950s car radio or radiogram: rectangular
+// ivory keys side by side in one chrome bezel. A key punched in sinks and lights from
+// within like a neon; it stays down until another is punched.
+
+const KEY_H: f32 = 26.0;
+pub const KEY_GAP: f32 = 3.0;
+pub const BEZEL_PAD: f32 = 4.0;
+
+/// The bezel the keys sit in: a dark recess with a chrome rim.
+fn paint_bezel(p: &Painter, r: Rect, t: &Tokens) {
+    p.rect_filled(r, 5.0, t.canvas);
+    // the rim, catching the light along its top
+    p.rect_stroke(r, 5.0, Stroke::new(1.5, lerp_colour(t.text_dim, t.button_border, 0.4)), StrokeKind::Outside);
+    p.hline(r.x_range().shrink(5.0), r.top() - 1.0, Stroke::new(1.0, t.text_label.gamma_multiply(0.5)));
+    p.rect_stroke(r.shrink(1.0), 4.0, Stroke::new(1.0, Color32::BLACK.gamma_multiply(0.35)), StrokeKind::Inside);
+}
+
+/// One key in `r`, `p` from out (0) to in (1). Its neon flickers as it strikes.
+fn paint_key(ui: &Ui, r: Rect, label: &str, p: f32, hover: bool, enabled: bool, t: &Tokens) {
+    let painter = ui.painter();
+    let neon = if p > 0.0 && p < 1.0 { p * (0.55 + 0.45 * (p * 37.0).sin().abs()) } else { p };
+    const DEPTH: f32 = 4.0;
+    const ROUND: f32 = 2.5;
+    let ivory = lerp_colour(t.key_white, t.button, 0.18);
+    let ivory = if hover && enabled { lerp_colour(ivory, Color32::WHITE, 0.08) } else { ivory };
+    let ivory = if enabled { ivory } else { lerp_colour(ivory, t.button, 0.65) };
+    // the key's side shows below its face while it stands proud; punched in, the face sinks
+    let travel = DEPTH * p;
+    let face = Rect::from_min_max(pos2(r.left(), r.top() + travel), pos2(r.right(), r.bottom() - DEPTH + travel));
+    let side = Rect::from_min_max(face.min, r.max);
+    painter.rect_filled(side, ROUND, lerp_colour(ivory, Color32::BLACK, 0.45));
+    let lit = if enabled { neon } else { 0.0 };
+    if lit > 0.0 {
+        painter.rect_filled(face.expand(2.5), ROUND + 2.0, t.accent.gamma_multiply(0.22 * lit));
+    }
+    let shaded = lerp_colour(ivory, Color32::BLACK, 0.2 * p);
+    let fill = lerp_colour(shaded, t.accent, 0.72 * lit);
+    painter.rect_filled(face, ROUND, fill);
+    if p < 1.0 {
+        // light along the top edge of a key that stands proud
+        let hl = Rect::from_min_max(face.min + vec2(2.0, 1.0), pos2(face.right() - 2.0, face.top() + 2.5));
+        painter.rect_filled(hl, 1.0, Color32::WHITE.gamma_multiply(0.22 * (1.0 - p)));
+    }
+    painter.rect_stroke(face, ROUND, Stroke::new(1.0, Color32::BLACK.gamma_multiply(0.35)), StrokeKind::Inside);
+    let c = if !enabled { t.text_disabled } else { lerp_colour(t.key_black, t.on_accent, lit) };
+    painter.text(face.center(), Align2::CENTER_CENTER, label, t.semibold(11.5), c);
+}
+
+fn lerp_colour(a: Color32, b: Color32, x: f32) -> Color32 {
+    let x = x.clamp(0.0, 1.0);
+    let m = |p: u8, q: u8| (p as f32 + (q as f32 - p as f32) * x).round() as u8;
+    Color32::from_rgba_premultiplied(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()), m(a.a(), b.a()))
+}
+
+/// A row (or rows, `per_row` across) of keys in one bezel, filling the width it's
+/// given; `down` says which are in. Returns each key's response.
+pub fn key_bank(
+    ui: &mut Ui,
+    labels: &[&str],
+    down: &dyn Fn(usize, &Response) -> bool,
+    per_row: usize,
+    width: f32,
+    enabled: bool,
+) -> Vec<Response> {
+    let t = Tokens::get(ui.ctx());
+    let per_row = per_row.max(1);
+    let rows = labels.len().div_ceil(per_row);
+    let h = rows as f32 * KEY_H + (rows as f32 - 1.0) * KEY_GAP + 2.0 * BEZEL_PAD;
+    let (r, _) = ui.allocate_exact_size(vec2(width, h), Sense::hover());
+    paint_bezel(ui.painter(), r, &t);
+    let inner = r.shrink(BEZEL_PAD);
+    let w = (inner.width() - KEY_GAP * (per_row as f32 - 1.0)) / per_row as f32;
+    let base = ui.scope_id().with(("keys", r.min.x as i32, r.min.y as i32));
+    let mut out = Vec::new();
+    for (k, label) in labels.iter().enumerate() {
+        let (row, col) = (k / per_row, k % per_row);
+        let kr = Rect::from_min_size(
+            pos2(inner.left() + col as f32 * (w + KEY_GAP), inner.top() + row as f32 * (KEY_H + KEY_GAP)),
+            vec2(w, KEY_H),
+        );
+        let resp = ui.interact(kr, base.with(k), if enabled { Sense::click() } else { Sense::hover() });
+        let p = ui.ctx().animate_bool_with_time(resp.id.with("in"), down(k, &resp), 0.06);
+        paint_key(ui, kr, label, p, resp.hovered(), enabled, &t);
+        out.push(resp);
+    }
+    out
+}
+
+/// A bank of keys, one in at a time, `per_row` across the content column: punching
+/// one in lets the last one out. Returns the one punched in, when it changes.
+pub fn punch_bank(ui: &mut Ui, choices: &[(&str, &str)], selected: usize, per_row: usize, enabled: bool) -> Option<usize> {
+    inset(ui, |ui| {
+        let picked = punch_bank_here(ui, choices, selected, per_row, enabled);
+        ui.add_space(6.0);
+        picked
+    })
+}
+
+/// [`punch_bank`] across the width it's given rather than the content column.
+pub fn punch_bank_here(ui: &mut Ui, choices: &[(&str, &str)], selected: usize, per_row: usize, enabled: bool) -> Option<usize> {
+    let mut picked = None;
+    let labels: Vec<&str> = choices.iter().map(|c| c.0).collect();
+    let w = ui.available_width();
+    for (k, resp) in key_bank(ui, &labels, &|k, _| k == selected, per_row, w, enabled).into_iter().enumerate() {
+        let resp = if choices[k].1.is_empty() { resp } else { resp.on_hover_text(choices[k].1) };
+        if resp.clicked() && k != selected {
+            picked = Some(k);
+        }
+    }
+    picked
+}
+
+/// A key that latches: punch it in, punch it again to let it out.
+pub fn punch_latch(ui: &mut Ui, width: f32, label: &str, on: &mut bool, help: &str) -> bool {
+    let state = *on;
+    let clicked = key_bank(ui, &[label], &|_, _| state, 1, width, true).remove(0).on_hover_text(help).clicked();
+    if clicked {
+        *on = !*on;
+    }
+    clicked
+}
+
+/// A key that springs back: in while held, out when let go.
+pub fn punch_momentary(ui: &mut Ui, width: f32, label: &str, help: &str) -> bool {
+    key_bank(ui, &[label], &|_, r| r.is_pointer_button_down_on(), 1, width, true).remove(0).on_hover_text(help).clicked()
+}
+
+/// A setting shown as a small dial: any range, linear or by ratio (log), straight up
+/// at its usual setting.
+pub struct Knob<'a> {
+    pub label: &'a str,
+    pub v: &'a mut f32,
+    pub min: f32,
+    pub max: f32,
+    pub default: f32,
+    pub log: bool,
+    pub decimals: usize,
+    pub suffix: &'a str,
+    /// Show 0..1 as a percentage.
+    pub percent: bool,
+    pub help: String,
+    pub enabled: bool,
+}
+
+impl<'a> Knob<'a> {
+    /// A value from `range.0` to `range.1`, shown with `decimals` and `suffix`.
+    pub fn new(label: &'a str, v: &'a mut f32, range: (f32, f32), default: f32, decimals: usize, suffix: &'a str, help: &str) -> Self {
+        Knob {
+            label,
+            v,
+            min: range.0,
+            max: range.1,
+            default,
+            log: false,
+            decimals,
+            suffix,
+            percent: false,
+            help: help.to_string(),
+            enabled: true,
+        }
+    }
+
+    /// A 0..1 amount, shown as a percentage, with what each end means.
+    pub fn amount(label: &'a str, v: &'a mut f32, default: f32, ends: (&str, &str), help: &str) -> Self {
+        let help = if default <= 0.0 {
+            format!("{help}. Straight up is {}; turn right for {}", ends.0, ends.1)
+        } else {
+            format!("{help}. Turn left for {}, right for {}", ends.0, ends.1)
+        };
+        Knob { percent: true, ..Knob::new(label, v, (0.0, 1.0), default, 0, "", &help) }
+    }
+
+    /// Spread evenly by ratio (octaves, decades) rather than by step.
+    pub fn log(self) -> Self {
+        Knob { log: true, ..self }
+    }
+
+    pub fn enabled(self, enabled: bool) -> Self {
+        Knob { enabled, ..self }
+    }
+
+    fn unit(&self, v: f32) -> f32 {
+        let x = if self.log && self.min > 0.0 {
+            (v.max(self.min) / self.min).ln() / (self.max / self.min).ln()
+        } else {
+            (v - self.min) / (self.max - self.min)
+        };
+        x.clamp(0.0, 1.0)
+    }
+
+    fn value_at(&self, x: f32) -> f32 {
+        if self.log && self.min > 0.0 { self.min * (self.max / self.min).powf(x) } else { self.min + x * (self.max - self.min) }
+    }
+
+    fn text(&self, v: f32) -> String {
+        if self.percent {
+            format!("{:.0}%", v * 100.0)
+        } else if self.min < 0.0 {
+            format!("{:+.*}{}", self.decimals, v, self.suffix)
+        } else {
+            format!("{:.*}{}", self.decimals, v, self.suffix)
+        }
+    }
+
+    /// The dial, name under it and value on hover, as on a mixer strip.
+    pub fn show(&mut self, ui: &mut Ui) {
+        let d = self.unit(self.default);
+        let mut u = self.unit(*self.v);
+        let spec =
+            DialSpec { label: self.label, help: &self.help, neutral: d, turns: unit_turns(d), radius: 10.0, layout: DialLayout::Under };
+        let me = &*self;
+        let changed = ui
+            .add_enabled_ui(self.enabled, |ui| {
+                dial(ui, &spec, &mut u, |u| unit_turn(u, d), |x| unit_value(x, d), |u| me.text(me.value_at(u)))
+            })
+            .inner;
+        if changed {
+            *self.v = if (u - d).abs() < 1e-6 { self.default } else { self.value_at(u) };
+        }
+    }
+}
+
+/// Knobs two to a row, as the dials on a mixer strip.
+pub fn knob_rows(ui: &mut Ui, knobs: &mut [Knob]) {
+    for pair in knobs.chunks_mut(2) {
+        ui.columns(2, |c| {
+            for (k, kn) in pair.iter_mut().enumerate() {
+                kn.show(&mut c[k]);
+            }
+        });
+        ui.add_space(3.0);
+    }
+}
+
+/// A small dim heading for a group within a strip.
+pub fn strip_heading(ui: &mut Ui, text: &str, enabled: bool) {
+    let t = Tokens::get(ui.ctx());
+    ui.label(egui::RichText::new(text).font(t.font(10.0)).color(if enabled { t.text_dim } else { t.text_disabled }));
+}
+
+/// A choice as a row: a small neon lamp, lit when `lit`, and its name beside it, as a
+/// track's lamp and name on the mixer. The whole row is the button.
+pub fn lamp_row(ui: &mut Ui, label: &str, lit: bool, enabled: bool) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 17.0), sense);
+    if enabled && resp.hovered() {
+        ui.painter().rect_filled(r, 3.0, t.hover);
+    }
+    let colour = if enabled { t.accent } else { t.text_disabled };
+    let lamp_r = Rect::from_min_size(pos2(r.left() + 1.0, r.center().y - 6.0), vec2(12.0, 12.0));
+    let mut lui = ui.new_child(egui::UiBuilder::new().max_rect(lamp_r));
+    lamp(&mut lui, lit && enabled, colour, 12.0);
+    let c = if !enabled {
+        t.text_disabled
+    } else if lit || resp.hovered() {
+        t.text
+    } else {
+        t.text_label
+    };
+    let font = if lit && enabled { t.semibold(10.5) } else { t.font(10.5) };
+    ui.painter().with_clip_rect(r).text(pos2(r.left() + 17.0, r.center().y), Align2::LEFT_CENTER, label, font, c);
+    resp
+}
+
+/// A neon indicator lamp in `colour`: glowing when `lit`, dark glass when not.
+pub fn lamp(ui: &mut Ui, lit: bool, colour: Color32, size: f32) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (r, resp) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
+    let c = r.center();
+    let rad = size * 0.32;
+    let p = ui.painter();
+    if lit {
+        // the glow: wide faint halos, then a bright core whitening at its heart
+        for (k, a) in [(2.4, 0.07), (1.8, 0.12), (1.35, 0.22)] {
+            p.circle_filled(c, rad * k, colour.gamma_multiply(a));
+        }
+        p.circle_filled(c, rad, colour);
+        p.circle_filled(c - vec2(rad * 0.2, rad * 0.2), rad * 0.45, Color32::WHITE.gamma_multiply(0.75));
+    } else {
+        p.circle_filled(c, rad, t.canvas);
+        p.circle_stroke(c, rad, Stroke::new(1.0, colour.gamma_multiply(0.35)));
+    }
+    resp
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

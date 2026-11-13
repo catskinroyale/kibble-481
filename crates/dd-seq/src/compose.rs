@@ -1614,6 +1614,19 @@ fn soft_groove(out: &mut Vec<Note>, secs: &[(Part, u32, u32)], rng: &mut Rng, be
     }
 }
 
+/// Write section `i` again with new notes: the piece's style, key, mode and density, a
+/// new seed. The rest of the piece is left as it is. Needs a composed piece whose
+/// sections are all parts; returns whether it could.
+pub fn regenerate_section(p: &mut Project, i: usize, seed: u64) -> bool {
+    let (Some(r), Some(plan)) = (p.recipe, p.plan()) else { return false };
+    if i >= plan.len() {
+        return false;
+    }
+    let fresh = compose_plan(&Recipe { seed, ..r }, p.bpm, p.meter, &plan);
+    p.replace_section(i, &fresh);
+    true
+}
+
 /// Give a freshly composed piece the bar levels of the matching tracks (by name) of the
 /// one it replaces: they're the mix's shape, set by hand, and outlast a new seed.
 pub fn keep_levels(new: &mut Project, old: &Project) {
@@ -1784,6 +1797,66 @@ mod tests {
     /// Noir: music alone (no rain or city sounds at all), opening on an intro, with the
     /// electric piano, a walking bass, brushes, and a lead that rests every other phrase;
     /// any style plays an intro.
+    /// The notes starting in [a, b), moved to start from 0.
+    fn notes_in(p: &Project, a: u32, b: u32) -> Vec<Vec<Note>> {
+        p.tracks
+            .iter()
+            .map(|t| t.notes.iter().filter(|n| n.start >= a && n.start < b).map(|n| Note { start: n.start - a, ..*n }).collect())
+            .collect()
+    }
+
+    #[test]
+    fn sections_copy_delete_and_write_again() {
+        let r = Recipe { style: Style::Noir, ..Recipe::default() };
+        let p = compose_plan(&r, 64.0, (4, 4), &[(Part::Neon, 4), (Part::Swell, 4), (Part::Fade, 4)]);
+        let bar = p.bar_ticks();
+        let len = 4 * bar;
+        let (swell, fade) = (notes_in(&p, len, 2 * len), notes_in(&p, 2 * len, 3 * len));
+
+        // copied after: the Swell twice, the Fade moved on
+        let mut c = p.clone();
+        c.copy_section(1, true);
+        let parts: Vec<Option<Part>> = c.arrangement().iter().map(|b| b.part).collect();
+        assert_eq!(parts, [Some(Part::Neon), Some(Part::Swell), Some(Part::Swell), Some(Part::Fade)]);
+        assert_eq!(c.length_bars, 16);
+        // notes held past the section's end are cut at it in the copy
+        let clip = |v: Vec<Vec<Note>>| -> Vec<Vec<Note>> {
+            v.into_iter().map(|t| t.into_iter().map(|n| Note { len: n.len.min(len - n.start), ..n }).collect()).collect()
+        };
+        assert_eq!(clip(notes_in(&c, 2 * len, 3 * len)), clip(swell.clone()));
+        assert_eq!(notes_in(&c, 3 * len, 4 * len), fade);
+
+        // copied before: the same, the copy first
+        let mut c = p.clone();
+        c.copy_section(1, false);
+        assert_eq!(c.length_bars, 16);
+        assert_eq!(clip(notes_in(&c, len, 2 * len)), clip(swell.clone()));
+        assert_eq!(notes_in(&c, 3 * len, 4 * len), fade);
+
+        // deleted: the Fade moves back, and nothing sounds past the end
+        let mut d = p.clone();
+        d.delete_section(1);
+        assert_eq!(d.arrangement().len(), 2);
+        assert_eq!(d.length_bars, 8);
+        assert_eq!(notes_in(&d, len, 2 * len), fade);
+        assert!(d.tracks.iter().all(|t| t.notes.iter().all(|n| n.end() <= 8 * bar + len)));
+        let mut one = compose_plan(&r, 64.0, (4, 4), &[(Part::Neon, 4)]);
+        one.recipe = Some(r);
+        one.delete_section(0);
+        assert_eq!(one.arrangement().len(), 1, "the last section stays");
+
+        // written again: new notes in the Swell, the rest as they were
+        let mut g = p.clone();
+        g.recipe = Some(r);
+        assert!(regenerate_section(&mut g, 1, r.seed + 1));
+        assert_ne!(notes_in(&g, len, 2 * len), swell);
+        assert_eq!(notes_in(&g, 2 * len, 3 * len), fade);
+        let before: Vec<Vec<u32>> = p.tracks.iter().map(|t| t.notes.iter().filter(|n| n.start < len).map(|n| n.start).collect()).collect();
+        let after: Vec<Vec<u32>> = g.tracks.iter().map(|t| t.notes.iter().filter(|n| n.start < len).map(|n| n.start).collect()).collect();
+        assert_eq!(before, after);
+        assert!(g.tracks.iter().all(|t| t.notes.iter().all(|n| n.start >= len || n.end() <= len || n.start >= 2 * len)));
+    }
+
     #[test]
     fn noir_is_music_alone() {
         for seed in 0..12 {

@@ -658,6 +658,42 @@ impl App {
         self.status = format!("\u{201c}{}\u{201d}: {} in {}, seed {}", self.doc.project.title, r.style.label(), r.key_label(), r.seed);
     }
 
+    /// Do what a section's button asked: the piece keeps its other notes, and isn't
+    /// written again around the change (it now counts as edited).
+    pub(crate) fn section_action(&mut self, act: crate::roll::SectionAct) {
+        use crate::roll::SectionAct;
+        let name =
+            |p: &Project, i: usize| p.arrangement().get(i).map_or(String::new(), |b| b.part.map_or(b.name.clone(), |p| p.label().into()));
+        let p = &mut self.doc.project;
+        let what = name(
+            p,
+            match act {
+                SectionAct::Regenerate(i) | SectionAct::Copy(i, _) | SectionAct::Delete(i) => i,
+            },
+        );
+        self.status = match act {
+            SectionAct::Regenerate(i) => {
+                let seed = entropy() % 1_000_000;
+                if dd_seq::compose::regenerate_section(p, i, seed) {
+                    format!("New notes for the {what} (seed {seed})")
+                } else {
+                    "Only a composed piece can have new notes written".into()
+                }
+            }
+            SectionAct::Copy(i, after) => {
+                p.copy_section(i, after);
+                format!("Copied the {what} {}", if after { "after itself" } else { "in front of itself" })
+            }
+            SectionAct::Delete(i) => {
+                p.delete_section(i);
+                format!("Took out the {what}")
+            }
+        };
+        self.roll.selected.clear();
+        // so the change isn't taken for a new arrangement to write the piece again to
+        self.shape = Shape::of(&self.doc.project);
+    }
+
     /// When the tempo, metre, length or sections change, a composed piece that hasn't been
     /// edited is written again to fit; an edited one keeps its notes, with those held
     /// to the end held to the new end. A changed recipe (key, mode, seed, density)

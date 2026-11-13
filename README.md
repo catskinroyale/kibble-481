@@ -60,7 +60,11 @@ Intro); an Intro can open a piece in any style. In the Score tab's
 section list, drag a section by its ≡ grip to move it, drag one of the **+** buttons into
 place to add a section there (or click it to add one at the end), and × to remove one; drag
 the end of a section on the Sections strip above the roll to make it a bar or more longer
-or shorter. A composed piece is written again to follow the arrangement. Set the key and
+or shorter. A composed piece is written again to follow the arrangement. On the Sections
+strip itself, hover over a section for its own buttons (or right-click it): **↻** writes
+new notes for just that section, in the piece's style and key; **‹+** and **+›** copy it,
+notes and all, in front of or after itself; **×** takes it out, notes and all. These keep
+the rest of the piece as it is, so it then counts as edited (⌘Z undoes them). Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
@@ -126,7 +130,11 @@ note plays two full voices together, each with:
 Around them: glide (poly or mono/legato), **sag** (the pitch droops as a released chord dies
 away, the signature of that brass), a **ribbon** bend range up to two octaves, analogue
 **drift**, ring modulation, stereo spread, and **touch** (aftertouch) that brightens, adds
-vibrato or bends, as the CS-80's second touch did. Sixteen voices.
+vibrato or bends, as the CS-80's second touch did. Sixteen voices. In the Sound tab the
+patch is laid out in strips like the mixer's: Layer I and Layer II side by side (each
+switched on and off by the lamp by its name), then Glide, LFO and Touch; every setting is
+a small dial, straight up at its usual setting, and every choice (octave, LFO shape, mono
+legato) a neon lamp.
 
 47 factory patches, all original: seven brass, six pads, three strings, six leads, six
 basses, six bells, four keys, two plucks, five drones and two atmospheres. Among them are
@@ -201,22 +209,31 @@ Load any other `.sf2` from the Sound tab.
 - **Lane** under the roll: velocities, or draw the mod wheel, touch, pitch bend, brightness
   (CC74, the synth's filter) or expression.
 - **Overview** of every track above the roll; **sections** on the strip above the ruler
-  (drag a section's end to resize it, a bar at a time), ordered in the Score tab.
+  (drag a section's end to resize it, a bar at a time; hover for new notes, copy before or
+  after, and delete), ordered in the Score tab.
 - **Tracks**: click anywhere on a track to select it; double-click its name (or Rename in
   its right-click menu) to rename it.
 - Undo and redo (⌘Z, ⇧⌘Z) for everything.
 
 ## Mixing
 
-Each track has a strip: fader, pan, width, reverb and echo sends, a **low cut** and a
-**high cut**, the ensemble chorus, mute and solo. The cuts (12 dB an octave, 20 Hz–20 kHz,
-double-click for off) filter the track's sound after its instrument, so they work the same
+Each track has a strip: a neon lamp, lit while the track is heard (not muted, nor silenced
+by another track's solo; the track list has the same lamp), pan and width, the fader with
+mute, solo and the ensemble chorus, and at the foot four small dials: reverb and echo sends over a **low cut** and a **high
+cut**. Each dial points straight up at its neutral setting (reverb at the usual 35%, no
+echo, both cuts off): turn the reverb either way, the echo and low cut right, the high cut
+left. Drag up or right to turn clockwise; double-click for neutral. The cuts (12 dB an
+octave, 20 Hz–20 kHz) filter the track's sound after its instrument, so they work the same
 on the synth, the kits and SoundFonts: a SoundFont has no high-pass of its own and only
 some presets answer the brightness controller, so the filter isn't left to it. They are
 saved with the project but, having no standard MIDI message, aren't in an exported MIDI
 file for other programs. Shared effects (from Ambient MIDI Generator): eight reverb spaces including
 **Noir** (a vast, dark 1980s digital hall), Shimmer and Black Hole; a tempo-synced tape
-echo; a string-machine ensemble; A = 440/432/415 Hz.
+echo; a string-machine ensemble; A = 440/432/415 Hz. The Effects tab is three small strips like
+the mixer's, Reverb, Echo and Ensemble: each choice (the reverb space, echo time, shimmer
+interval, tuning, and Freeze and Ping-pong) is a neon lamp and its name, lit when chosen;
+click one to choose it. Under them are the settings as small dials, two to a row, as on
+the mixer (the shimmer's own are greyed out in the other spaces).
 
 ## Getting it out
 

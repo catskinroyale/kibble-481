@@ -12,7 +12,7 @@ use eframe::egui;
 use crate::app::App;
 use crate::roll::key_name;
 use crate::theme::Tokens;
-use crate::widgets::{self, Segment, SliderSpec};
+use crate::widgets::{self, Segment};
 
 /// A short phrase that shows off a sound in its role, in the track's register and the
 /// piece's key: (start, length) in seconds, key, velocity.
@@ -92,305 +92,267 @@ pub fn credit(font: &str) -> &'static str {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn sl(
-    ui: &mut egui::Ui,
-    id: &str,
-    label: &str,
-    v: &mut f32,
-    range: (f32, f32),
-    default: f32,
-    decimals: usize,
-    suffix: &str,
-    log: bool,
-    help: &str,
-) {
-    let spec = SliderSpec {
-        id,
-        label,
-        help,
-        min: range.0 as f64,
-        max: range.1 as f64,
-        default: default as f64,
-        step: if decimals == 0 { 1.0 } else { 10f64.powi(-(decimals as i32)) },
-        decimals,
-        suffix,
-        log,
-        signed: range.0 < 0.0,
-        ..Default::default()
-    };
-    let mut x = *v as f64;
-    if widgets::slider(ui, &spec, &mut x, true) {
-        *v = x as f32;
-    }
+use widgets::Knob;
+
+/// An envelope's four stages as dials.
+fn env_knobs<'a>(e: &'a mut Env, d: Env, what: &str) -> Vec<Knob<'a>> {
+    let Env { attack, decay, sustain, release } = e;
+    vec![
+        Knob::new("Attack", attack, (0.001, 12.0), d.attack, 3, " s", &format!("How long the {what} takes to rise")).log(),
+        Knob::new("Decay", decay, (0.001, 12.0), d.decay, 3, " s", &format!("How long the {what} takes to fall to the sustain level"))
+            .log(),
+        Knob::amount("Sustain", sustain, d.sustain, ("none", "full"), &format!("Where the {what} rests while the key is held")),
+        Knob::new(
+            "Release",
+            release,
+            (0.001, 12.0),
+            d.release,
+            3,
+            " s",
+            &format!("How long the {what} takes to die away after the key is let go"),
+        )
+        .log(),
+    ]
 }
 
-fn amount(ui: &mut egui::Ui, id: &str, label: &str, v: &mut f32, default: f32, ends: (&str, &str), help: &str) {
-    let spec = SliderSpec { id, label, help, ends: Some(ends), default: default as f64, ..Default::default() };
-    let mut x = *v as f64;
-    if widgets::slider(ui, &spec, &mut x, true) {
-        *v = x as f32;
-    }
-}
-
-fn secs(ui: &mut egui::Ui, id: &str, label: &str, v: &mut f32, default: f32, help: &str) {
-    sl(ui, id, label, v, (0.001, 12.0), default, 3, " s", true, help);
-}
-
-fn env_ui(ui: &mut egui::Ui, id: &str, e: &mut Env, d: Env, what: &str) {
-    secs(ui, &format!("{id}-a"), "Attack", &mut e.attack, d.attack, &format!("How long the {what} takes to rise"));
-    secs(ui, &format!("{id}-d"), "Decay", &mut e.decay, d.decay, &format!("How long the {what} takes to fall to the sustain level"));
-    amount(
-        ui,
-        &format!("{id}-s"),
-        "Sustain",
-        &mut e.sustain,
-        d.sustain,
-        ("none", "full"),
-        &format!("Where the {what} rests while the key is held"),
-    );
-    secs(
-        ui,
-        &format!("{id}-r"),
-        "Release",
-        &mut e.release,
-        d.release,
-        &format!("How long the {what} takes to die away after the key is let go"),
-    );
-}
-
-fn layer_ui(ui: &mut egui::Ui, l: &mut Layer, n: usize) {
+/// One layer as a strip: its lamp switches it on, then its level, pitch, oscillators,
+/// filters and envelopes as dials.
+fn layer_strip(ui: &mut egui::Ui, t: &Tokens, l: &mut Layer, n: usize) {
     let d = Layer::default();
-    let id = |s: &str| format!("l{n}-{s}");
-    widgets::inset(ui, |ui| {
-        ui.checkbox(&mut l.on, "Layer plays").on_hover_text("Switch this layer on or off");
-    });
-    ui.add_space(4.0);
-    sl(ui, &id("level"), "Level", &mut l.level, (0.0, 1.0), d.level, 2, "", false, "How loud this layer is against the other");
-    widgets::inset(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Octave");
-            for o in -2i8..=2 {
-                let label = match o {
-                    -2 => "32'",
-                    -1 => "16'",
-                    0 => "8'",
-                    1 => "4'",
-                    _ => "2'",
-                };
-                ui.selectable_value(&mut l.octave, o, label).on_hover_text(format!("{o:+} octaves"));
+    let (title, help) = if n == 0 {
+        ("Layer I", "The first voice of every note")
+    } else {
+        ("Layer II", "The second voice, played together with the first")
+    };
+    let on = l.on;
+    let mut plays = l.on;
+    crate::panels::rack_strip(ui, t, title, help, Some(&mut plays), |ui| {
+        let mut k = vec![
+            Knob::new("Level", &mut l.level, (0.0, 1.0), d.level, 2, "", "How loud this layer is against the other").enabled(on),
+            Knob::new("Pan", &mut l.pan, (-1.0, 1.0), 0.0, 2, "", "Place the layer left or right").enabled(on),
+            Knob::new(
+                "Detune",
+                &mut l.detune,
+                (-50.0, 50.0),
+                0.0,
+                1,
+                " ct",
+                "Pull this layer off pitch against the other, for a thick, beating sound",
+            )
+            .enabled(on),
+        ];
+        widgets::knob_rows(ui, &mut k);
+        widgets::strip_heading(ui, "Octave", on);
+        for o in -2i8..=2 {
+            let label = match o {
+                -2 => "32'",
+                -1 => "16'",
+                0 => "8'",
+                1 => "4'",
+                _ => "2'",
+            };
+            if widgets::lamp_row(ui, label, l.octave == o, on).on_hover_text(format!("{o:+} octaves")).clicked() {
+                l.octave = o;
             }
-        });
+        }
+        crate::panels::strip_rule(ui, t);
+        widgets::strip_heading(ui, "Oscillators", on);
+        let mut k = vec![
+            Knob::amount("Saw", &mut l.saw, d.saw, ("off", "full"), "Bright and buzzy: brass and strings"),
+            Knob::amount("Pulse", &mut l.pulse, 0.0, ("off", "full"), "Hollow to nasal, by its width"),
+            Knob::new("Width", &mut l.width, (0.05, 0.5), 0.5, 2, "", "Pulse width: 0.5 is a square, narrower is thinner"),
+            Knob::amount("PWM", &mut l.pwm, 0.0, ("still", "sweeping"), "The LFO sweeps the pulse width, for a chorused shimmer"),
+            Knob::amount("Sine", &mut l.sine, 0.0, ("off", "full"), "Pure and round: bells and electric piano with FM"),
+            Knob::amount("Noise", &mut l.noise, 0.0, ("off", "full"), "Breath, wind, rain"),
+            Knob::new(
+                "FM ratio",
+                &mut l.fm_ratio,
+                (0.5, 16.0),
+                1.0,
+                2,
+                "×",
+                "The modulator's pitch against the note: whole numbers sound harmonic, others like bells",
+            )
+            .log(),
+            Knob::amount("FM depth", &mut l.fm_depth, 0.0, ("pure", "metallic"), "How hard the modulator bends the sine"),
+            Knob::new(
+                "FM decay",
+                &mut l.fm_decay,
+                (0.0, 8.0),
+                0.0,
+                2,
+                " s",
+                "How fast the FM brightness dies away (0 = held): the strike of a bell or tine",
+            ),
+            Knob::amount("Drive", &mut l.drive, 0.0, ("clean", "driven"), "Saturate before the filters"),
+        ];
+        k.iter_mut().for_each(|x| x.enabled = on);
+        widgets::knob_rows(ui, &mut k);
+        crate::panels::strip_rule(ui, t);
+        widgets::strip_heading(ui, "Filters", on);
+        let mut k = vec![
+            Knob::new("High-pass", &mut l.hpf, (20.0, 6000.0), 20.0, 0, " Hz", "Thin out the bottom (12 dB an octave)").log(),
+            Knob::amount("HP reso", &mut l.hpf_res, 0.0, ("flat", "peaky"), "A peak at the high-pass cutoff"),
+            Knob::new(
+                "Low-pass",
+                &mut l.lpf,
+                (40.0, 18000.0),
+                d.lpf,
+                0,
+                " Hz",
+                "Darken the top (12 dB an octave): where the filter starts before its envelope opens it",
+            )
+            .log(),
+            Knob::amount("LP reso", &mut l.lpf_res, d.lpf_res, ("flat", "singing"), "A peak at the low-pass cutoff"),
+            Knob::new(
+                "Env amt",
+                &mut l.env_amount,
+                (-4.0, 6.0),
+                d.env_amount,
+                2,
+                " oct",
+                "How far the filter envelope opens (or closes) the low-pass",
+            ),
+            Knob::amount("Key track", &mut l.key_track, d.key_track, ("none", "full"), "Higher notes open the filter more"),
+        ];
+        k.iter_mut().for_each(|x| x.enabled = on);
+        widgets::knob_rows(ui, &mut k);
+        crate::panels::strip_rule(ui, t);
+        widgets::strip_heading(ui, "Filter envelope", on);
+        let mut k = env_knobs(&mut l.filter_env, d.filter_env, "filter");
+        k.iter_mut().for_each(|x| x.enabled = on);
+        widgets::knob_rows(ui, &mut k);
+        crate::panels::strip_rule(ui, t);
+        widgets::strip_heading(ui, "Amp envelope", on);
+        let mut k = env_knobs(&mut l.amp_env, d.amp_env, "level");
+        k.iter_mut().for_each(|x| x.enabled = on);
+        widgets::knob_rows(ui, &mut k);
+        crate::panels::strip_rule(ui, t);
+        widgets::strip_heading(ui, "Velocity", on);
+        let mut k = vec![
+            Knob::new("Filter", &mut l.vel_to_filter, (0.0, 3.0), d.vel_to_filter, 2, " oct", "Initial touch: harder notes play brighter"),
+            Knob::amount("Level", &mut l.vel_to_amp, d.vel_to_amp, ("even", "dynamic"), "How much harder notes play louder"),
+        ];
+        k.iter_mut().for_each(|x| x.enabled = on);
+        widgets::knob_rows(ui, &mut k);
     });
-    sl(
-        ui,
-        &id("detune"),
-        "Detune",
-        &mut l.detune,
-        (-50.0, 50.0),
-        0.0,
-        1,
-        " ct",
-        false,
-        "Pull this layer off pitch against the other, for a thick, beating sound",
-    );
-    widgets::subtitle(ui, "Oscillators", "Mix the waves; they run into the filters");
-    amount(ui, &id("saw"), "Saw", &mut l.saw, d.saw, ("off", "full"), "Bright and buzzy: brass and strings");
-    amount(ui, &id("pulse"), "Pulse", &mut l.pulse, 0.0, ("off", "full"), "Hollow to nasal, by its width");
-    sl(ui, &id("width"), "Width", &mut l.width, (0.05, 0.5), 0.5, 2, "", false, "Pulse width: 0.5 is a square, narrower is thinner");
-    amount(ui, &id("pwm"), "PWM", &mut l.pwm, 0.0, ("still", "sweeping"), "The LFO sweeps the pulse width, for a chorused shimmer");
-    amount(ui, &id("sine"), "Sine", &mut l.sine, 0.0, ("off", "full"), "Pure and round: bells and electric piano with FM");
-    sl(
-        ui,
-        &id("fmr"),
-        "FM ratio",
-        &mut l.fm_ratio,
-        (0.5, 16.0),
-        1.0,
-        2,
-        "×",
-        true,
-        "The modulator's pitch against the note: whole numbers sound harmonic, others like bells",
-    );
-    amount(ui, &id("fmd"), "FM depth", &mut l.fm_depth, 0.0, ("pure", "metallic"), "How hard the modulator bends the sine");
-    sl(
-        ui,
-        &id("fmt"),
-        "FM decay",
-        &mut l.fm_decay,
-        (0.0, 8.0),
-        0.0,
-        2,
-        " s",
-        false,
-        "How fast the FM brightness dies away (0 = held): the strike of a bell or tine",
-    );
-    amount(ui, &id("noise"), "Noise", &mut l.noise, 0.0, ("off", "full"), "Breath, wind, rain");
-    amount(ui, &id("drive"), "Drive", &mut l.drive, 0.0, ("clean", "driven"), "Saturate before the filters");
-    widgets::subtitle(ui, "Filters", "A high-pass then a low-pass, 12 dB/octave each");
-    sl(ui, &id("hpf"), "High-pass", &mut l.hpf, (20.0, 6000.0), 20.0, 0, " Hz", true, "Thin out the bottom");
-    amount(ui, &id("hpr"), "HP reso", &mut l.hpf_res, 0.0, ("flat", "peaky"), "A peak at the high-pass cutoff");
-    sl(
-        ui,
-        &id("lpf"),
-        "Low-pass",
-        &mut l.lpf,
-        (40.0, 18000.0),
-        d.lpf,
-        0,
-        " Hz",
-        true,
-        "Darken the top: where the filter starts before its envelope opens it",
-    );
-    amount(ui, &id("lpr"), "LP reso", &mut l.lpf_res, d.lpf_res, ("flat", "singing"), "A peak at the low-pass cutoff");
-    sl(
-        ui,
-        &id("envamt"),
-        "Env amount",
-        &mut l.env_amount,
-        (-4.0, 6.0),
-        d.env_amount,
-        2,
-        " oct",
-        false,
-        "How far the filter envelope opens (or closes) the low-pass",
-    );
-    amount(ui, &id("kt"), "Key track", &mut l.key_track, d.key_track, ("none", "full"), "Higher notes open the filter more");
-    sl(
-        ui,
-        &id("vf"),
-        "Touch → filter",
-        &mut l.vel_to_filter,
-        (0.0, 3.0),
-        d.vel_to_filter,
-        2,
-        " oct",
-        false,
-        "Initial touch: harder notes play brighter",
-    );
-    widgets::subtitle(ui, "Filter envelope", "Opens the low-pass for each note");
-    env_ui(ui, &id("fe"), &mut l.filter_env, d.filter_env, "filter");
-    widgets::subtitle(ui, "Amp envelope", "The note's loudness");
-    env_ui(ui, &id("ae"), &mut l.amp_env, d.amp_env, "level");
-    amount(ui, &id("va"), "Touch → level", &mut l.vel_to_amp, d.vel_to_amp, ("even", "dynamic"), "How much harder notes play louder");
-    sl(ui, &id("pan"), "Pan", &mut l.pan, (-1.0, 1.0), 0.0, 2, "", false, "Place the layer left or right");
+    l.on = plays;
 }
 
 fn patch_ui(ui: &mut egui::Ui, p: &mut Patch) {
+    let t = Tokens::get(ui.ctx());
     let d = Patch::default();
-    let layer_id = egui::Id::unique("dd-edit-layer");
-    let mut layer: usize = ui.data(|m| m.get_temp(layer_id)).unwrap_or(0);
-    widgets::section(ui, "layers", "Layers I and II", true, |ui| {
-        let segs = [
-            Segment { label: "Layer I", selected: layer == 0, enabled: true, help: "The first voice of every note" },
-            Segment { label: "Layer II", selected: layer == 1, enabled: true, help: "The second voice, played together with the first" },
-        ];
-        if let Some(i) = widgets::segmented(ui, &segs, 2) {
-            layer = i;
-        }
-        ui.data_mut(|m| m.insert_temp(layer_id, layer));
-        layer_ui(ui, &mut p.layers[layer], layer);
-    });
-    widgets::section(ui, "perf", "Glide, sag and ribbon", true, |ui| {
-        widgets::inset(ui, |ui| {
-            ui.checkbox(&mut p.mono, "Mono, legato")
-                .on_hover_text("One note at a time; a note played while one is held glides there without restarting");
+    ui.add_space(8.0);
+    widgets::inset(ui, |ui| {
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let [l1, l2] = &mut p.layers;
+            layer_strip(ui, &t, l1, 0);
+            layer_strip(ui, &t, l2, 1);
+            // glide, the LFO and touch stacked in the third column, beside the layers
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                crate::panels::fx_strip(ui, &t, "Glide", "Glide, sag and the ribbon: how the patch moves between notes", |ui| {
+                    if widgets::lamp_row(ui, "Mono legato", p.mono, true)
+                        .on_hover_text("One note at a time; a note played while one is held glides there without restarting")
+                        .clicked()
+                    {
+                        p.mono = !p.mono;
+                    }
+                    ui.add_space(2.0);
+                    let mut k = vec![
+                        Knob::new("Glide", &mut p.glide, (0.0, 2.0), 0.0, 2, " s", "Portamento: slide from one note to the next"),
+                        Knob::new(
+                            "Sag",
+                            &mut p.sag,
+                            (-200.0, 50.0),
+                            0.0,
+                            0,
+                            " ct",
+                            "How far the pitch falls as a released note dies away: the drooping brass of an 80s polysynth",
+                        ),
+                        Knob::new("Sag time", &mut p.sag_time, (0.05, 5.0), d.sag_time, 2, " s", "How long the sag takes").log(),
+                        Knob::new(
+                            "Ribbon",
+                            &mut p.bend_range,
+                            (0.0, 24.0),
+                            d.bend_range,
+                            0,
+                            " st",
+                            "Pitch bend range, for the ribbon and the bend wheel",
+                        ),
+                        Knob::new(
+                            "Drift",
+                            &mut p.drift,
+                            (0.0, 30.0),
+                            d.drift,
+                            1,
+                            " ct",
+                            "Each voice wanders off pitch slowly, like old analogue oscillators",
+                        ),
+                        Knob::amount("Spread", &mut p.spread, d.spread, ("centre", "wide"), "Spread the voices across the stereo field"),
+                        Knob::amount("Ring mod", &mut p.ring, 0.0, ("off", "full"), "Multiply layer II by layer I: metallic, clangorous"),
+                        Knob::new("Gain", &mut p.gain_db, (-24.0, 12.0), 0.0, 1, " dB", "The patch's level"),
+                    ];
+                    widgets::knob_rows(ui, &mut k);
+                });
+                crate::panels::fx_strip(ui, &t, "LFO", "Vibrato and the LFO: its shape, then where it goes", |ui| {
+                    for s in LfoShape::ALL {
+                        if widgets::lamp_row(ui, s.label(), p.lfo_shape == s, true).on_hover_text("The LFO's shape").clicked() {
+                            p.lfo_shape = s;
+                        }
+                    }
+                    crate::panels::strip_rule(ui, &t);
+                    let mut k = vec![
+                        Knob::new("Rate", &mut p.lfo_rate, (0.02, 20.0), d.lfo_rate, 2, " Hz", "How fast the LFO swings").log(),
+                        Knob::new(
+                            "Delay",
+                            &mut p.lfo_delay,
+                            (0.0, 4.0),
+                            d.lfo_delay,
+                            2,
+                            " s",
+                            "Vibrato fades in this long after each note starts, as a player would",
+                        ),
+                        Knob::new("Vibrato", &mut p.vibrato, (0.0, 400.0), 0.0, 0, " ct", "Pitch wobble always on"),
+                        Knob::new(
+                            "To filter",
+                            &mut p.lfo_to_filter,
+                            (0.0, 3.0),
+                            0.0,
+                            2,
+                            " oct",
+                            "Sweep the low-pass: slow for movement, fast for growl",
+                        ),
+                        Knob::amount("Tremolo", &mut p.tremolo, 0.0, ("off", "deep"), "The LFO on the level"),
+                        Knob::new(
+                            "Wheel",
+                            &mut p.wheel_vibrato,
+                            (0.0, 200.0),
+                            d.wheel_vibrato,
+                            0,
+                            " ct",
+                            "Vibrato added at full modulation wheel",
+                        ),
+                    ];
+                    widgets::knob_rows(ui, &mut k);
+                });
+                crate::panels::fx_strip(
+                    ui,
+                    &t,
+                    "Touch",
+                    "Pressing harder on a held key (aftertouch, or the Touch strip below) changes the sound, as on the CS-80",
+                    |ui| {
+                        let mut k = vec![
+                            Knob::new("Filter", &mut p.touch_filter, (0.0, 4.0), d.touch_filter, 2, " oct", "Brightens as you press"),
+                            Knob::new("Vibrato", &mut p.touch_vibrato, (0.0, 100.0), d.touch_vibrato, 0, " ct", "Vibrato as you press"),
+                            Knob::new("Bend", &mut p.touch_bend, (-200.0, 200.0), 0.0, 0, " ct", "Bends the pitch as you press"),
+                        ];
+                        widgets::knob_rows(ui, &mut k);
+                    },
+                );
+            });
         });
-        sl(ui, "glide", "Glide", &mut p.glide, (0.0, 2.0), 0.0, 2, " s", false, "Portamento: slide from one note to the next");
-        sl(
-            ui,
-            "sag",
-            "Sag",
-            &mut p.sag,
-            (-200.0, 50.0),
-            0.0,
-            0,
-            " ct",
-            false,
-            "How far the pitch falls as a released note dies away: the drooping brass of an 80s polysynth",
-        );
-        sl(ui, "sagt", "Sag time", &mut p.sag_time, (0.05, 5.0), d.sag_time, 2, " s", true, "How long the sag takes");
-        sl(
-            ui,
-            "bend",
-            "Ribbon range",
-            &mut p.bend_range,
-            (0.0, 24.0),
-            d.bend_range,
-            0,
-            " st",
-            false,
-            "Pitch bend range, for the ribbon and the bend wheel",
-        );
-        sl(
-            ui,
-            "drift",
-            "Drift",
-            &mut p.drift,
-            (0.0, 30.0),
-            d.drift,
-            1,
-            " ct",
-            false,
-            "Each voice wanders off pitch slowly, like old analogue oscillators",
-        );
-        amount(ui, "spread", "Spread", &mut p.spread, d.spread, ("centre", "wide"), "Spread the voices across the stereo field");
-        amount(ui, "ring", "Ring mod", &mut p.ring, 0.0, ("off", "full"), "Multiply layer II by layer I: metallic, clangorous");
-        sl(ui, "gain", "Gain", &mut p.gain_db, (-24.0, 12.0), 0.0, 1, " dB", false, "The patch's level");
-    });
-    widgets::section(ui, "lfo", "Vibrato and LFO", false, |ui| {
-        let segs: Vec<Segment> = LfoShape::ALL
-            .iter()
-            .map(|s| Segment { label: s.label(), selected: p.lfo_shape == *s, enabled: true, help: "The LFO's shape" })
-            .collect();
-        if let Some(i) = widgets::segmented(ui, &segs, 5) {
-            p.lfo_shape = LfoShape::ALL[i];
-        }
-        sl(ui, "rate", "Rate", &mut p.lfo_rate, (0.02, 20.0), d.lfo_rate, 2, " Hz", true, "How fast the LFO swings");
-        sl(
-            ui,
-            "delay",
-            "Delay",
-            &mut p.lfo_delay,
-            (0.0, 4.0),
-            d.lfo_delay,
-            2,
-            " s",
-            false,
-            "Vibrato fades in this long after each note starts, as a player would",
-        );
-        sl(ui, "vib", "Vibrato", &mut p.vibrato, (0.0, 400.0), 0.0, 0, " ct", false, "Pitch wobble always on");
-        sl(
-            ui,
-            "lfof",
-            "LFO → filter",
-            &mut p.lfo_to_filter,
-            (0.0, 3.0),
-            0.0,
-            2,
-            " oct",
-            false,
-            "Sweep the low-pass: slow for movement, fast for growl",
-        );
-        amount(ui, "trem", "Tremolo", &mut p.tremolo, 0.0, ("off", "deep"), "The LFO on the level");
-        sl(
-            ui,
-            "wheel",
-            "Mod wheel",
-            &mut p.wheel_vibrato,
-            (0.0, 200.0),
-            d.wheel_vibrato,
-            0,
-            " ct",
-            false,
-            "Vibrato added at full modulation wheel",
-        );
-    });
-    widgets::section(ui, "touch", "Touch", false, |ui| {
-        widgets::note(ui, "Pressing harder on a held key (aftertouch, or the Touch strip below) changes the sound, as on the CS-80.", "");
-        sl(ui, "tf", "Touch → filter", &mut p.touch_filter, (0.0, 4.0), d.touch_filter, 2, " oct", false, "Brightens as you press");
-        sl(ui, "tv", "Touch → vibrato", &mut p.touch_vibrato, (0.0, 100.0), d.touch_vibrato, 0, " ct", false, "Vibrato as you press");
-        sl(ui, "tb", "Touch → bend", &mut p.touch_bend, (-200.0, 200.0), 0.0, 0, " ct", false, "Bends the pitch as you press");
     });
 }
 

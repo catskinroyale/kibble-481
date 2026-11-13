@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- Each section on the Sections strip above the roll has its own buttons on hover (and a
+  right-click menu): new notes for just that section in the piece's style and key, copy
+  it with its notes before or after itself, and delete it with its notes. The rest of
+  the piece stays as it is.
+- The mixer's reverb, echo, low cut and high cut are now small dials, two by two at the
+  foot of each strip, each pointing straight up at its neutral setting.
+- A neon lamp on every mixer strip and track row, lit while the track is heard.
+- The Effects tab is three small strips like the mixer's: Reverb, Echo and Ensemble.
+  Each choice (reverb space, echo time, shimmer interval, tuning, Freeze, Ping-pong) is a
+  neon lamp with its name, lit when chosen, and the settings are small dials two to a
+  row as on the mixer, each straight up at its usual setting; the shimmer's own grey out
+  in the other spaces.
+- The synth editor is in strips like the mixer's too: Layer I and Layer II side by side
+  (a lamp by each name switches it on), then Glide, LFO and Touch, every setting a small
+  dial and every choice a neon lamp. The Effects strips no longer sit in a section that
+  folds away.
+- Tidier mixer strips (fader group centred, even spacing, a rule above the dials) and
+  Composer section (a full-width style selector, aligned Key and Seed rows, equal buttons).
+
 ## 0.3.0 — 2026-11-12
 
 - **Noir**, a fifth composer style: the melancholy of walking alone at night in music

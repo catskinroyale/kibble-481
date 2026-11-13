@@ -32,6 +32,95 @@ fn rgb(c: [u8; 3]) -> Color32 {
     crate::theme::track_colour(c)
 }
 
+/// A 0..1 amount shown as a dial: straight up at its usual setting.
+struct Amt<'a> {
+    label: &'a str,
+    v: &'a mut f32,
+    neutral: f32,
+    help: String,
+    value: fn(f32) -> String,
+    /// Greyed out (but kept in its place) when the current type has no use for it.
+    enabled: bool,
+}
+
+impl<'a> Amt<'a> {
+    fn new(label: &'a str, v: &'a mut f32, neutral: f32, help: &str, ends: (&str, &str)) -> Self {
+        let help = if neutral <= 0.0 {
+            format!("{help}. Straight up is {}; turn right for {}", ends.0, ends.1)
+        } else {
+            format!("{help}. Turn left for {}, right for {}", ends.0, ends.1)
+        };
+        Amt { label, v, neutral, help, value: |v| format!("{:.0}%", v * 100.0), enabled: true }
+    }
+
+    /// Show the value in its own units.
+    fn shown(self, value: fn(f32) -> String) -> Self {
+        Amt { value, ..self }
+    }
+
+    fn enabled(self, enabled: bool) -> Self {
+        Amt { enabled, ..self }
+    }
+}
+
+/// One rack unit on the Effects tab, built like a mixer strip: its name, then its
+/// lamps and dials.
+pub(crate) fn fx_strip(ui: &mut egui::Ui, t: &Tokens, title: &str, help: &str, content: impl FnOnce(&mut egui::Ui)) {
+    rack_strip(ui, t, title, help, None, content);
+}
+
+/// A strip as on the mixer: its name (with a lamp to switch it on and off, when it
+/// has one), then its contents.
+pub(crate) fn rack_strip(
+    ui: &mut egui::Ui,
+    t: &Tokens,
+    title: &str,
+    help: &str,
+    on: Option<&mut bool>,
+    content: impl FnOnce(&mut egui::Ui),
+) {
+    egui::Frame::new().fill(t.inset).corner_radius(4.0).inner_margin(egui::Margin::symmetric(5, 4)).show(ui, |ui| {
+        ui.set_width(crate::mixer_ui::STRIP_W);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            match on {
+                Some(on) => {
+                    let r = widgets::lamp_row(ui, title, *on, true).on_hover_text(format!("{help}. Click to switch it on or off"));
+                    if r.clicked() {
+                        *on = !*on;
+                    }
+                }
+                None => {
+                    ui.label(egui::RichText::new(title).font(t.semibold(11.5)).color(t.accent)).on_hover_text(help);
+                }
+            }
+            ui.add_space(4.0);
+            content(ui);
+        });
+    });
+}
+
+/// Small dials two to a row, as on a mixer strip: the name under each, the value on hover.
+fn mini_dials(ui: &mut egui::Ui, dials: &mut [Amt]) {
+    for pair in dials.chunks_mut(2) {
+        ui.columns(2, |c| {
+            for (k, a) in pair.iter_mut().enumerate() {
+                c[k].add_enabled_ui(a.enabled, |ui| {
+                    widgets::unit_dial(ui, a.label, &a.help, a.v, a.neutral, 10.0, widgets::DialLayout::Under, a.value);
+                });
+            }
+        });
+        ui.add_space(3.0);
+    }
+}
+
+/// A divider within a strip, with a little room either side.
+pub(crate) fn strip_rule(ui: &mut egui::Ui, t: &Tokens) {
+    ui.add_space(3.0);
+    crate::mixer_ui::rule(ui, t);
+    ui.add_space(3.0);
+}
+
 /// What a track row's dropdown asked for.
 enum RowAction {
     Alt(Role, Box<Alt>),
@@ -119,6 +208,7 @@ impl App {
             for i in 0..n {
                 let selected = i == self.sel;
                 let peak = self.meter(i);
+                let heard = self.doc.project.audible(i);
                 let err = self.inst_errors.get(i).cloned().flatten();
                 // what the row's dropdown offers
                 let role = Role::of(&self.doc.project.tracks[i]);
@@ -158,7 +248,7 @@ impl App {
                                 }
                                 ui.vertical(|ui| {
                                     ui.spacing_mut().item_spacing.y = 1.0;
-                                    let name_w = ui.available_width() - 56.0;
+                                    let name_w = ui.available_width() - 72.0;
                                     if renaming {
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut tr.name)
@@ -181,7 +271,7 @@ impl App {
                                             t.text,
                                         );
                                     }
-                                    let w = (ui.available_width() - 60.0).max(80.0);
+                                    let w = (ui.available_width() - 76.0).max(80.0);
                                     let col = if err.is_some() { t.caution } else { t.text_dim };
                                     let shown = |s: &str| egui::RichText::new(s).font(t.font(10.5)).color(col);
                                     let resp = if role == Some(Role::City) {
@@ -268,6 +358,12 @@ impl App {
                                         };
                                         ui.painter().rect_filled(Rect::from_min_max(pos2(r.left(), r.bottom() - h), r.max), 1.0, col);
                                     }
+                                    // lit while the track is heard
+                                    widgets::lamp(ui, heard, rgb(tr.color), 13.0).on_hover_text(if heard {
+                                        "Heard"
+                                    } else {
+                                        "Silent: muted, or another track is soloed"
+                                    });
                                 });
                             });
                         })
@@ -416,108 +512,127 @@ impl App {
     }
 
     fn effects_tab(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
         let fx = &mut self.doc.project.fx;
-        widgets::section(ui, "reverb", "Reverb", true, |ui| {
-            let segs: Vec<Segment> = Space::ALL
-                .iter()
-                .map(|s| Segment { label: s.label(), selected: fx.space == *s, enabled: true, help: s.description() })
-                .collect();
-            if let Some(i) = widgets::segmented(ui, &segs, 4) {
-                fx.space = Space::ALL[i];
-            }
-            amount(ui, "size", "Size", &mut fx.size, 0.5, ("short", "long"), "How long the tail lasts");
-            amount(ui, "tone", "Tone", &mut fx.tone, 0.5, ("dark", "bright"), "The tail's brightness");
-            amount(ui, "motion", "Motion", &mut fx.motion, 0.5, ("still", "swirling"), "How much the tail moves");
-            amount(
-                ui,
-                "pre",
-                "Pre-delay",
-                &mut fx.predelay,
-                0.0,
-                ("none", "¼ s"),
-                "A gap before the reverb, so each note is heard clearly first",
-            );
-            amount(ui, "lowcut", "Low cut", &mut fx.low_cut, 0.5, ("40 Hz", "640 Hz"), "Keep low notes out of the reverb");
-            amount(ui, "width", "Width", &mut fx.width, 0.5, ("mono", "wide"), "The reverb's stereo width");
-            amount(
-                ui,
-                "duck",
-                "Ducking",
-                &mut fx.duck,
-                0.0,
-                ("off", "deep"),
-                "The reverb dips while the music plays and blooms in the gaps",
-            );
-            if fx.space == Space::Shimmer {
-                amount(ui, "shim", "Feedback", &mut fx.shimmer, 0.5, ("subtle", "intense"), "How much of the pitched tail is fed back");
-                amount(
-                    ui,
-                    "shimd",
-                    "Detune",
-                    &mut fx.shimmer_detune,
-                    0.0,
-                    ("pure", "wide"),
-                    "Split the shimmer into a sharp and a flat copy",
-                );
-                let segs: Vec<Segment> = Interval::ALL
-                    .iter()
-                    .map(|s| Segment { label: s.label(), selected: fx.shimmer_interval == *s, enabled: true, help: "" })
-                    .collect();
-                if let Some(i) = widgets::segmented(ui, &segs, 2) {
-                    fx.shimmer_interval = Interval::ALL[i];
-                }
-            }
+        ui.add_space(10.0);
+        {
             widgets::inset(ui, |ui| {
-                ui.checkbox(&mut fx.freeze, "Freeze the tail")
-                    .on_hover_text("Hold the reverb as it is, ringing on, while new notes play dry over it");
-            });
-        });
-        widgets::section(ui, "echo", "Echo", true, |ui| {
-            let e = &mut fx.echo;
-            let segs: Vec<Segment> = EchoTime::ALL
-                .iter()
-                .map(|s| Segment { label: s.label(), selected: e.time == *s, enabled: true, help: "Echo time, in step with the tempo" })
-                .collect();
-            if let Some(i) = widgets::segmented(ui, &segs, 5) {
-                e.time = EchoTime::ALL[i];
-            }
-            amount(ui, "efb", "Repeats", &mut e.feedback, 0.45, ("one", "endless"), "How many times it echoes");
-            amount(ui, "etone", "Tone", &mut e.tone, 0.4, ("dark", "bright"), "Each repeat darker, like tape");
-            amount(ui, "ewow", "Wow", &mut e.wow, 0.2, ("steady", "warped"), "Tape wobble on the repeats");
-            amount(ui, "erev", "Into reverb", &mut e.to_reverb, 0.5, ("dry", "wet"), "How much of the echo goes on into the reverb");
-            widgets::inset(ui, |ui| {
-                ui.checkbox(&mut e.ping_pong, "Ping-pong").on_hover_text("Repeats bounce left and right");
-            });
-            widgets::note(ui, "How much of each track goes into the echo and reverb is set on the mixer.", "");
-        });
-        widgets::section(ui, "ensemble", "Ensemble and tuning", true, |ui| {
-            amount(
-                ui,
-                "ens",
-                "Ensemble",
-                &mut fx.ensemble,
-                0.0,
-                ("off", "lush"),
-                "A string-machine chorus on the tracks that ask for it (Ens on the mixer)",
-            );
-            widgets::inset(ui, |ui| {
-                egui::ComboBox::from_id_salt("tuning").selected_text(fx.tuning.label()).width(240.0).show_ui(ui, |ui| {
-                    for tu in Tuning::ALL {
-                        ui.selectable_value(&mut fx.tuning, tu, tu.label());
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    // ---- reverb: a lamp for each space, then its dials, then the shimmer's own
+                    fx_strip(ui, &t, "Reverb", "The shared reverb; how much of each track goes in is set on the mixer", |ui| {
+                        for s in Space::ALL {
+                            if widgets::lamp_row(ui, s.label(), fx.space == s, true).on_hover_text(s.description()).clicked() {
+                                fx.space = s;
+                            }
+                        }
+                        strip_rule(ui, &t);
+                        let mut dials = vec![
+                            Amt::new("Size", &mut fx.size, 0.5, "How long the tail lasts", ("short", "long")),
+                            Amt::new("Tone", &mut fx.tone, 0.5, "The tail's brightness", ("dark", "bright")),
+                            Amt::new("Motion", &mut fx.motion, 0.5, "How much the tail moves", ("still", "swirling")),
+                            Amt::new("Width", &mut fx.width, 0.5, "The reverb's stereo width", ("mono", "wide")),
+                            Amt::new(
+                                "Pre-delay",
+                                &mut fx.predelay,
+                                0.0,
+                                "A gap before the reverb, so each note is heard clearly first",
+                                ("none", "¼ s"),
+                            )
+                            .shown(|v| format!("+{:.0} ms", v * 250.0)),
+                            Amt::new("Lo cut", &mut fx.low_cut, 0.5, "Keep low notes out of the reverb", ("40 Hz", "640 Hz"))
+                                .shown(|v| format!("{:.0} Hz", 160.0 * 4f32.powf(v * 2.0 - 1.0))),
+                            Amt::new(
+                                "Ducking",
+                                &mut fx.duck,
+                                0.0,
+                                "The reverb dips while the music plays and blooms in the gaps",
+                                ("off", "deep"),
+                            ),
+                        ];
+                        mini_dials(ui, &mut dials);
+                        if widgets::lamp_row(ui, "Freeze", fx.freeze, true)
+                            .on_hover_text("Hold the reverb as it is, ringing on, while new notes play dry over it")
+                            .clicked()
+                        {
+                            fx.freeze = !fx.freeze;
+                        }
+                        // the shimmer's own, greyed out in the other spaces
+                        let shimmer = fx.space == Space::Shimmer;
+                        strip_rule(ui, &t);
+                        ui.label(egui::RichText::new("Shimmer").font(t.font(10.0)).color(if shimmer { t.text_dim } else { t.text_disabled }));
+                        for s in Interval::ALL {
+                            if widgets::lamp_row(ui, s.label(), fx.shimmer_interval == s, shimmer)
+                                .on_hover_text("The interval the shimmer's tail is pitched by")
+                                .clicked()
+                            {
+                                fx.shimmer_interval = s;
+                            }
+                        }
+                        ui.add_space(2.0);
+                        let mut dials = vec![
+                            Amt::new("Feedback", &mut fx.shimmer, 0.5, "How much of the pitched tail is fed back", ("subtle", "intense"))
+                                .enabled(shimmer),
+                            Amt::new("Detune", &mut fx.shimmer_detune, 0.0, "Split the shimmer into a sharp and a flat copy", ("pure", "wide"))
+                                .enabled(shimmer),
+                        ];
+                        mini_dials(ui, &mut dials);
+                    });
+                    // ---- echo: a lamp for each time and for ping-pong, then its dials
+                    let e = &mut fx.echo;
+                    fx_strip(ui, &t, "Echo", "The shared tape echo; how much of each track goes in is set on the mixer", |ui| {
+                        for s in EchoTime::ALL {
+                            if widgets::lamp_row(ui, s.label(), e.time == s, true).on_hover_text("Echo time, in step with the tempo").clicked() {
+                                e.time = s;
+                            }
+                        }
+                        strip_rule(ui, &t);
+                        if widgets::lamp_row(ui, "Ping-pong", e.ping_pong, true).on_hover_text("Repeats bounce left and right").clicked() {
+                            e.ping_pong = !e.ping_pong;
+                        }
+                        strip_rule(ui, &t);
+                        let mut dials = vec![
+                            Amt::new("Repeats", &mut e.feedback, 0.45, "How many times it echoes", ("one", "endless")),
+                            Amt::new("Tone", &mut e.tone, 0.4, "Each repeat darker, like tape", ("dark", "bright")),
+                            Amt::new("Wow", &mut e.wow, 0.2, "Tape wobble on the repeats", ("steady", "warped")),
+                            Amt::new("To reverb", &mut e.to_reverb, 0.5, "How much of the echo goes on into the reverb", ("dry", "wet")),
+                        ];
+                        mini_dials(ui, &mut dials);
+                    });
+                    // ---- ensemble and tuning
+                    let mut noir = false;
+                    fx_strip(ui, &t, "Ensemble", "A string-machine chorus, and the tuning", |ui| {
+                        widgets::unit_dial(
+                            ui,
+                            "Ensemble",
+                            "A string-machine chorus on the tracks that ask for it (E on the mixer). Straight up is off; turn right for lush",
+                            &mut fx.ensemble,
+                            0.0,
+                            10.0,
+                            widgets::DialLayout::Under,
+                            |v| format!("{:.0}%", v * 100.0),
+                        );
+                        strip_rule(ui, &t);
+                        ui.label(egui::RichText::new("Tuning").font(t.font(10.0)).color(t.text_dim));
+                        for tu in Tuning::ALL {
+                            let short = tu.label().split(" (").next().unwrap_or(tu.label());
+                            if widgets::lamp_row(ui, short, fx.tuning == tu, true).on_hover_text(tu.label()).clicked() {
+                                fx.tuning = tu;
+                            }
+                        }
+                        strip_rule(ui, &t);
+                        let w = ui.available_width();
+                        noir = ui
+                            .add_sized(vec2(w, 20.0), egui::Button::new(egui::RichText::new("Noir sound").font(t.font(10.5))))
+                            .on_hover_text("Back to the vast, dark hall, slow tape echo and ensemble the app starts with")
+                            .clicked();
+                    });
+                    if noir {
+                        *fx = dd_seq::project::noir_fx();
                     }
                 });
             });
-            ui.add_space(4.0);
-            widgets::inset(ui, |ui| {
-                if ui
-                    .button("Back to the Noir sound")
-                    .on_hover_text("The vast, dark hall, slow tape echo and ensemble the app starts with")
-                    .clicked()
-                {
-                    *fx = dd_seq::project::noir_fx();
-                }
-            });
-        });
+        }
     }
 
     fn score_tab(&mut self, ui: &mut egui::Ui) {
@@ -737,63 +852,86 @@ impl App {
                 "Edited by hand: tempo and length changes keep your notes. Changing the settings below writes the piece again (undo brings yours back)."
             };
             widgets::note(ui, egui::RichText::new(status).color(if untouched { t.text_dim } else { t.caution }).text(), "");
+            ui.add_space(2.0);
+            widgets::inset(ui, |ui| ui.label(egui::RichText::new("Style").font(t.font(13.0)).color(t.text_label)));
+            let segs: Vec<Segment> =
+                Style::ALL.iter().map(|s| Segment { label: s.label(), selected: r.style == *s, enabled: true, help: s.help() }).collect();
+            if let Some(i) = widgets::segmented(ui, &segs, 5) {
+                let s = Style::ALL[i];
+                if r.style != s {
+                    r.style = s;
+                    new_style = Some(s);
+                }
+            }
             widgets::inset(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Style");
-                    for s in Style::ALL {
-                        let help = format!("{}. Choosing it sets {} bpm.", s.help(), s.tempo());
-                        if ui.selectable_label(r.style == s, s.label()).on_hover_text(help).clicked() && r.style != s {
-                            r.style = s;
-                            new_style = Some(s);
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Key");
-                    egui::ComboBox::from_id_salt("root").width(56.0).selected_text(KEY_NAMES[r.root as usize % 12]).show_ui(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                // a label column, so the controls line up
+                let row = |ui: &mut egui::Ui, label: &str, content: &mut dyn FnMut(&mut egui::Ui)| {
+                    ui.horizontal(|ui| {
+                        let h = ui.spacing().interact_size.y.max(24.0);
+                        let (r, _) = ui.allocate_exact_size(vec2(44.0, h), Sense::hover());
+                        ui.painter().text(r.left_center(), Align2::LEFT_CENTER, label, t.font(13.0), t.text_label);
+                        content(ui);
+                    });
+                };
+                row(ui, "Key", &mut |ui| {
+                    egui::ComboBox::from_id_salt("root").width(64.0).selected_text(KEY_NAMES[r.root as usize % 12]).show_ui(ui, |ui| {
                         for (i, k) in KEY_NAMES.iter().enumerate() {
                             ui.selectable_value(&mut r.root, i as u8, *k);
                         }
                     });
-                    egui::ComboBox::from_id_salt("mode").width(130.0).selected_text(r.mode.label()).show_ui(ui, |ui| {
-                        for m in Mode::ALL {
-                            ui.selectable_value(&mut r.mode, m, m.label());
-                        }
-                    });
+                    egui::ComboBox::from_id_salt("mode").width(ui.available_width() - 8.0).selected_text(r.mode.label()).show_ui(
+                        ui,
+                        |ui| {
+                            for m in Mode::ALL {
+                                ui.selectable_value(&mut r.mode, m, m.label());
+                            }
+                        },
+                    );
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Seed");
-                    if ui.small_button("◀").on_hover_text("The previous seed").clicked() {
+                row(ui, "Seed", &mut |ui| {
+                    if ui.button("◀").on_hover_text("The previous seed").clicked() {
                         r.seed = r.seed.saturating_sub(1);
                     }
-                    ui.add(egui::DragValue::new(&mut r.seed).range(0..=999_999))
+                    ui.add_sized(vec2(72.0, 20.0), egui::DragValue::new(&mut r.seed).range(0..=999_999))
                         .on_hover_text("The same seed, key, tempo and length always write the same piece");
-                    if ui.small_button("▶").on_hover_text("The next seed").clicked() {
+                    if ui.button("▶").on_hover_text("The next seed").clicked() {
                         r.seed = (r.seed + 1).min(999_999);
                     }
                 });
             });
+            ui.add_space(2.0);
             amount(ui, "density", "Density", &mut r.density, 0.5, ("sparse", "busy"), "How busy the bells, plucks and drums are");
             widgets::inset(ui, |ui| {
+                // three equal buttons across the column
+                let gap = 6.0;
+                let w = (ui.available_width() - 2.0 * gap) / 3.0;
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = gap;
                     if ui
-                        .button(egui::RichText::new("🎲 New piece").color(t.accent))
+                        .add_sized(vec2(w, 26.0), egui::Button::new(egui::RichText::new("🎲 New piece").color(t.accent)))
                         .on_hover_text("New notes (a new seed, key and mode) and a new arrangement of sections")
                         .clicked()
                     {
                         dice = Some(true);
                     }
-                    if ui.button("New notes").on_hover_text("New notes (a new seed, key and mode) to the sections as they are").clicked() {
+                    if ui
+                        .add_sized(vec2(w, 26.0), egui::Button::new("New notes"))
+                        .on_hover_text("New notes (a new seed, key and mode) to the sections as they are")
+                        .clicked()
+                    {
                         dice = Some(false);
                     }
                     if ui
-                        .add_enabled(!untouched, egui::Button::new("Write again"))
+                        .add_enabled_ui(!untouched, |ui| ui.add_sized(vec2(w, 26.0), egui::Button::new("Write again")))
+                        .inner
                         .on_hover_text("Replace your edits with the piece as composed, at this tempo and length")
                         .clicked()
                     {
                         again = true;
                     }
                 });
+                ui.add_space(4.0);
                 ui.checkbox(&mut self.settings.keep_sounds, "New seeds keep my sounds and mix").on_hover_text(
                     "Off: each seed picks its own instruments and hall. On: tracks keep the sounds and mixer settings you chose",
                 );
