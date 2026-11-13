@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-13
 
 - **Overcity**, a sixth composer style: a vast, rain-soaked city seen from above at night.
   Horns rising on open fifths out of near-silence, a sparse glassy theme that leaps and

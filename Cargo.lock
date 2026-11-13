@@ -864,7 +864,7 @@ checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
 
 [[package]]
 name = "dd-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dd-dsp",
  "dd-gallery",
@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "dd-desktop"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cpal",
  "dd-dsp",
@@ -889,7 +889,7 @@ dependencies = [
 
 [[package]]
 name = "dd-dsp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lewton",
  "serde",
@@ -898,7 +898,7 @@ dependencies = [
 
 [[package]]
 name = "dd-gallery"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dd-seq",
  "serde",
@@ -907,7 +907,7 @@ dependencies = [
 
 [[package]]
 name = "dd-seq"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dd-dsp",
  "hound",
