@@ -325,6 +325,7 @@ impl App {
                 ("blackout", dd_seq::compose::Style::Blackout),
                 ("momento", dd_seq::compose::Style::Momento),
                 ("noir", dd_seq::compose::Style::Noir),
+                ("overcity", dd_seq::compose::Style::Overcity),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe

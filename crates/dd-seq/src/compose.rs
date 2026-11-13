@@ -17,8 +17,11 @@
 //! sax-like theme over an electric piano and a soft swung groove; and **Noir**, the
 //! melancholy of walking alone at night, told only in music (no rain or city sounds):
 //! minor ninths and major sevenths over a slow walking bass, an electric piano, a
-//! flickering arpeggio, brushes, and a lead that leaves room for a voice. All use the
-//! same built-in sounds.
+//! flickering arpeggio, brushes, and a lead that leaves room for a voice; and
+//! **Overcity**, a vast, rain-soaked city seen from above at night: hollow fifths that
+//! swell like horns through fog, a sparse singing theme that leaps and falls, a
+//! heartbeat under the sub, rippling glass, and one great swell before it dissolves.
+//! All use the same built-in sounds.
 //!
 //! Each musical layer draws from its own random stream (`rng.rs`, from Ambient MIDI
 //! Generator), so changing one setting doesn't reshuffle the rest.
@@ -79,10 +82,13 @@ pub enum Style {
     /// Melancholy and spacious, in music alone: a lonely walk at night, with room left
     /// for a voice over it.
     Noir,
+    /// Vast and slow, cold and faintly sacred: a rain-soaked city seen from above at
+    /// night, its horns rising through fog over a felt sub and a slow heartbeat.
+    Overcity,
 }
 
 impl Style {
-    pub const ALL: [Style; 5] = [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir];
+    pub const ALL: [Style; 6] = [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -91,6 +97,7 @@ impl Style {
             Style::Blackout => "Blackout",
             Style::Momento => "Momento",
             Style::Noir => "Noir",
+            Style::Overcity => "Overcity",
         }
     }
 
@@ -103,6 +110,9 @@ impl Style {
             Style::Noir => {
                 "Melancholy and spacious, music alone (no rain or city sounds): ninths over a walking bass, electric piano, brushes; sits under a voice"
             }
+            Style::Overcity => {
+                "Vast and slow, a rain-soaked city seen from above: hollow fifths swelling like horns through fog, a sparse singing theme, a heartbeat sub, one great swell"
+            }
         }
     }
 
@@ -114,6 +124,7 @@ impl Style {
             Style::Blackout => 56.0,
             Style::Momento => 72.0,
             Style::Noir => 64.0,
+            Style::Overcity => 60.0,
         }
     }
 
@@ -125,6 +136,7 @@ impl Style {
             Style::Blackout => (10.0, 6),
             Style::Momento => (5.5, 4),
             Style::Noir => (7.5, 4),
+            Style::Overcity => (8.0, 4),
         }
     }
 }
@@ -276,6 +288,18 @@ const ROMANTIC: [[usize; 4]; 6] = [[0, 5, 2, 6], [5, 6, 0, 0], [0, 3, 5, 6], [5,
 /// minor (or, in harmonic minor, major) fifth that never quite resolves.
 const NOIR: [[usize; 4]; 6] = [[0, 5, 3, 4], [0, 3, 6, 2], [5, 4, 0, 0], [0, 5, 2, 6], [3, 4, 0, 5], [0, 1, 4, 0]];
 
+/// Overcity's: hovering on the tonic, drifting for a moment to the relative major (III),
+/// the sixth or the seventh, and back into shadow.
+const OVERCITY: [[usize; 4]; 6] = [[0, 0, 2, 0], [0, 5, 0, 0], [0, 2, 5, 0], [0, 0, 5, 2], [0, 6, 0, 0], [0, 2, 0, 6]];
+
+/// An open, hollow voicing: the root low, its fifth and octave, and the colour (the
+/// third, or a suspension) a tenth above, out of the way.
+fn open_voicing(root: u8, fifth: u8, colour: u8, centre: i32) -> Vec<u8> {
+    let r0 = near(root, centre - 9);
+    let f = near(fifth, r0 as i32 + 7);
+    vec![r0, f, r0 + 12, near(colour, r0 as i32 + 15)]
+}
+
 fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
     let mut rng = Rng::stream(r.seed, "harmony");
     let steps = r.mode.steps();
@@ -286,11 +310,12 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         Style::Blackout => *rng.pick(&DARK),
         Style::Momento => *rng.pick(&ROMANTIC),
         Style::Noir => *rng.pick(&NOIR),
+        Style::Overcity => *rng.pick(&OVERCITY),
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
         Style::Blackout => 50,
-        Style::Noir => 57,
+        Style::Noir | Style::Overcity => 57,
         _ => 60,
     };
     let pc = |deg: usize| (r.root + steps[deg % 7]) % 12;
@@ -339,9 +364,16 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 (_, 1) => vec![a, b, pc(deg + 6), pc(deg + 1)],
                 _ => vec![a, b, pc(deg + 3), pc(deg + 6)],
             },
+            // hollow: the triad, a sus2 or a sus4 (a moment of hope, unresolved)
+            Style::Overcity => match (last, rng.weighted(&[4.0, 1.5, 1.0])) {
+                (true, _) | (_, 0) => vec![a, c, b],
+                (_, 1) => vec![a, c, pc(deg + 1)],
+                _ => vec![a, c, pc(deg + 3)],
+            },
         };
         let prev = out.last().map(|c| c.voicing.clone());
-        let voicing = voice(&pcs, prev.as_deref(), centre);
+        let voicing =
+            if r.style == Style::Overcity { open_voicing(pcs[0], pcs[1], pcs[2], centre) } else { voice(&pcs, prev.as_deref(), centre) };
         let len = chord_ticks.min(end - t);
         out.push(Chord { start: t, len, root_pc: a, voicing, pcs });
         t += chord_ticks;
@@ -369,6 +401,18 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
     let bars = p.length_bars;
     let cb = chord_bars(style, p.bar_secs(), bars);
     let snap = |frac: f64| ((bars as f64 * frac / cb as f64).round() as u32 * cb).min(bars);
+    if style == Style::Overcity && bars >= cb * 5 {
+        // a long breath first, the theme, its development, the great swell, and dissolving
+        let intro = if bars >= cb * 8 { cb * 2 } else { cb };
+        let mut bounds = vec![(Part::Intro, 0), (Part::Neon, intro)];
+        for (part, frac) in [(Part::Swell, 0.36), (Part::NightShift, 0.6), (Part::Fade, 0.8)] {
+            let b = snap(frac);
+            if b > bounds.last().map_or(0, |l| l.1) && b < bars {
+                bounds.push((part, b));
+            }
+        }
+        return bounds.iter().enumerate().map(|(i, (part, b))| (*part, bounds.get(i + 1).map_or(bars, |n| n.1) - b)).collect();
+    }
     if style == Style::Noir && bars >= cb * 5 {
         let intro = if bars >= cb * 10 { cb * 2 } else { cb };
         let mut bounds = vec![(Part::Intro, 0), (Part::Neon, intro)];
@@ -433,10 +477,10 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
     if let Some(last) = plan.last_mut() {
         last.1 += bars.saturating_sub(total);
     }
-    // an intro now and then (in Noir, always), a chord or two taken from the opening
+    // an intro now and then (in Noir and Overcity, always), a chord or two taken from the opening
     // section or else the longest (its own stream, so the rest is as it was)
     let mut ir = Rng::stream(r.seed, "intro-form");
-    if units >= 4 && ir.chance(if r.style == Style::Noir { 1.0 } else { 0.35 }) {
+    if units >= 4 && ir.chance(if matches!(r.style, Style::Noir | Style::Overcity) { 1.0 } else { 0.35 }) {
         let len = if units >= 10 { 2 * cb } else { cb };
         let from = if plan[0].1 > len {
             Some(0)
@@ -512,6 +556,10 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Wet", "Lonely", "Last", "Empty", "Paper", "Late", "Flickering", "Sodium", "Quiet", "Cold"],
             ["Crossing", "Lanterns", "Umbrella", "Platform", "Alley", "Reflections", "Taxi", "Train", "Window", "Street"],
         ),
+        Style::Overcity => (
+            ["High", "Vast", "Cold", "Drowned", "Sleepless", "Silent", "Upper", "Endless", "Sodium", "Last"],
+            ["Spires", "Towers", "Arcology", "Canopy", "Ascent", "Zenith", "Vigil", "Heights", "Firmament", "Tiers"],
+        ),
     };
     p.title = format!("{} {}", names_rng.pick(&adjectives), names_rng.pick(&nouns));
 
@@ -547,6 +595,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Blackout => [2.0, 3.0, 4.0],
         Style::Momento => [5.0, 4.0, 0.5],
         Style::Noir => [5.0, 3.0, 1.0],
+        Style::Overcity => [1.0, 5.0, 3.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -572,6 +621,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Blackout => (-3.0, 0.0, 4.0, 0.0),
         Style::Momento => (-1.0, -4.0, -5.0, -3.0),
         Style::Noir => (-2.0, -5.0, -4.0, -2.0),
+        Style::Overcity => (-2.0, -4.0, -2.0, -3.0),
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -626,6 +676,23 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         p.tracks[t_pad].strip.high_cut = 8000.0;
         p.master_db = -1.0;
     }
+    // the city from above: everything far off in a vast space, the theme and the glass
+    // trailing tape echoes, the horns and choir wide
+    if style == Style::Overcity {
+        for (ti, rev, echo) in [(t_lead, 0.7, 0.45), (t_bells, 0.75, 0.55), (t_pluck, 0.65, 0.5), (t_brass, 0.6, 0.1), (t_pad, 0.75, 0.0)] {
+            p.tracks[ti].strip.reverb = rev;
+            p.tracks[ti].strip.echo = echo;
+        }
+        p.tracks[t_brass].strip.width = 1.4;
+        p.tracks[t_pad].strip.width = 1.5;
+        p.tracks[t_pad].strip.high_cut = 9000.0;
+        p.tracks[t_city].strip.gain_db -= 4.0;
+        p.fx.size = p.fx.size.max(0.8);
+        p.fx.echo.feedback = p.fx.echo.feedback.max(0.55);
+        p.fx.echo.wow = p.fx.echo.wow.max(0.3);
+        // headroom for the great swell
+        p.master_db = -2.0;
+    }
     let t = &mut p.tracks;
     let at = |tick: f64| tick.round().max(0.0) as u32;
     let push = |v: &mut Vec<Note>, start: u32, len: u32, key: u8, vel: u8| {
@@ -637,7 +704,94 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // ---------------------------------------------------------------- pad and brass
     let breath = beat;
     let last_chord = chords.len() - 1;
-    for (ci, c) in chords.iter().enumerate() {
+    // a swell on the horns: the expression rising from `lo` to `hi` and falling back,
+    // the peak `peak` of the way through
+    let swell = |ctrls: &mut Vec<Ctrl>, a: u32, len: u32, lo: i16, hi: i16, peak: f64| {
+        let top = a + (len as f64 * peak) as u32;
+        for q in 0..=8u32 {
+            let x = q as f64 / 8.0;
+            ctrls.push(Ctrl {
+                tick: a + ((top - a) as f64 * x) as u32,
+                kind: CtrlKind::Cc(11),
+                value: lo + ((hi - lo) as f64 * x * x) as i16,
+            });
+            ctrls.push(Ctrl {
+                tick: top + ((a + len - top) as f64 * x) as u32,
+                kind: CtrlKind::Cc(11),
+                value: hi - ((hi - lo) as f64 * x) as i16,
+            });
+        }
+        // the filter opens with it, a little behind
+        ctrls.push(Ctrl { tick: a, kind: CtrlKind::Cc(74), value: 40 });
+        ctrls.push(Ctrl { tick: top, kind: CtrlKind::Cc(74), value: 64 + (hi - lo) / 4 });
+        ctrls.push(Ctrl { tick: a + len, kind: CtrlKind::Cc(74), value: 44 });
+    };
+    if style == Style::Overcity {
+        for (ci, c) in chords.iter().enumerate() {
+            let ring = if ci == last_chord { end - c.start } else { c.len.saturating_sub(breath / 2) };
+            let part = part_at(c.start);
+            let open = [c.voicing[0], c.voicing[1], c.voicing[2]];
+            match part {
+                // out of near-silence, the horns rise on an open fifth and fall away
+                Part::Intro => {
+                    for k in open {
+                        push(&mut t[t_brass].notes, c.start, ring, k, 84);
+                    }
+                    swell(&mut t[t_brass].ctrls, c.start, ring, 4, 112, 0.65);
+                }
+                // the choir holds the hollow chord under the theme; the horns breathe
+                // in on every other chord
+                Part::Neon => {
+                    for &k in &c.voicing {
+                        push(&mut t[t_pad].notes, c.start, ring, k, 44);
+                    }
+                    if ci % 2 == 0 {
+                        for k in open {
+                            push(&mut t[t_brass].notes, c.start, ring, k, 70);
+                        }
+                        swell(&mut t[t_brass].ctrls, c.start, ring, 6, 80, 0.55);
+                    }
+                }
+                // a high choir above, and a horn swell on every chord
+                Part::Swell => {
+                    for &k in &c.voicing {
+                        push(&mut t[t_pad].notes, c.start, ring, k, 56);
+                    }
+                    push(&mut t[t_pad].notes, c.start, ring, c.voicing[3] + 12, 40);
+                    for &k in &c.voicing {
+                        push(&mut t[t_brass].notes, c.start, ring, k, 80);
+                    }
+                    swell(&mut t[t_brass].ctrls, c.start, ring, 10, 92, 0.6);
+                }
+                // the great swell: everything open, the horns an octave wider
+                Part::NightShift => {
+                    for &k in &c.voicing {
+                        push(&mut t[t_pad].notes, c.start, ring, k, 66);
+                        push(&mut t[t_pad].notes, c.start, ring, k + 12, 54);
+                    }
+                    for &k in &c.voicing {
+                        push(&mut t[t_brass].notes, c.start, ring, k, 112);
+                        push(&mut t[t_brass].notes, c.start, ring, k + 12, 96);
+                    }
+                    push(&mut t[t_brass].notes, c.start, ring, c.voicing[0] - 12, 100);
+                    swell(&mut t[t_brass].ctrls, c.start, ring, 30, 127, 0.7);
+                }
+                // dissolving: the choir alone, a last soft breath of horn on the first chord
+                Part::Fade => {
+                    for &k in &c.voicing {
+                        push(&mut t[t_pad].notes, c.start, ring, k, 44);
+                    }
+                    if secs.iter().any(|s| s.0 == Part::Fade && s.1 == c.start) {
+                        for k in open {
+                            push(&mut t[t_brass].notes, c.start, ring, k, 70);
+                        }
+                        swell(&mut t[t_brass].ctrls, c.start, ring, 60, 80, 0.15);
+                    }
+                }
+            }
+        }
+    }
+    for (ci, c) in chords.iter().enumerate().filter(|_| style != Style::Overcity) {
         let ring = if ci == last_chord { end - c.start } else { c.len.saturating_sub(breath / 2) };
         let part = part_at(c.start);
         if part == Part::Intro {
@@ -719,6 +873,25 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
         Style::Momento => swaying_bass(&mut t[t_bass].notes, &chords, &secs, beat, bar, beats_per_bar, end),
         Style::Noir => walking_bass(&mut t[t_bass].notes, &chords, &secs, &mut brng, beat, bar, beats_per_bar, end),
+        Style::Overcity => {
+            // a slow heartbeat, felt more than heard: the root low, twice a bar, from the
+            // development through the great swell and on into the first half of the fade
+            for (part, a, z) in &secs {
+                let stop = match part {
+                    Part::Swell | Part::NightShift => *z,
+                    Part::Fade => a + (z - a) / 2 / bar * bar,
+                    _ => continue,
+                };
+                let mut b = *a;
+                while b < stop {
+                    let k = near(chord_at(&chords, b).root_pc, 33);
+                    let lift = if *part == Part::NightShift { 14 } else { 0 };
+                    push(&mut t[t_bass].notes, b, beat * 3 / 4, k, 74 + lift);
+                    push(&mut t[t_bass].notes, b + beat, beat * 3 / 4, k, 54 + lift);
+                    b += bar;
+                }
+            }
+        }
         Style::Nocturne => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
@@ -760,7 +933,22 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     };
     let mut tick = bells_from;
     let mut i = 0usize;
-    if style != Style::Nocturne {
+    if style == Style::Overcity {
+        // crystalline pings, few and far between, like light on wet streets; and one
+        // last distant bell as it all fades
+        for c in &chords {
+            let part = part_at(c.start);
+            if matches!(part, Part::Neon | Part::Swell | Part::Fade) && bel.chance(0.35 + density * 0.2) {
+                let k = c.voicing[bel.range(1, 3) as usize] + if bel.chance(0.5) { 24 } else { 36 };
+                let off = beat * bel.range(1, (c.len / beat).max(2) as i32 - 1) as u32;
+                push(&mut t[t_bells].notes, c.start + off, beat * 2, k.min(108), 38 + bel.range(0, 18) as u8);
+            }
+        }
+        if end > 3 * bar {
+            push(&mut t[t_bells].notes, end - 3 * bar, 2 * bar, near(r.root, 86), 54);
+        }
+        tick = end;
+    } else if style != Style::Nocturne {
         // chimes rather than rain: a note on a chord's first beat now and then, in the
         // quiet sections (Pursuit), or rarely and high in the dark (Blackout)
         let chance = match style {
@@ -808,6 +996,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Momento => vec![&[3.0, 1.0], &[2.0, 1.0, 1.0], &[4.0], &[1.5, 0.5, 2.0], &[2.0, 2.0], &[1.0, 1.0, 2.0]],
         // few notes, held, a sigh now and then
         Style::Noir => vec![&[3.0, 1.0], &[4.0], &[2.0, 2.0], &[1.5, 0.5, 2.0], &[6.0, 2.0]],
+        // (Overcity writes its own theme; these only keep the stream as it would be)
+        Style::Overcity => vec![&[4.0], &[6.0, 2.0]],
     };
     let phrase_beats = (phrase_bars * beats_per_bar) as f64;
     let rhythm_a: Vec<f64> = {
@@ -828,7 +1018,11 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     };
     let mut pos_idx = scale.iter().position(|k| *k >= from).unwrap_or(scale.len() / 2) as i32;
     let mut phrase_no = 0;
-    for (s2, s3) in of(Part::NightShift) {
+    if style == Style::Overcity {
+        let tonic_idx = scale.iter().position(|k| *k % 12 == r.root % 12 && *k >= 60).unwrap_or(scale.len() / 2);
+        overcity_theme(&mut t[t_lead], &chords, &secs, &scale, tonic_idx, &mut mel, beat, end);
+    }
+    for (s2, s3) in of(Part::NightShift).filter(|_| style != Style::Overcity) {
         let mut phrase_start = s2;
         while phrase_start < s3 {
             let mut t0 = phrase_start as f64;
@@ -923,6 +1117,49 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             }
         }
     }
+    if style == Style::Overcity {
+        // slow ripples high up, through the development and the great swell: the chord
+        // over two octaves in a figure each seed shapes its own way for each section (up,
+        // down, up and down, down and up, leaping, closing in, or scattered), at its own
+        // pace, length and place in the bar (its own stream, so the rest is as it was)
+        let mut rs = Rng::stream(r.seed, "ripple");
+        for (part, a, z) in &secs {
+            if !matches!(part, Part::Swell | Part::NightShift) {
+                continue;
+            }
+            let shape = rs.range(0, 6);
+            let step = *rs.pick(&[beat / 2, beat / 2, beat * 3 / 4, beat / 3]);
+            let fits = (bar / step.max(1)).max(3) as i32;
+            let count = rs.range(4, 8).min(fits) as usize;
+            let offset = if rs.chance(0.4) && step * count as u32 + beat <= bar { beat } else { 0 };
+            let scatter: Vec<usize> = {
+                let mut v: Vec<usize> = (0..count).collect();
+                for i in (1..v.len()).rev() {
+                    let j = rs.range(0, i as i32) as usize;
+                    v.swap(i, j);
+                }
+                v
+            };
+            let mut b = *a;
+            while b < *z {
+                let c = chord_at(&chords, b);
+                let mut tones: Vec<u8> = c.voicing.iter().map(|k| k + 12).chain(c.voicing.iter().map(|k| k + 24)).collect();
+                tones.sort_unstable();
+                tones.dedup();
+                // the figure's notes, low to high, then in the shape's order
+                let span: Vec<u8> = (0..count).map(|j| tones[j * (tones.len() - 1) / (count - 1).max(1)]).collect();
+                let order = ripple_order(shape, count, &scatter);
+                if pl.chance(0.55 + density * 0.3) {
+                    for (j, &o) in order.iter().enumerate() {
+                        // brightest at the top of the figure
+                        let vel = 34 + (o as u8) * 18 / count as u8 + pl.range(0, 8) as u8;
+                        push(&mut t[t_pluck].notes, b + offset + j as u32 * step, beat, span[o].min(103), vel);
+                    }
+                }
+                b += bar;
+            }
+        }
+    }
     if style == Style::Momento {
         // a kalimba in dotted quavers, three against the four, through each night shift
         for (s2, s3) in of(Part::NightShift) {
@@ -954,7 +1191,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // ---------------------------------------------------------------- the answer
     let mut an = Rng::stream(r.seed, "answer");
     let tonic_hi = scale.iter().copied().filter(|k| k % 12 == r.root % 12).find(|k| *k >= 60).unwrap_or(62);
-    for (s3, s4) in of(Part::Fade) {
+    for (s3, s4) in of(Part::Fade).filter(|_| style != Style::Overcity) {
         let mut tick = s3 + beat;
         let tonic = tonic_hi;
         // the last fade leaves its final bar to ring
@@ -975,7 +1212,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // the theme's opening heard alone, softly, from the second bar of each intro (its own
     // stream, so a piece without one is as it was)
     let mut ir = Rng::stream(r.seed, "intro");
-    for (a, z) in of(Part::Intro) {
+    for (a, z) in of(Part::Intro).filter(|_| style != Style::Overcity) {
         if z - a < 2 * bar {
             continue;
         }
@@ -1052,7 +1289,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
 
     // ---------------------------------------------------------------- the drone
     // the tonic and its fifth, struck again at each section so it swells with the form
-    let tonic = near(r.root, 45);
+    // (in Overcity an octave down, almost felt rather than heard)
+    let tonic = near(r.root, if style == Style::Overcity { 38 } else { 45 });
     for (part, a, z) in &secs {
         push(&mut t[t_drone].notes, *a, z - a, tonic, 80);
         if !matches!(part, Part::Neon | Part::Intro) || style == Style::Blackout {
@@ -1146,6 +1384,31 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
+        Style::Overcity => {
+            // the city far below: a soft wash of rain, its rumble, distant thunder at the
+            // edges of the form, and a deep gong-like boom on the great swell
+            let pc = r.root % 12;
+            t[t_city].notes.clear();
+            let soft: Vec<RainKind> = RainKind::ALL.into_iter().filter(|k| k.sparse()).collect();
+            let rain = if soft.is_empty() { RainKind::ALL[0] } else { *deep.pick(&soft) };
+            push(&mut t[t_city].notes, 0, end, rain.key(), 62);
+            push(&mut t[t_city].notes, 0, end, fx::HUM, 46);
+            for (i, (part, a, z)) in secs.iter().enumerate() {
+                if matches!(part, Part::Intro | Part::Fade) {
+                    push(&mut t[t_city].notes, *a, (z - a).min(bar * 2), fx::GRAINS + pc, 44);
+                }
+                if i > 0 && *part != secs[i - 1].0 && *a > beat {
+                    push(&mut t[t_city].notes, a - beat, beat * 2, fx::THUNDER, if *part == Part::NightShift { 96 } else { 62 });
+                }
+                if *part == Part::NightShift {
+                    push(&mut t[t_city].notes, *a, bar * 2, fx::BOOM + pc, 96);
+                    let mid = a + (z - a) / 2 / bar * bar;
+                    if mid > *a {
+                        push(&mut t[t_city].notes, mid, bar * 2, fx::BOOM + pc, 76);
+                    }
+                }
+            }
+        }
         Style::Nocturne | Style::Momento | Style::Noir => {}
     }
     if style == Style::Noir {
@@ -1180,6 +1443,16 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
         Style::Momento => soft_groove(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
         Style::Noir => brushes(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
+        Style::Overcity => {
+            // only the largest moments: a slow, soft, deep hit every other bar of the great swell
+            for (a, z) in of(Part::NightShift) {
+                let mut b = a;
+                while b < z {
+                    push(&mut t[t_drums].notes, b, beat * 2, drum::DEEP_KICK, if b == a { 100 } else { 70 });
+                    b += 2 * bar;
+                }
+            }
+        }
         Style::Nocturne => {}
     }
     if style == Style::Nocturne && density > 0.2 {
@@ -1220,6 +1493,114 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     p.recipe = Some(*r);
     p.composed = fingerprint(&p);
     p
+}
+
+/// The order a ripple of `count` notes (0 lowest) plays in: 0 up, 1 down, 2 up and back
+/// down, 3 down and back up, 4 closing in from the outside, 5 opening out from the
+/// middle, else `scatter`.
+fn ripple_order(shape: i32, count: usize, scatter: &[usize]) -> Vec<usize> {
+    // up on the even notes, down on the odd ones
+    let arch: Vec<usize> = (0..count).step_by(2).chain((1..count).step_by(2).rev()).collect();
+    let closing: Vec<usize> = (0..count).map(|j| if j % 2 == 0 { j / 2 } else { count - 1 - j / 2 }).collect();
+    match shape {
+        0 => (0..count).collect(),
+        1 => (0..count).rev().collect(),
+        2 => arch,
+        3 => arch.iter().map(|x| count - 1 - x).collect(),
+        4 => closing,
+        5 => closing.into_iter().rev().collect(),
+        _ => scatter.to_vec(),
+    }
+}
+
+/// Overcity's theme: slow, aching phrases of long notes, each opening with a rising
+/// leap (a fifth or a sixth) and then falling step by step through the scale to a
+/// held chord tone, with a long silence after. Each statement starts a little higher
+/// and plays a little stronger. Stated in the opening Neon, varied through the
+/// development, sung once more at its highest into the great swell.
+#[allow(clippy::too_many_arguments)]
+fn overcity_theme(
+    track: &mut Track,
+    chords: &[Chord],
+    secs: &[(Part, u32, u32)],
+    scale: &[u8],
+    tonic_idx: usize,
+    rng: &mut Rng,
+    beat: u32,
+    end: u32,
+) {
+    let n = scale.len() as i32;
+    let at = |b: f64| (b * beat as f64).round() as u32;
+    let mut phrase = 0i32;
+    for (part, a, z) in secs {
+        let (lift_base, once) = match part {
+            Part::Neon => (0, false),
+            Part::Swell => (1, false),
+            Part::NightShift => (4, true),
+            _ => continue,
+        };
+        // a breath in before the first note
+        let mut tick = a + at(2.0);
+        while tick + at(8.0) < *z {
+            let c = chord_at(chords, tick);
+            // start on a chord tone near the tonic, a step higher each time round
+            let lift = (lift_base + phrase.min(3)).min(5);
+            let mut i = (tonic_idx as i32 - 3 + lift).clamp(0, n - 1);
+            if let Some(j) = (0..n).filter(|j| c.pcs.contains(&(scale[*j as usize] % 12))).min_by_key(|j| (j - i).abs()) {
+                i = j;
+            }
+            let leap = if rng.chance(0.55) { 4 } else { 5 };
+            let falls = rng.range(2, 4);
+            let mut notes: Vec<(i32, f64)> = vec![(i, 2.0), ((i + leap).min(n - 1), 4.0)];
+            let mut k = (i + leap).min(n - 1);
+            for f in 0..falls {
+                k = (k - 1).max(0);
+                let d = if f == falls - 1 {
+                    2.0
+                } else if rng.chance(0.5) {
+                    1.0
+                } else {
+                    1.5
+                };
+                notes.push((k, d));
+            }
+            // the held end, on a chord tone near where the fall arrives
+            let mut t0 = tick + notes.iter().map(|(_, d)| at(*d)).sum::<u32>();
+            let land = chord_at(chords, t0.min(end.saturating_sub(1)));
+            let close = (0..n).filter(|j| land.pcs.contains(&(scale[*j as usize] % 12))).min_by_key(|j| (j - (k - 1)).abs()).unwrap_or(k);
+            notes.push((close, 5.0));
+            let vel = (78 + phrase * 6 + if once { 14 } else { 0 }).min(116) as u8;
+            t0 = tick;
+            for (ni, (j, d)) in notes.iter().enumerate() {
+                if t0 >= *z || t0 >= end {
+                    break;
+                }
+                let len = at(*d).min(z - t0);
+                let key = scale[*j as usize];
+                track.notes.push(Note { start: t0, len, key, vel: vel.saturating_sub(if ni >= 2 { 6 } else { 0 }) });
+                if ni == 1 {
+                    // slide up into the top of the leap
+                    for (dt, v) in [(0, -2400), (beat / 6, -900), (beat / 3, 0)] {
+                        track.ctrls.push(Ctrl { tick: t0 + dt.min(len), kind: CtrlKind::Bend, value: v });
+                    }
+                }
+                if *d >= 4.0 {
+                    // the long notes bloom: a slow vibrato swell
+                    for q in 0..=8 {
+                        track.ctrls.push(Ctrl { tick: t0 + len * q / 8, kind: CtrlKind::Cc(1), value: (q * 10) as i16 });
+                    }
+                    track.ctrls.push(Ctrl { tick: t0 + len, kind: CtrlKind::Cc(1), value: 0 });
+                }
+                t0 += at(*d);
+            }
+            phrase += 1;
+            if once {
+                break;
+            }
+            // and generous space after
+            tick = t0 + at(rng.range(4, 7) as f64);
+        }
+    }
 }
 
 /// Noir's bass, an upright walking slowly: the root on the one, a chord tone on the
@@ -1354,6 +1735,16 @@ fn prefers(style: Style, role: Role, label: &str) -> bool {
         (Style::Noir, Role::Pluck) => &["Lantern Pluck", "Rain Harp"],
         (Style::Noir, Role::Drone) => &["Sodium Drone", "Glass Drone", "Abyss Drone"],
         (Style::Noir, Role::Keys) => &["Neon Tine Piano", "Electric Piano", "Polysynth Keys"],
+        (Style::Overcity, Role::Brass) => &["Skyline Swell", "Tidal Brass", "Neon Brass", "Velvet Horns"],
+        (Style::Overcity, Role::Pad | Role::Strings) => {
+            &["Night Choir", "Cathedral Sweep", "Vox Haze", "Synth Choir (FreePats)", "Halo Pad"]
+        }
+        (Style::Overcity, Role::Lead) => &["Glass Lead", "Ribbon Lead"],
+        (Style::Overcity, Role::Answer) => &["Choir", "Glass Lead", "Shakuhachi"],
+        (Style::Overcity, Role::Bass) => &["Pure Sub", "Sub Pulse Bass"],
+        (Style::Overcity, Role::Bells) => &["Glass Chimes", "Night Bells", "Tubular Bells"],
+        (Style::Overcity, Role::Pluck) => &["Rain Harp", "Lantern Pluck"],
+        (Style::Overcity, Role::Drone) => &["Abyss Drone", "Choir Drone", "Glass Drone"],
         _ => &[],
     };
     liked.is_empty() || liked.contains(&label)
@@ -1855,6 +2246,61 @@ mod tests {
         let after: Vec<Vec<u32>> = g.tracks.iter().map(|t| t.notes.iter().filter(|n| n.start < len).map(|n| n.start).collect()).collect();
         assert_eq!(before, after);
         assert!(g.tracks.iter().all(|t| t.notes.iter().all(|n| n.start >= len || n.end() <= len || n.start >= 2 * len)));
+    }
+
+    #[test]
+    fn ripples_play_every_note_once() {
+        for count in 1..=8 {
+            let scatter: Vec<usize> = (0..count).rev().collect();
+            for shape in 0..=6 {
+                let mut o = ripple_order(shape, count, &scatter);
+                assert_eq!(o.len(), count, "shape {shape}, {count} notes");
+                o.sort_unstable();
+                assert_eq!(o, (0..count).collect::<Vec<_>>(), "shape {shape}, {count} notes");
+            }
+        }
+        // and different seeds shape them differently: the first figure's notes, from its lowest
+        let figures: std::collections::BTreeSet<Vec<i32>> = (1..12u64)
+            .map(|seed| {
+                let r = Recipe { seed, style: Style::Overcity, ..Recipe::default() };
+                let p = compose(&r, 60.0, (4, 4), 52);
+                let notes: Vec<i32> = p
+                    .tracks
+                    .iter()
+                    .find(|t| t.role == Some(Role::Pluck))
+                    .map_or(Vec::new(), |t| t.notes.iter().take(6).map(|n| n.key as i32).collect());
+                let low = notes.iter().copied().min().unwrap_or(0);
+                notes.iter().map(|k| k - low).collect()
+            })
+            .collect();
+        assert!(figures.len() >= 5, "{figures:?}");
+    }
+
+    /// Overcity: a long breath before the theme, the theme leaping and falling, horn
+    /// swells written as expression, drums only in the great swell, the city far below,
+    /// and a last bell as it fades.
+    #[test]
+    fn overcity_breathes_then_sings() {
+        let r = Recipe { style: Style::Overcity, ..Recipe::default() };
+        let p = compose(&r, 60.0, (4, 4), 52);
+        let parts: Vec<Option<Part>> = p.arrangement().iter().map(|b| b.part).collect();
+        assert_eq!(parts, [Some(Part::Intro), Some(Part::Neon), Some(Part::Swell), Some(Part::NightShift), Some(Part::Fade)]);
+        let blocks = p.block_ticks();
+        let track = |role: Role| p.tracks.iter().find(|t| t.role == Some(role)).unwrap_or_else(|| panic!("no {role:?}"));
+        let lead = track(Role::Lead);
+        assert!(lead.notes.iter().all(|n| n.start >= blocks[1].0), "the intro is the horns alone");
+        // the first phrase: a rising leap of a fifth or more, then falling
+        let first: Vec<i32> = lead.notes.iter().take(5).map(|n| n.key as i32).collect();
+        assert!(first[1] - first[0] >= 7, "{first:?}");
+        assert!(first[2..].windows(2).all(|w| w[1] <= w[0]), "{first:?}");
+        assert!(track(Role::Brass).ctrls.iter().any(|c| c.kind == CtrlKind::Cc(11)));
+        let (ns_a, ns_z) = blocks[3];
+        assert!(track(Role::Drums).notes.iter().all(|n| n.start >= ns_a && n.start < ns_z));
+        assert!(!track(Role::City).notes.is_empty());
+        let end = p.length_bars * p.bar_ticks();
+        assert!(track(Role::Bells).notes.iter().any(|n| n.start >= end - 4 * p.bar_ticks()));
+        // no electric piano, no answer: the theme sings alone
+        assert!(p.tracks.iter().all(|t| !matches!(t.role, Some(Role::Keys | Role::Answer))));
     }
 
     #[test]

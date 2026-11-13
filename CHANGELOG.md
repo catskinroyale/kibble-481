@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Overcity**, a sixth composer style: a vast, rain-soaked city seen from above at night.
+  Horns rising on open fifths out of near-silence, a sparse glassy theme that leaps and
+  falls with long silences between, a heartbeat on the sub, rippling glass, one great
+  swell with deep booms, and a fade to the drone and a last distant bell. Each seed
+  shapes the rippling glass its own way in each section (up, down, up and down, down
+  and up, closing in, opening out or scattered, in quavers, dotted quavers or
+  triplets). 60 bpm;
+  `kibble-481-cli compose --style overcity`. The other styles are unchanged.
+- The Score tab is in strips like the mixer's: the style as neon lamps; a Key strip with
+  the scale (two across) and the mode as lamps side by side, the density dial and the seed
+  (fixed width) under them; New piece, New notes and Write again as
+  push buttons whose neon flares when pressed; Keep sounds a lamp that switches on and
+  off; tempo and length as dials and the metre as lamps. The playing and recording guide
+  is now in About (ⓘ).
+- The Score tab's sections are a swim lane: the sections stacked on the left (grip, name,
+  bars, ×; right-click to change the part) and the parts on the right to drag into it.
+
 ## 0.4.0 — 2026-11-13
 
 - Each section on the Sections strip above the roll has its own buttons on hover (and a

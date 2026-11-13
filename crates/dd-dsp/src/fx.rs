@@ -45,9 +45,7 @@ impl Space {
             Space::BlackHole => "Enormous, slowly swirling and almost endless: notes dissolve into a cloud",
             Space::Plate => "A bright, dense studio plate that blooms at once, with no sense of walls",
             Space::Cloud => "Granular: the reverb is fed scattered, slightly detuned fragments of what was just played",
-            Space::Noir => {
-                "A vast, dark 1980s digital hall: a long pause before it blooms, then a slow, chorused tail, as on the Blade Runner soundtrack"
-            }
+            Space::Noir => "A vast, dark 1980s digital hall: a long pause before it blooms, then a slow, chorused tail",
         }
     }
 }

@@ -207,6 +207,26 @@ texts, the full crate list (`tools/gen_licenses.py`) and an update check. The ch
 only GitHub's public releases API with a generic user agent and is on at startup by
 default, as in the other apps; it can be turned off in About.
 
+## D19 — Overcity (2026-11-13)
+
+A sixth style written to the user's brief: a slow, vast synthesizer cue of a rain-soaked,
+neon-lit city seen from above at night, cold, melancholic and faintly sacred, as an
+evocative homage to a classic early-80s analogue film score and not a copy of it. Per D3
+the score, film and composer the brief names appear nowhere in the code, patches, titles or
+docs; the name, "Overcity", is our own. No melody is copied: the theme is generated each
+time from the brief's shape (a rising leap of a fifth or sixth, a stepwise fall in the
+minor scale to a held note, long silences, each statement higher), not from any tune.
+
+The brief's form maps onto the five parts: Intro (near-silence, a low drone, horns rising
+on an open fifth), Neon (the theme), Swell (development: heartbeat, rippling glass, a high
+choir), Night shift (the great swell) and Fade (dissolving to the drone and a last bell).
+The horn swells are written as expression (CC11) and brightness (CC74) curves, which the
+built-in synth and the SoundFonts both follow. Unlike Noir, the brief asks for wind, rumble,
+thunder and a wash of rain, so Overcity keeps the City track, quieter. Its pieces measure
+about -15 to -18 LUFS with a loudness range of 9 to 12 LU (large dynamics, as asked). The
+other styles are written exactly as before (each style's recipes recomposed and compared
+note for note with 0.4.0).
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

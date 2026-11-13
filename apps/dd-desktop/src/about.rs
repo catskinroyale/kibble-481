@@ -197,6 +197,11 @@ impl About {
         });
 
         ui.separator();
+        heading(ui, &t, "Playing and recording");
+        for l in PLAYING {
+            ui.label(egui::RichText::new(format!("•  {l}")).font(t.book(13.0)).color(t.text));
+        }
+        ui.add_space(6.0);
         heading(ui, &t, "What it does");
         for (what, how) in [
             (
@@ -391,6 +396,16 @@ impl About {
         );
     }
 }
+
+/// How to play, record and edit, at a glance.
+const PLAYING: [&str; 6] = [
+    "Space plays and pauses, Enter stops (twice goes to the start), ⇧R records.",
+    "Computer keyboard: A W S E D F T G Y H U J K O L P ; play an octave and a bit; Z X move it, C V set how hard.",
+    "A MIDI keyboard plays the selected track; its wheel, pedal, bend and aftertouch are recorded too.",
+    "The ribbon under the keys bends like a CS-80's; the Touch strip is aftertouch.",
+    "Recording counts in a bar, keeps going past the end, and adds to the track (or replaces, if set).",
+    "In the roll: click to add, drag to move (⌥ copies), drag the end to resize, double-click to delete, ⇧-drag to select. Q quantises.",
+];
 
 #[cfg(test)]
 mod tests {

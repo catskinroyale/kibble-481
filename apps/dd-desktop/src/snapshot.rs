@@ -6,7 +6,7 @@
 //! (select the bells track), `layer2` (the synth's second layer), `long` (lengthen the
 //! piece to 48 bars), `fast` (124 bpm), `edited` (edit a note first),
 //! `bass`, `city`, `drone` (select that track), `added` (add a Neon section),
-//! `pursuit`, `blackout`, `momento`, `noir` (write the piece in that style), `volume` (the volume lane,
+//! `pursuit`, `blackout`, `momento`, `noir`, `overcity` (write the piece in that style), `volume` (the volume lane,
 //! with some bars set).
 //! `KIBBLE_SCREENSHOT_INPUT` plays input first, `;`-separated, six frames apart:
 //! `c:x,y` clicks there, `w:x,y,dy` scrolls there (points); `p:x,y` presses there,

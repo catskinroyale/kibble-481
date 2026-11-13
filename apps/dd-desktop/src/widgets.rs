@@ -981,6 +981,67 @@ pub fn strip_heading(ui: &mut Ui, text: &str, enabled: bool) {
     ui.label(egui::RichText::new(text).font(t.font(10.0)).color(if enabled { t.text_dim } else { t.text_disabled }));
 }
 
+/// A push button with a neon lamp: it flares while pressed and fades after, like a
+/// lamp behind a momentary switch. Returns the button's response (check `clicked`).
+pub fn neon_button(ui: &mut Ui, label: &str, enabled: bool) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 21.0), sense);
+    let fired = resp.id.with("fired");
+    let now = ui.input(|i| i.time);
+    if resp.clicked() {
+        ui.data_mut(|d| d.insert_temp(fired, now));
+    }
+    let since = ui.data(|d| d.get_temp::<f64>(fired)).map_or(f64::MAX, |at| now - at);
+    let down = enabled && resp.is_pointer_button_down_on();
+    let level = if down { 1.0 } else { (1.0 - since / 0.7).clamp(0.0, 1.0) as f32 };
+    if level > 0.0 && !down {
+        ui.ctx().request_repaint();
+    }
+    let fill = if !enabled {
+        t.button
+    } else if down {
+        t.pressed
+    } else if resp.hovered() {
+        t.hover
+    } else {
+        t.button
+    };
+    ui.painter().rect_filled(r, 3.0, fill);
+    let edge = if level > 0.0 { lerp_colour(t.button_border, t.accent, level) } else { t.button_border };
+    ui.painter().rect_stroke(r, 3.0, Stroke::new(1.0, edge), StrokeKind::Inside);
+    let lamp_r = Rect::from_min_size(pos2(r.left() + 4.0, r.center().y - 6.0), vec2(12.0, 12.0));
+    let mut lui = ui.new_child(egui::UiBuilder::new().max_rect(lamp_r));
+    lamp_level(&mut lui, level, if enabled { t.accent } else { t.text_disabled }, 12.0);
+    let c = if !enabled {
+        t.text_disabled
+    } else if level > 0.0 || resp.hovered() {
+        t.text
+    } else {
+        t.text_label
+    };
+    ui.painter().with_clip_rect(r).text(pos2(r.left() + 20.0, r.center().y), Align2::LEFT_CENTER, label, t.font(10.5), c);
+    resp
+}
+
+/// A dial that clicks through a list of choices, straight up at `neutral`; the
+/// choice's name shows on hover. Says whether it moved.
+pub fn choice_dial(ui: &mut Ui, label: &str, help: &str, index: &mut usize, names: &[&str], neutral: usize) -> bool {
+    let last = names.len().saturating_sub(1).max(1) as f32;
+    let d = neutral as f32 / last;
+    let mut u = *index as f32 / last;
+    let spec = DialSpec { label, help, neutral: d, turns: unit_turns(d), radius: 10.0, layout: DialLayout::Under };
+    let name = |u: f32| names.get((u * last).round() as usize).copied().unwrap_or("").to_string();
+    // snap as it turns: the held turn moves freely, the choice clicks to the nearest
+    let changed = dial(ui, &spec, &mut u, |u| unit_turn(u, d), |x| (unit_value(x, d) * last).round() / last, name);
+    let k = (u * last).round() as usize;
+    if changed && k != *index {
+        *index = k;
+        return true;
+    }
+    false
+}
+
 /// A choice as a row: a small neon lamp, lit when `lit`, and its name beside it, as a
 /// track's lamp and name on the mixer. The whole row is the button.
 pub fn lamp_row(ui: &mut Ui, label: &str, lit: bool, enabled: bool) -> Response {
@@ -1008,21 +1069,26 @@ pub fn lamp_row(ui: &mut Ui, label: &str, lit: bool, enabled: bool) -> Response 
 
 /// A neon indicator lamp in `colour`: glowing when `lit`, dark glass when not.
 pub fn lamp(ui: &mut Ui, lit: bool, colour: Color32, size: f32) -> Response {
+    lamp_level(ui, if lit { 1.0 } else { 0.0 }, colour, size)
+}
+
+/// A neon lamp lit to `level` (0 dark, 1 full), for one that flares and fades.
+pub fn lamp_level(ui: &mut Ui, level: f32, colour: Color32, size: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
     let c = r.center();
     let rad = size * 0.32;
     let p = ui.painter();
-    if lit {
+    let level = level.clamp(0.0, 1.0);
+    p.circle_filled(c, rad, t.canvas);
+    p.circle_stroke(c, rad, Stroke::new(1.0, colour.gamma_multiply(0.35)));
+    if level > 0.0 {
         // the glow: wide faint halos, then a bright core whitening at its heart
         for (k, a) in [(2.4, 0.07), (1.8, 0.12), (1.35, 0.22)] {
-            p.circle_filled(c, rad * k, colour.gamma_multiply(a));
+            p.circle_filled(c, rad * k, colour.gamma_multiply(a * level));
         }
-        p.circle_filled(c, rad, colour);
-        p.circle_filled(c - vec2(rad * 0.2, rad * 0.2), rad * 0.45, Color32::WHITE.gamma_multiply(0.75));
-    } else {
-        p.circle_filled(c, rad, t.canvas);
-        p.circle_stroke(c, rad, Stroke::new(1.0, colour.gamma_multiply(0.35)));
+        p.circle_filled(c, rad, colour.gamma_multiply(level));
+        p.circle_filled(c - vec2(rad * 0.2, rad * 0.2), rad * 0.45, Color32::WHITE.gamma_multiply(0.75 * level));
     }
     resp
 }

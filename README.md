@@ -56,9 +56,10 @@ opening: the drone, a thin pad and the theme's first notes heard alone), **Neon*
 pad, the drone and bells), **Swell** (the brass and bass come in, with a heartbeat),
 **Night shift** (everything, with the lead melody, plucks and drums) and **Fade** (the
 answer as it recedes). A new piece runs Neon, Swell, Night shift, Fade (in Noir, after an
-Intro); an Intro can open a piece in any style. In the Score tab's
-section list, drag a section by its ≡ grip to move it, drag one of the **+** buttons into
-place to add a section there (or click it to add one at the end), and × to remove one; drag
+Intro); an Intro can open a piece in any style. In the Score tab the
+sections are a swim lane, with the parts to add on the right: drag a part into the lane
+to add it there (or click it to add one at the end), drag a section by its ≡ grip to move
+it, × to remove one, and right-click one to change its part; drag
 the end of a section on the Sections strip above the roll to make it a bar or more longer
 or shorter. A composed piece is written again to follow the arrangement. On the Sections
 strip itself, hover over a section for its own buttons (or right-click it): **↻** writes
@@ -68,7 +69,7 @@ the rest of the piece as it is, so it then counts as edited (⌘Z undoes them). 
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are five **styles**, each playing the same kinds of section its own way, all
+There are six **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -94,6 +95,18 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   a faint tritone under the night shift for unease; and a lead (often a sax) that rests
   every other phrase. It opens on an Intro, and is mixed quieter (about -20 LUFS) with the
   lead back, to sit under a voice-over.
+- **Overcity** (60 bpm): a vast, rain-soaked city seen from above at night, cold and faintly
+  sacred. Out of near-silence and a sub drone felt more than heard, horns rise on an open
+  fifth and fall away like a breath. Hollow voicings (root, fifth and octave, the third a
+  tenth above) hover on the tonic, drifting for a moment to the relative major, the sixth
+  or a suspension. A sparse, glassy theme of long notes leaps up a fifth or sixth and falls
+  by step to a held note, then leaves a long silence, each time a little higher. Under the
+  development a slow heartbeat on the sub and rippling glass high up (each seed shaping it its own
+  way: up, down, arching, closing in, opening out or scattered); then one great swell
+  with everything open, deep booms and distant thunder; then it dissolves into echo over
+  the drone, ending on a last distant bell. The horn swells are written as expression
+  (CC11) and brightness (CC74). Soft rain and the city's rumble sit far below; drums only
+  mark the great swell. It opens on an Intro.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -288,7 +301,8 @@ window's list of third-party crates and their licences (a test checks it matches
 
 ## About
 
-The ⓘ button opens About: the version and the git commit it was built from, what the app
+The ⓘ button opens About: the version and the git commit it was built from, a quick
+guide to playing and recording (keys, MIDI, the ribbon, the roll), what the app
 does, where this copy keeps its settings and SoundFonts, the licences of the app and of
 everything bundled with it (SoundFonts, rain recordings, typefaces, interface design) with
 their full texts, and every third-party crate compiled in, with its licence. **Check for

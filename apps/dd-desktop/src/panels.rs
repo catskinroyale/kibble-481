@@ -20,14 +20,6 @@ use crate::live::MidiIn;
 use crate::theme::Tokens;
 use crate::widgets::{self, Icon, Segment, SliderSpec};
 
-fn amount(ui: &mut egui::Ui, id: &str, label: &str, v: &mut f32, default: f32, ends: (&str, &str), help: &str) {
-    let spec = SliderSpec { id, label, help, ends: Some(ends), default: default as f64, ..Default::default() };
-    let mut x = *v as f64;
-    if widgets::slider(ui, &spec, &mut x, true) {
-        *v = x as f32;
-    }
-}
-
 fn rgb(c: [u8; 3]) -> Color32 {
     crate::theme::track_colour(c)
 }
@@ -79,8 +71,21 @@ pub(crate) fn rack_strip(
     on: Option<&mut bool>,
     content: impl FnOnce(&mut egui::Ui),
 ) {
+    rack_strip_w(ui, t, title, help, on, crate::mixer_ui::STRIP_W, content);
+}
+
+/// [`rack_strip`] at another width, for a strip holding two lists side by side.
+pub(crate) fn rack_strip_w(
+    ui: &mut egui::Ui,
+    t: &Tokens,
+    title: &str,
+    help: &str,
+    on: Option<&mut bool>,
+    width: f32,
+    content: impl FnOnce(&mut egui::Ui),
+) {
     egui::Frame::new().fill(t.inset).corner_radius(4.0).inner_margin(egui::Margin::symmetric(5, 4)).show(ui, |ui| {
-        ui.set_width(crate::mixer_ui::STRIP_W);
+        ui.set_width(width);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             match on {
@@ -638,122 +643,209 @@ impl App {
     fn score_tab(&mut self, ui: &mut egui::Ui) {
         let t = Tokens::get(ui.ctx());
         self.composer_ui(ui, &t);
+        let untouched = self.doc.project.untouched();
+        let composed = self.doc.project.recipe.is_some();
+        let (mut dice, mut again) = (None, false);
+        let keep = &mut self.settings.keep_sounds;
         let p = &mut self.doc.project;
-        widgets::section(ui, "time", "Tempo and length", true, |ui| {
-            let mut bpm = p.bpm;
-            let spec = SliderSpec {
-                id: "bpm",
-                label: "Tempo",
-                help: "Beats per minute",
-                min: 30.0,
-                max: 200.0,
-                default: 72.0,
-                step: 0.5,
-                decimals: 1,
-                suffix: " bpm",
-                ..Default::default()
-            };
-            if widgets::slider(ui, &spec, &mut bpm, true) {
-                p.bpm = bpm;
-            }
-            widgets::inset(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Metre");
+        // writing, then the tempo and length as dials, the metre as lamps
+        ui.add_space(6.0);
+        widgets::inset(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                fx_strip(ui, &t, "Compose", "Write a new piece, new notes, or the piece again", |ui| {
+                    if widgets::neon_button(ui, "🎲 New piece", true)
+                        .on_hover_text("New notes (a new seed, key and mode) and a new arrangement of sections")
+                        .clicked()
+                    {
+                        dice = Some(true);
+                    }
+                    if widgets::neon_button(ui, "New notes", composed)
+                        .on_hover_text("New notes (a new seed, key and mode) to the sections as they are")
+                        .clicked()
+                    {
+                        dice = Some(false);
+                    }
+                    if widgets::neon_button(ui, "Write again", composed && !untouched)
+                        .on_hover_text("Replace your edits with the piece as composed, at this tempo and length")
+                        .clicked()
+                    {
+                        again = true;
+                    }
+                    strip_rule(ui, &t);
+                    if widgets::lamp_row(ui, "Keep sounds", *keep, true)
+                        .on_hover_text(
+                            "New seeds keep my sounds and mix. Off: each seed picks its own instruments and hall. On: tracks keep the sounds and mixer settings you chose",
+                        )
+                        .clicked()
+                    {
+                        *keep = !*keep;
+                    }
+                });
+                let style_tempo = p.recipe.map_or(72.0, |r| r.style.tempo()) as f32;
+                fx_strip(ui, &t, "Tempo", "The tempo and the length; a composed piece is written again to fit when you let go", |ui| {
+                    let mut bpm = p.bpm as f32;
+                    let mut bars = p.length_bars as f32;
+                    let mut k = vec![
+                        widgets::Knob::new(
+                            "Tempo",
+                            &mut bpm,
+                            (30.0, 200.0),
+                            style_tempo,
+                            0,
+                            " bpm",
+                            "Beats per minute. Straight up is the style's own tempo",
+                        ),
+                        widgets::Knob::new(
+                            "Length",
+                            &mut bars,
+                            (1.0, 400.0),
+                            48.0,
+                            0,
+                            " bars",
+                            "The shortest the piece is; it grows to hold every note. Straight up is 48 bars",
+                        )
+                        .log(),
+                    ];
+                    widgets::knob_rows(ui, &mut k);
+                    if (bpm as f64 - p.bpm).abs() > 1e-6 {
+                        p.bpm = (bpm as f64).round();
+                    }
+                    let bars = bars.round().max(1.0) as u32;
+                    if bars != p.length_bars {
+                        // the sections share the change
+                        p.stretch_to(bars);
+                    }
+                    let secs = p.music_secs().round() as u64;
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} bars, {}:{:02}\nplus a {:.0} s tail",
+                            p.bars(),
+                            secs / 60,
+                            secs % 60,
+                            dd_seq::project::TAIL_SECS
+                        ))
+                        .font(t.font(10.0))
+                        .color(t.text_dim),
+                    );
+                });
+                fx_strip(ui, &t, "Metre", "Beats in a bar, and the beat's note value", |ui| {
                     for m in [(4u32, 4u32), (3, 4), (6, 8), (5, 4), (7, 8)] {
-                        ui.selectable_value(&mut p.meter, m, format!("{}/{}", m.0, m.1));
+                        if widgets::lamp_row(ui, &format!("{}/{}", m.0, m.1), p.meter == m, true).clicked() {
+                            p.meter = m;
+                        }
                     }
                 });
             });
-            let mut bars = p.length_bars as f64;
-            let spec = SliderSpec {
-                id: "bars",
-                label: "Length",
-                help: "The shortest the piece is; it grows to hold every note",
-                min: 1.0,
-                max: 400.0,
-                default: 16.0,
-                step: 1.0,
-                decimals: 0,
-                suffix: " bars",
-                ..Default::default()
-            };
-            if widgets::slider(ui, &spec, &mut bars, true) {
-                // the sections share the change
-                p.stretch_to(bars as u32);
-            }
-            widgets::note(
-                ui,
-                format!("{} bars, {} plus a {:.0} s tail", p.bars(), timecode(p.music_secs()), dd_seq::project::TAIL_SECS),
-                "",
-            );
         });
-        widgets::section(ui, "sections", "Sections", true, |ui| {
-            widgets::note(
-                ui,
-                "The order of the score's sections. Add them in any order and as often as you like; set each one's length by dragging its end on the Sections strip above the roll. A composed piece is written again to follow them.",
-                "",
-            );
+        if let Some(sections) = dice {
+            self.new_piece(sections);
+        } else if again && let Some(r) = self.doc.project.recipe {
+            self.recompose(r, true);
+        }
+        let p = &mut self.doc.project;
+        ui.add_space(8.0);
+        // the sections as a swim lane on the left, the parts to drag into it on the right
+        {
             let mut blocks = p.arrangement();
             let before = blocks.clone();
             // where each block came from, so the tracks' bar levels move with their sections
             let mut origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
             let mut remove = None;
+            let mut change: Option<(usize, Part)> = None;
             let mut rows: Vec<Rect> = Vec::new();
+            let mut lane = Rect::NOTHING;
             let dragging = egui::DragAndDrop::payload::<SectionDrag>(ui.ctx()).map(|d| *d);
             let pointer = ui.ctx().pointer_interact_pos();
-            let list = ui.scope(|ui| {
-                widgets::inset(ui, |ui| {
-                    for (i, b) in blocks.iter_mut().enumerate() {
-                        let row = ui.horizontal(|ui| {
-                            let grip = ui
-                                .add(
-                                    egui::Label::new(
-                                        egui::RichText::new(format!("≡ {:>2}", i + 1))
-                                            .font(egui::FontId::monospace(11.0))
-                                            .color(t.text_dim),
-                                    )
-                                    .selectable(false)
-                                    .sense(Sense::drag()),
-                                )
-                                .on_hover_cursor(egui::CursorIcon::Grab)
-                                .on_hover_text("Drag to move this section");
-                            grip.dnd_set_drag_payload(SectionDrag::Move(i));
-                            let shown = b.part.map_or_else(
-                                || if b.name.is_empty() { "(lead-in)".to_string() } else { b.name.clone() },
-                                |p| p.label().to_string(),
-                            );
-                            egui::ComboBox::from_id_salt(("section-part", i)).width(110.0).selected_text(shown).show_ui(ui, |ui| {
-                                for part in Part::ALL {
-                                    if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
-                                        b.part = Some(part);
-                                        b.name = part.label().into();
-                                    }
+            widgets::inset(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    let w = ui.available_width() - crate::mixer_ui::STRIP_W - 6.0 - 20.0;
+                    rack_strip_w(
+                        ui,
+                        &t,
+                        "Sections",
+                        "The score's sections in order. Drag a part in from the right, drag a section by its grip to move it, × to take it out; set each one's length by dragging its end on the Sections strip above the roll. A composed piece is written again to follow them.",
+                        None,
+                        w,
+                        |ui| {
+                            let top = ui.cursor().top();
+                            for (i, b) in blocks.iter().enumerate() {
+                                let (r, body) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+                                let moving = matches!(dragging, Some(SectionDrag::Move(k)) if k == i);
+                                let painter = ui.painter();
+                                painter.rect_filled(r, 3.0, if moving { t.hover } else { t.chrome });
+                                painter.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 1.5, t.accent);
+                                // the grip
+                                let gr = Rect::from_min_size(r.min + vec2(5.0, 0.0), vec2(14.0, r.height()));
+                                let grip = ui
+                                    .interact(gr, ui.scope_id().with(("lane-grip", i)), Sense::drag())
+                                    .on_hover_cursor(egui::CursorIcon::Grab)
+                                    .on_hover_text("Drag to move this section");
+                                grip.dnd_set_drag_payload(SectionDrag::Move(i));
+                                let gc = if grip.hovered() { t.text } else { t.text_dim };
+                                for dy in [-3.0, 0.0, 3.0] {
+                                    painter.hline(gr.x_range().shrink(3.0), gr.center().y + dy, Stroke::new(1.0, gc));
                                 }
-                            });
-                            ui.label(
-                                egui::RichText::new(format!("{} bar{}", b.bars, if b.bars == 1 { "" } else { "s" })).color(t.text_label),
-                            );
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button("×").on_hover_text("Remove this section").clicked() {
+                                let name = b.part.map_or_else(
+                                    || if b.name.is_empty() { "(lead-in)".to_string() } else { b.name.clone() },
+                                    |p| p.label().to_string(),
+                                );
+                                painter.text(pos2(gr.right() + 4.0, r.center().y), Align2::LEFT_CENTER, name, t.semibold(11.0), t.text);
+                                // its length, and the × to take it out
+                                let xr = Rect::from_center_size(pos2(r.right() - 10.0, r.center().y), vec2(16.0, 16.0));
+                                painter.text(
+                                    pos2(xr.left() - 4.0, r.center().y),
+                                    Align2::RIGHT_CENTER,
+                                    format!("{} bar{}", b.bars, if b.bars == 1 { "" } else { "s" }),
+                                    t.font(10.5),
+                                    t.text_label,
+                                );
+                                let x = ui.interact(xr, ui.scope_id().with(("lane-x", i)), Sense::click()).on_hover_text("Take this section out");
+                                if x.hovered() {
+                                    painter.rect_filled(xr, 3.0, t.hover);
+                                }
+                                let xc = if x.hovered() { t.text } else { t.text_dim };
+                                let d = 3.5;
+                                painter.line_segment([xr.center() + vec2(-d, -d), xr.center() + vec2(d, d)], Stroke::new(1.3, xc));
+                                painter.line_segment([xr.center() + vec2(-d, d), xr.center() + vec2(d, -d)], Stroke::new(1.3, xc));
+                                if x.clicked() {
                                     remove = Some(i);
                                 }
-                            });
-                        });
-                        rows.push(row.response.rect);
-                    }
-                    if let Some(i) = remove {
-                        blocks.remove(i);
-                        origin.remove(i);
-                    }
-                    ui.add_space(2.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Add");
+                                body.on_hover_text("Right-click to change its part").context_menu(|ui| {
+                                    ui.label(egui::RichText::new("Change to").color(t.text_dim));
+                                    for part in Part::ALL {
+                                        if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
+                                            change = Some((i, part));
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                                rows.push(r);
+                            }
+                            if blocks.is_empty() {
+                                let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
+                                ui.painter().rect_stroke(r, 3.0, Stroke::new(1.0, t.divider), StrokeKind::Inside);
+                                ui.painter().text(r.center(), Align2::CENTER_CENTER, "Drag a part here", t.font(10.5), t.text_dim);
+                            }
+                            // room at the foot to drop onto
+                            ui.add_space(8.0);
+                            lane = Rect::from_min_max(pos2(ui.min_rect().left(), top), pos2(ui.min_rect().right(), ui.cursor().top()));
+                        },
+                    );
+                    fx_strip(ui, &t, "Parts", "Drag a part into the sections, or click it to add it at the end", |ui| {
                         for part in Part::ALL {
-                            let b = ui
-                                .add(egui::Button::new(format!("+ {}", part.label())).sense(Sense::click_and_drag()))
-                                .on_hover_text(format!("{}. Click to add it at the end, or drag it into place.", part.help()));
-                            b.dnd_set_drag_payload(SectionDrag::New(part));
-                            if b.clicked() {
+                            let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click_and_drag());
+                            let painter = ui.painter();
+                            painter.rect_filled(r, 3.0, if resp.hovered() { t.hover } else { t.chrome });
+                            painter.rect_stroke(r, 3.0, Stroke::new(1.0, t.accent.gamma_multiply(0.5)), StrokeKind::Inside);
+                            painter.text(pos2(r.left() + 6.0, r.center().y), Align2::LEFT_CENTER, "+", t.semibold(11.0), t.accent);
+                            painter.text(pos2(r.left() + 17.0, r.center().y), Align2::LEFT_CENTER, part.label(), t.font(11.0), t.text);
+                            let resp = resp
+                                .on_hover_cursor(egui::CursorIcon::Grab)
+                                .on_hover_text(format!("{}. Drag it into place, or click to add it at the end.", part.help()));
+                            resp.dnd_set_drag_payload(SectionDrag::New(part));
+                            if resp.clicked() {
                                 if blocks.is_empty() {
                                     // the first section spans the piece
                                     blocks.push(Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) });
@@ -764,13 +856,21 @@ impl App {
                             }
                         }
                     });
-                })
+                });
             });
+            if let Some((i, part)) = change {
+                blocks[i].part = Some(part);
+                blocks[i].name = part.label().into();
+            }
+            if let Some(i) = remove {
+                blocks.remove(i);
+                origin.remove(i);
+            }
             // a section being dragged: show where it will land, and put it there on release
             if let (Some(what), Some(at)) = (dragging, pointer)
                 && remove.is_none()
             {
-                let area = list.response.rect.expand(8.0);
+                let area = lane.expand(8.0);
                 let slot = rows.iter().filter(|r| r.center().y < at.y).count();
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 let label = match what {
@@ -783,9 +883,13 @@ impl App {
                     let y = match (rows.get(slot), rows.last()) {
                         (Some(r), _) => r.top() - 1.0,
                         (None, Some(r)) => r.bottom() + 1.0,
-                        (None, None) => list.response.rect.top() + 6.0,
+                        (None, None) => lane.top() + 6.0,
                     };
-                    ui.painter().hline(list.response.rect.x_range(), y, Stroke::new(2.0, t.accent));
+                    ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, ui.scope_id().with("lane-drop"))).hline(
+                        lane.x_range(),
+                        y,
+                        Stroke::new(2.0, t.accent),
+                    );
                     if ui.input(|i| i.pointer.any_released()) {
                         egui::DragAndDrop::clear_payload(ui.ctx());
                         match what {
@@ -816,136 +920,100 @@ impl App {
                     p.rearrange(&blocks, &origin);
                 }
             }
-        });
-        widgets::section(ui, "help", "Playing and recording", false, |ui| {
-            let lines = [
-                "Space plays and pauses, Enter stops (twice goes to the start), ⇧R records.",
-                "Computer keyboard: A W S E D F T G Y H U J K O L P ; play an octave and a bit; Z X move it, C V set how hard.",
-                "A MIDI keyboard plays the selected track; its wheel, pedal, bend and aftertouch are recorded too.",
-                "The ribbon under the keys bends like a CS-80's; the Touch strip is aftertouch.",
-                "Recording counts in a bar, keeps going past the end, and adds to the track (or replaces, if set).",
-                "In the roll: click to add, drag to move (⌥ copies), drag the end to resize, double-click to delete, ⇧-drag to select. Q quantises.",
-            ];
-            for l in lines {
-                widgets::note(ui, egui::RichText::new(l).color(t.text_label).text(), "");
-            }
-        });
+        }
     }
 
+    /// The composer's first row: the style, and the key (scale and mode side by side,
+    /// with the density and seed under them).
     fn composer_ui(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let untouched = self.doc.project.untouched();
-        let (mut dice, mut again) = (None, false);
         let mut new_style = None;
-        widgets::section(ui, "composer", "Composer", true, |ui| {
-            let Some(r) = &mut self.doc.project.recipe else {
-                widgets::note(ui, "This piece was written by hand or imported. 🎲 composes a new one at this tempo and length.", "");
-                widgets::inset(ui, |ui| {
-                    if ui.button(egui::RichText::new("🎲 New piece").color(t.accent)).clicked() {
-                        dice = Some(true);
+        ui.add_space(10.0);
+        let Some(r) = &mut self.doc.project.recipe else {
+            widgets::note(ui, "This piece was written by hand or imported. 🎲 composes a new one at this tempo and length.", "");
+            return;
+        };
+        let status = if untouched {
+            "Composed: written again to fit whenever you change the tempo, metre, length or sections."
+        } else {
+            "Edited by hand: tempo and length changes keep your notes. Changing the settings below writes the piece again (undo brings yours back)."
+        };
+        widgets::note(ui, egui::RichText::new(status).color(if untouched { t.text_dim } else { t.caution }).text(), "");
+        ui.add_space(4.0);
+        widgets::inset(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                fx_strip(ui, t, "Style", "How the composer writes. Choosing one sets its tempo", |ui| {
+                    for s in Style::ALL {
+                        let help = format!("{}. Choosing it sets {} bpm.", s.help(), s.tempo());
+                        if widgets::lamp_row(ui, s.label(), r.style == s, true).on_hover_text(help).clicked() && r.style != s {
+                            r.style = s;
+                            new_style = Some(s);
+                        }
                     }
                 });
-                return;
-            };
-            let status = if untouched {
-                "Composed: written again to fit whenever you change the tempo, metre, length or sections."
-            } else {
-                "Edited by hand: tempo and length changes keep your notes. Changing the settings below writes the piece again (undo brings yours back)."
-            };
-            widgets::note(ui, egui::RichText::new(status).color(if untouched { t.text_dim } else { t.caution }).text(), "");
-            ui.add_space(2.0);
-            widgets::inset(ui, |ui| ui.label(egui::RichText::new("Style").font(t.font(13.0)).color(t.text_label)));
-            let segs: Vec<Segment> =
-                Style::ALL.iter().map(|s| Segment { label: s.label(), selected: r.style == *s, enabled: true, help: s.help() }).collect();
-            if let Some(i) = widgets::segmented(ui, &segs, 5) {
-                let s = Style::ALL[i];
-                if r.style != s {
-                    r.style = s;
-                    new_style = Some(s);
-                }
-            }
-            widgets::inset(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                // a label column, so the controls line up
-                let row = |ui: &mut egui::Ui, label: &str, content: &mut dyn FnMut(&mut egui::Ui)| {
-                    ui.horizontal(|ui| {
-                        let h = ui.spacing().interact_size.y.max(24.0);
-                        let (r, _) = ui.allocate_exact_size(vec2(44.0, h), Sense::hover());
-                        ui.painter().text(r.left_center(), Align2::LEFT_CENTER, label, t.font(13.0), t.text_label);
-                        content(ui);
-                    });
-                };
-                row(ui, "Key", &mut |ui| {
-                    egui::ComboBox::from_id_salt("root").width(64.0).selected_text(KEY_NAMES[r.root as usize % 12]).show_ui(ui, |ui| {
-                        for (i, k) in KEY_NAMES.iter().enumerate() {
-                            ui.selectable_value(&mut r.root, i as u8, *k);
+                let w = ui.available_width() - 10.0;
+                rack_strip_w(ui, t, "Key", "The key, the mode, how busy it is, and the seed", None, w, |ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    ui.columns(2, |c| {
+                        let (l, rr) = c.split_at_mut(1);
+                        let (ks, ms) = (&mut l[0], &mut rr[0]);
+                        ks.spacing_mut().item_spacing.y = 2.0;
+                        ms.spacing_mut().item_spacing.y = 2.0;
+                        // the twelve keys as lamps, two across
+                        widgets::strip_heading(ks, "Scale", true);
+                        for (i, pair) in KEY_NAMES.chunks(2).enumerate() {
+                            ks.columns(2, |c| {
+                                for (j, name) in pair.iter().enumerate() {
+                                    let k = (i * 2 + j) as u8;
+                                    if widgets::lamp_row(&mut c[j], name, r.root % 12 == k, true).on_hover_text("The tonic").clicked() {
+                                        r.root = k;
+                                    }
+                                }
+                            });
+                        }
+                        widgets::strip_heading(ms, "Mode", true);
+                        for m in Mode::ALL {
+                            let help = "The scale: minor, Dorian, Phrygian or harmonic minor";
+                            if widgets::lamp_row(ms, m.label(), r.mode == m, true).on_hover_text(help).clicked() {
+                                r.mode = m;
+                            }
                         }
                     });
-                    egui::ComboBox::from_id_salt("mode").width(ui.available_width() - 8.0).selected_text(r.mode.label()).show_ui(
-                        ui,
-                        |ui| {
-                            for m in Mode::ALL {
-                                ui.selectable_value(&mut r.mode, m, m.label());
+                    strip_rule(ui, t);
+                    ui.columns(2, |c| {
+                        let mut k = vec![widgets::Knob::amount(
+                            "Density",
+                            &mut r.density,
+                            0.5,
+                            ("sparse", "busy"),
+                            "How busy the bells, plucks and drums are",
+                        )];
+                        widgets::knob_rows(&mut c[0], &mut k);
+                        let ui = &mut c[1];
+                        widgets::strip_heading(ui, "Seed", true);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            // a fixed width and small figures, so no seed widens the strip
+                            ui.style_mut().override_font_id = Some(t.mono(10.0));
+                            let arrow = |s: &str| egui::Button::new(egui::RichText::new(s).font(t.font(9.0)));
+                            if ui.add_sized(vec2(15.0, 18.0), arrow("◀")).on_hover_text("The previous seed").clicked() {
+                                r.seed = r.seed.saturating_sub(1);
                             }
-                        },
-                    );
+                            ui.add_sized(vec2(46.0, 18.0), egui::DragValue::new(&mut r.seed).range(0..=999_999))
+                                .on_hover_text("The same seed, key, tempo and length always write the same piece");
+                            if ui.add_sized(vec2(15.0, 18.0), arrow("▶")).on_hover_text("The next seed").clicked() {
+                                r.seed = (r.seed + 1).min(999_999);
+                            }
+                        });
+                    });
                 });
-                row(ui, "Seed", &mut |ui| {
-                    if ui.button("◀").on_hover_text("The previous seed").clicked() {
-                        r.seed = r.seed.saturating_sub(1);
-                    }
-                    ui.add_sized(vec2(72.0, 20.0), egui::DragValue::new(&mut r.seed).range(0..=999_999))
-                        .on_hover_text("The same seed, key, tempo and length always write the same piece");
-                    if ui.button("▶").on_hover_text("The next seed").clicked() {
-                        r.seed = (r.seed + 1).min(999_999);
-                    }
-                });
-            });
-            ui.add_space(2.0);
-            amount(ui, "density", "Density", &mut r.density, 0.5, ("sparse", "busy"), "How busy the bells, plucks and drums are");
-            widgets::inset(ui, |ui| {
-                // three equal buttons across the column
-                let gap = 6.0;
-                let w = (ui.available_width() - 2.0 * gap) / 3.0;
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = gap;
-                    if ui
-                        .add_sized(vec2(w, 26.0), egui::Button::new(egui::RichText::new("🎲 New piece").color(t.accent)))
-                        .on_hover_text("New notes (a new seed, key and mode) and a new arrangement of sections")
-                        .clicked()
-                    {
-                        dice = Some(true);
-                    }
-                    if ui
-                        .add_sized(vec2(w, 26.0), egui::Button::new("New notes"))
-                        .on_hover_text("New notes (a new seed, key and mode) to the sections as they are")
-                        .clicked()
-                    {
-                        dice = Some(false);
-                    }
-                    if ui
-                        .add_enabled_ui(!untouched, |ui| ui.add_sized(vec2(w, 26.0), egui::Button::new("Write again")))
-                        .inner
-                        .on_hover_text("Replace your edits with the piece as composed, at this tempo and length")
-                        .clicked()
-                    {
-                        again = true;
-                    }
-                });
-                ui.add_space(4.0);
-                ui.checkbox(&mut self.settings.keep_sounds, "New seeds keep my sounds and mix").on_hover_text(
-                    "Off: each seed picks its own instruments and hall. On: tracks keep the sounds and mixer settings you chose",
-                );
             });
         });
         if let Some(s) = new_style {
             // the style's own tempo; the piece is written again for both together
             self.doc.project.bpm = s.tempo();
             self.status = format!("{}: {}, at {} bpm", s.label(), s.help(), s.tempo());
-        }
-        if let Some(sections) = dice {
-            self.new_piece(sections);
-        } else if again && let Some(r) = self.doc.project.recipe {
-            self.recompose(r, true);
         }
     }
 
