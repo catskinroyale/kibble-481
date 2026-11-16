@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — 2026-11-16
+
+- Gallery: **exact seconds**, every image on screen for exactly the time asked (no
+  variation), as well as the nearest whole bars; a choice of **crossfade**, **fade to
+  black** or **cut** between images on the exported timeline; and a **calculator** in Plan
+  and export: how many images the score holds and the time over, the bars your photos need
+  with the intro and outro, how far to trim or lengthen, and a button to set the score's
+  length. The plan now always follows the score as it stands, with no more images than
+  photos, rather than a track length the score may not have.
+
 ## 0.5.0 — 2026-11-13
 
 - **Overcity**, a sixth composer style: a vast, rain-soaked city seen from above at night.

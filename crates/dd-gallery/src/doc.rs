@@ -42,17 +42,26 @@ impl Document {
 
     /// Where the gallery's images fall in the music as it stands.
     pub fn plan(&self) -> Plan {
-        plan(&self.project, &self.gallery)
+        plan(&self.project, &self.gallery, None)
+    }
+
+    /// The plan for this many photos: no more images than there are photos.
+    pub fn plan_for(&self, photos: usize) -> Plan {
+        plan(&self.project, &self.gallery, Some(photos))
     }
 }
 
-/// The gallery's plan for a project: images counted for the track, or the track
-/// sized for the images, then moved onto the music's accents if asked.
-pub fn plan(p: &Project, g: &Slideshow) -> Plan {
+/// The gallery's plan for a project: the images the score as it stands holds (exactly
+/// `hold` seconds each, or on bar lines, moved onto the music's accents if asked), no
+/// more than there are photos when that's known.
+pub fn plan(p: &Project, g: &Slideshow, photos: Option<usize>) -> Plan {
     let grid = Grid::new(p.bpm, p.meter);
-    let plan = match g.fit {
-        Fit::ImagesToTrack => Plan::for_track(g, grid, p.music_secs()),
-        Fit::TrackToImages => Plan::for_images(g, grid),
-    };
-    if g.follow_music { plan.follow(g, &Accents::of(p)) } else { plan }
+    // (older documents may ask to size the track; the calculator does that now)
+    let g = Slideshow { fit: Fit::ImagesToTrack, ..g.clone() };
+    let plan = Plan::for_track(&g, grid, p.music_secs());
+    let plan = if g.follow_music && !g.exact { plan.follow(&g, &Accents::of(p)) } else { plan };
+    match photos {
+        Some(n) if n > 0 => plan.limit(n as u32),
+        _ => plan,
+    }
 }

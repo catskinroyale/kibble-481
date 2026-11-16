@@ -227,6 +227,26 @@ about -15 to -18 LUFS with a loudness range of 9 to 12 LU (large dynamics, as as
 other styles are written exactly as before (each style's recipes recomposed and compared
 note for note with 0.4.0).
 
+## D20 — Gallery timing, calculator and transitions (2026-11-16)
+
+The gallery used to plan either the images a track holds or a track for a number of
+images, and in the second case it sized the plan to a length the score might not have (it
+set the length only sometimes, and never shrank an edited piece), so the export and the
+music could disagree. Now the plan always follows the score as it stands, capped at the
+number of photos (the time the rest would have had goes to the outro), and the reverse sum
+lives in a **calculator** that changes nothing until asked: the images the score holds and
+the time over; the music a number of photos needs (intro + photos × time + outro, rounded
+up to whole bars); and how many bars to trim or add, with a button that sets the length
+(a composed piece is written again; an edited one is trimmed or extended).
+
+**Exact seconds** makes every image the same length, off the bar grid if need be, for an
+even pace; the bar-line timing (and following the music's accents) stays as the other
+choice. **Transitions**: crossfade (as before), fade to black, or cut. Fade to black is
+written into the FCPXML as each photo ending one fade early, a black gap in its place,
+and cross dissolves out to the gap and in from it, so each change still centres on its
+beat; this relies on Resolve treating a dissolve against a gap as a fade to black, which
+is how it handles an edit next to empty track. It is not yet checked in Resolve itself.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

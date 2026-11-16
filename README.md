@@ -124,9 +124,9 @@ tempo (every bar when slow, every few bars when fast), the bells fall in eighths
 tempos and in beats at fast ones, and the echo is timed to about 0.6 s. Once you edit the
 notes it keeps them: tempo changes carry your notes with them, a new length cuts or extends
 the piece with notes held to the end (rain, the last chord) held to the new end, and
-**Write again** brings the composed version back. Fitting the track to a gallery of photos
-sets the length too. New seeds choose their own instruments, unless **New seeds keep my
-sounds and mix** is ticked. Every step can be undone.
+**Write again** brings the composed version back. The gallery's calculator can set the
+length to fit your photos. New seeds choose their own instruments, unless **Keep sounds**
+is lit. Every step can be undone.
 
 ## The instrument
 
@@ -263,11 +263,17 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   with its reverb and echo let ring out (up to a minute).
 - **Stems**: a WAV per track, each with its reverb and echo, for Resolve's Fairlight page.
 - **Gallery for DaVinci Resolve**: choose a photo folder in the Gallery tab and export. You
-  get the soundtrack, an `.fcpxml` timeline with every photo at its change and a cross
-  dissolve between them, the changes as `.edl` markers, and a cue list. In Resolve: **File ›
-  Import › Timeline**, pick the `.fcpxml`, let it import the media. Images change on bar
-  lines and move onto the music's accents (sections, phrases, parts coming in), 4 to 16 s
-  each; or size the track to the number of photos.
+  get the soundtrack, an `.fcpxml` timeline with every photo at its change, the changes as
+  `.edl` markers, and a cue list. In Resolve: **File › Import › Timeline**, pick the
+  `.fcpxml`, let it import the media. Each image is on screen for **exact seconds** (every
+  one the same, wherever the bar lines fall) or **on bar lines** (the nearest whole bars, 4
+  to 16 s, moved onto the music's accents if you like). Between them: a **crossfade**, a
+  **fade to black** and up again, or a **cut**, with the fade's length yours. The plan
+  always follows the score as it stands, with no more images than photos (the rest goes to
+  the outro). The **calculator** in Plan and export works out, before you change
+  anything, how many images the score holds and what's left over, and how many bars your
+  photos need with the intro and outro, and says how far to trim or lengthen the score;
+  **Set the score to N bars** does it.
 - **Import** any MIDI file as a project, or add its tracks to this one. Files from Ambient
   MIDI Generator (Neon Noir, Megacity Rain, Neon Glide) get their score kit and city effects
   back.

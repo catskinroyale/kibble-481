@@ -68,7 +68,13 @@ pub fn export_for_resolve(
     let p = &doc.project;
     let g = &doc.gallery;
     let title = safe_name(name);
-    let plan = doc.plan();
+    let photos = match &g.folder {
+        Some(folder) => resolve::photos(folder, g.order)?,
+        None => Vec::new(),
+    };
+    // as many images as there are photos, or as were asked for without a folder
+    let plan = doc.plan_for(if photos.is_empty() { g.images as usize } else { photos.len() });
+    let fade = if g.transition.fades() { g.fade as f64 } else { 0.0 };
     let wav = dir.join(format!("{title}.wav"));
     let audio_secs = render_wav(p, fonts, None, &wav, progress, cancel)?;
     let mut out = Exported { wav: wav.clone(), ..Exported::default() };
@@ -82,19 +88,16 @@ pub fn export_for_resolve(
             out.stems.push(path);
         }
     }
-    if let Some(folder) = &g.folder {
-        let photos = resolve::photos(folder, g.order)?;
-        if !photos.is_empty() {
-            let xml = resolve::fcpxml(&plan, &photos, &wav, audio_secs, g.fade as f64, g.fps, &p.title);
-            let path = dir.join(format!("{title}.fcpxml"));
-            std::fs::write(&path, xml).map_err(|e| e.to_string())?;
-            out.timeline = Some(path);
-        }
+    if !photos.is_empty() {
+        let xml = resolve::fcpxml(&plan, &photos, &wav, audio_secs, fade, g.transition, g.fps, &p.title);
+        let path = dir.join(format!("{title}.fcpxml"));
+        std::fs::write(&path, xml).map_err(|e| e.to_string())?;
+        out.timeline = Some(path);
     }
     out.markers = dir.join(format!("{title}.edl"));
     std::fs::write(&out.markers, resolve::marker_edl(&plan, g.fps, &p.title)).map_err(|e| e.to_string())?;
     out.cues = dir.join(format!("{title}-cues.csv"));
-    std::fs::write(&out.cues, plan.cue_csv(g.fade as f64)).map_err(|e| e.to_string())?;
+    std::fs::write(&out.cues, plan.cue_csv(fade)).map_err(|e| e.to_string())?;
     Ok(out)
 }
 

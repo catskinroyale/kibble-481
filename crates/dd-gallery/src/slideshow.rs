@@ -21,6 +21,48 @@ pub const MAX_HOLD: f64 = 16.0;
 /// The longest crossfade: half the longest time on screen.
 pub const MAX_FADE: f64 = MAX_HOLD / 2.0;
 
+/// The shortest and longest exact time on screen.
+pub const EXACT_MIN: f64 = 1.0;
+pub const EXACT_MAX: f64 = 60.0;
+
+/// How one image gives way to the next on the exported timeline.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Transition {
+    /// The next image dissolves in over the last, centred on the change.
+    #[default]
+    Crossfade,
+    /// Each image fades out to black, then the next fades in, centred on the change.
+    FadeToBlack,
+    /// Straight from one to the next.
+    Cut,
+}
+
+impl Transition {
+    pub const ALL: [Transition; 3] = [Transition::Crossfade, Transition::FadeToBlack, Transition::Cut];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Transition::Crossfade => "Crossfade",
+            Transition::FadeToBlack => "Fade to black",
+            Transition::Cut => "Cut",
+        }
+    }
+
+    pub fn help(self) -> &'static str {
+        match self {
+            Transition::Crossfade => "The next image dissolves in over the last, centred on the change",
+            Transition::FadeToBlack => "Each image fades out to black, then the next fades in from black, centred on the change",
+            Transition::Cut => "No fade: straight from one image to the next on the change",
+        }
+    }
+
+    /// Whether it has a fade whose length counts.
+    pub fn fades(self) -> bool {
+        self != Transition::Cut
+    }
+}
+
+/// Kept so older documents open; the plan now always follows the score as it stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Fit {
     /// Count the images the current track holds.
@@ -35,8 +77,14 @@ pub struct Slideshow {
     pub fit: Fit,
     /// Images to fit the track to (TrackToImages).
     pub images: u32,
-    /// Preferred seconds on screen per image, fades included (MIN_HOLD..=MAX_HOLD).
+    /// Seconds on screen per image, fades included: exactly, if `exact`; otherwise
+    /// the nearest whole bars (MIN_HOLD..=MAX_HOLD).
     pub hold: f32,
+    /// Every image exactly `hold` seconds, on an even count, whether or not that
+    /// falls on a bar line.
+    pub exact: bool,
+    /// How each image gives way to the next.
+    pub transition: Transition,
     /// Crossfade between images, in seconds.
     pub fade: f32,
     /// Bars of music before the first image.
@@ -61,6 +109,8 @@ impl Default for Slideshow {
             fit: Fit::ImagesToTrack,
             images: 30,
             hold: 12.0,
+            exact: false,
+            transition: Transition::Crossfade,
             fade: 6.0,
             intro_bars: 2,
             outro_bars: 2,
@@ -104,6 +154,8 @@ pub enum Unit {
     Bar,
     HalfBar,
     Beat,
+    /// Exact seconds, off the grid.
+    Second,
 }
 
 /// How long each image stays up, in whole units of the grid.
@@ -115,6 +167,17 @@ pub struct Slot {
 }
 
 impl Slot {
+    /// The time on screen the settings ask for: exactly `hold` seconds, or the
+    /// nearest whole bars.
+    pub fn of(s: &Slideshow, grid: &Grid) -> Slot {
+        if s.exact {
+            let secs = (s.hold as f64).clamp(EXACT_MIN, EXACT_MAX);
+            Slot { count: 1, unit: Unit::Second, secs }
+        } else {
+            Slot::choose(grid, s.hold as f64)
+        }
+    }
+
     /// The time on screen nearest `preferred`, between MIN_HOLD and MAX_HOLD,
     /// in whole bars if any number of bars fits: the music moves on bar lines
     /// (a change mid-bar usually lands on nothing), and chords often last two
@@ -168,7 +231,7 @@ pub struct Plan {
 impl Plan {
     /// Count the images a piece of `total` seconds holds.
     pub fn for_track(s: &Slideshow, grid: Grid, total: f64) -> Plan {
-        let slot = Slot::choose(&grid, s.hold as f64);
+        let slot = Slot::of(s, &grid);
         let intro = s.intro_bars as f64 * grid.bar();
         let min_outro = s.outro_bars.max(1) as f64 * grid.bar();
         let room = (total - intro - min_outro).max(0.0);
@@ -186,7 +249,7 @@ impl Plan {
     /// The track needed for the given number of images; `bars` gives its
     /// length in whole bars, final ring-out bar included.
     pub fn for_images(s: &Slideshow, grid: Grid) -> Plan {
-        let slot = Slot::choose(&grid, s.hold as f64);
+        let slot = Slot::of(s, &grid);
         let images = s.images.max(1);
         let intro = s.intro_bars as f64 * grid.bar();
         let pictures = images as f64 * slot.secs;
@@ -207,7 +270,7 @@ impl Plan {
     /// over the whole track is found in one pass (dynamic programming).
     /// Unchanged if the accents are of a different track.
     pub fn follow(self, s: &Slideshow, accents: &Accents) -> Plan {
-        if self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
+        if s.exact || self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
             return self;
         }
         let unit = self.slot.secs / self.slot.count as f64;
@@ -275,6 +338,20 @@ impl Plan {
         Plan { images: starts.len() as u32, starts, end, outro: self.total - end, ..self }
     }
 
+    /// No more than `images` images: the time the rest would have had goes to the outro.
+    pub fn limit(mut self, images: u32) -> Plan {
+        if self.images > images {
+            self.end = self.starts.get(images as usize).copied().unwrap_or(self.end);
+            if images == 0 {
+                self.end = self.intro;
+            }
+            self.starts.truncate(images as usize);
+            self.images = images;
+            self.outro = self.total - self.end;
+        }
+        self
+    }
+
     /// The length of the audio, reverb tail included.
     pub fn audio(&self) -> f64 {
         self.total + self.tail
@@ -320,6 +397,41 @@ impl Plan {
             ));
         }
         out
+    }
+}
+
+/// Sums for planning before changing anything: what a score of `bars` holds at
+/// these settings, and how long a score `photos` images need.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Calc {
+    /// Seconds each image is on screen (exact, or the nearest whole bars).
+    pub each: f64,
+    pub bar: f64,
+    pub intro: f64,
+    /// The shortest outro asked for.
+    pub outro: f64,
+    /// Images the score as it stands holds, and the time left over (to the outro).
+    pub holds: u32,
+    pub left_over: f64,
+    /// The music the photos need, the whole bars that holds it, and what's spare.
+    pub needed: f64,
+    pub needed_bars: u32,
+    pub spare: f64,
+}
+
+impl Calc {
+    pub fn new(s: &Slideshow, grid: Grid, score_secs: f64, photos: u32) -> Calc {
+        let slot = Slot::of(s, &grid);
+        let bar = grid.bar();
+        let intro = s.intro_bars as f64 * bar;
+        let outro = s.outro_bars.max(1) as f64 * bar;
+        let room = (score_secs - intro - outro).max(0.0);
+        let holds = (room / slot.secs + 1e-6).floor() as u32;
+        let left_over = room - holds as f64 * slot.secs;
+        let needed = intro + photos as f64 * slot.secs + outro;
+        let needed_bars = ((needed / bar) - 1e-6).ceil().max(1.0) as u32;
+        let spare = (needed_bars as f64 * bar - needed).max(0.0);
+        Calc { each: slot.secs, bar, intro, outro, holds, left_over, needed, needed_bars, spare }
     }
 }
 
@@ -498,6 +610,30 @@ mod tests {
         assert_eq!(csv.lines().count(), p.images as usize + 1);
         assert_eq!(csv.lines().nth(1).unwrap(), "1,0:08.00,0:20.00,12.00,13.00,3.1,1.00");
         assert_eq!(p.audio(), 180.0 + REVERB_TAIL);
+    }
+
+    #[test]
+    fn exact_seconds_and_the_calculator() {
+        // 66 bpm in 4/4: bars of 3.636 s; every image exactly 8 s, two bars either end
+        let grid = Grid::new(66.0, (4, 4));
+        let s = Slideshow { hold: 8.0, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
+        let total = 100.0 * grid.bar();
+        let p = Plan::for_track(&s, grid, total);
+        assert!(p.spans().all(|(a, b)| ((b - a) - 8.0).abs() < 1e-9), "every image exactly 8 s");
+        assert_eq!(p.images, 43);
+        // following the music leaves exact timing alone
+        let c = Calc::new(&s, grid, total, 25);
+        assert_eq!(c.holds, 43);
+        assert!((c.left_over - (total - 4.0 * grid.bar() - 43.0 * 8.0)).abs() < 1e-9);
+        // 25 photos: 2 bars + 200 s + 2 bars = 214.5 s, which 59 bars hold
+        assert!((c.needed - (4.0 * grid.bar() + 200.0)).abs() < 1e-9);
+        assert_eq!(c.needed_bars, 59);
+        assert!(c.spare >= 0.0 && c.spare < grid.bar());
+        // a plan for 25 photos in that 100-bar score stops at the 25th; the rest is outro
+        let l = p.clone().limit(25);
+        assert_eq!(l.images, 25);
+        assert!((l.end - (2.0 * grid.bar() + 200.0)).abs() < 1e-9);
+        assert!((l.outro - (total - l.end)).abs() < 1e-9);
     }
 
     #[test]

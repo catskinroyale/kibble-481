@@ -6,7 +6,7 @@ use dd_dsp::kit::fx;
 use dd_dsp::rain::RainKind;
 use dd_dsp::sampler::KitKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
-use dd_gallery::slideshow::{Fit, MAX_FADE, MAX_HOLD, MIN_HOLD, timecode};
+use dd_gallery::slideshow::{Calc, EXACT_MIN, MAX_FADE, MAX_HOLD, MIN_HOLD, Transition, timecode};
 use dd_seq::city;
 use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
@@ -124,6 +124,11 @@ pub(crate) fn strip_rule(ui: &mut egui::Ui, t: &Tokens) {
     ui.add_space(3.0);
     crate::mixer_ui::rule(ui, t);
     ui.add_space(3.0);
+}
+
+/// A number of bars, whole or to a half.
+fn fmt_bars(b: f64) -> String {
+    if (b - b.round()).abs() < 1e-6 { format!("{}", b.round() as u32) } else { format!("{b:.1}") }
 }
 
 /// What a track row's dropdown asked for.
@@ -1053,51 +1058,53 @@ impl App {
             });
         });
         widgets::section(ui, "timing", "Timing", true, |ui| {
-            let segs = [
-                Segment {
-                    label: "Images for the track",
-                    selected: g.fit == Fit::ImagesToTrack,
-                    enabled: true,
-                    help: "Count how many images the music holds",
-                },
-                Segment {
-                    label: "Track for the images",
-                    selected: g.fit == Fit::TrackToImages,
-                    enabled: true,
-                    help: "Make the piece long enough for a number of images",
-                },
-            ];
-            if let Some(i) = widgets::segmented(ui, &segs, 2) {
-                g.fit = if i == 0 { Fit::ImagesToTrack } else { Fit::TrackToImages };
-                if g.fit == Fit::TrackToImages && !photos.is_empty() {
-                    g.images = photos.len() as u32;
-                }
-            }
-            if g.fit == Fit::TrackToImages {
-                let mut n = g.images as f64;
-                let spec = SliderSpec {
-                    id: "images",
-                    label: "Images",
-                    help: "How many photos",
-                    min: 1.0,
-                    max: 300.0,
-                    default: 30.0,
-                    step: 1.0,
-                    decimals: 0,
-                    ..Default::default()
-                };
-                if widgets::slider(ui, &spec, &mut n, true) {
-                    g.images = n as u32;
-                }
-            }
+            widgets::inset(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    fx_strip(ui, &t, "Images", "How long each image is on screen, fades included", |ui| {
+                        if widgets::lamp_row(ui, "Exact seconds", g.exact, true)
+                            .on_hover_text("Every image exactly the same time on screen, on an even count, whether or not it lands on a bar line")
+                            .clicked()
+                        {
+                            g.exact = true;
+                        }
+                        if widgets::lamp_row(ui, "On bar lines", !g.exact, true)
+                            .on_hover_text("The nearest whole bars to the time asked, so each change lands on a bar line")
+                            .clicked()
+                        {
+                            g.exact = false;
+                        }
+                        strip_rule(ui, &t);
+                        if widgets::lamp_row(ui, "Follow accents", g.follow_music && !g.exact, !g.exact)
+                            .on_hover_text("On bar lines only: move each change to a section, a phrase or a part coming in, so the times vary around the one asked")
+                            .clicked()
+                        {
+                            g.follow_music = !g.follow_music;
+                        }
+                    });
+                    fx_strip(ui, &t, "Transition", "How one image gives way to the next on the exported timeline", |ui| {
+                        for tr in Transition::ALL {
+                            if widgets::lamp_row(ui, tr.label(), g.transition == tr, true).on_hover_text(tr.help()).clicked() {
+                                g.transition = tr;
+                            }
+                        }
+                    });
+                });
+            });
+            ui.add_space(6.0);
+            let (lo, hi) = if g.exact { (EXACT_MIN, 30.0) } else { (MIN_HOLD, MAX_HOLD) };
             let mut hold = g.hold as f64;
             let spec = SliderSpec {
                 id: "hold",
                 label: "On screen",
-                help: "Each image's time, fade included; changes land on bar lines",
-                min: MIN_HOLD,
-                max: MAX_HOLD,
-                default: 12.0,
+                help: if g.exact {
+                    "Each image's time, fade included: exactly this, every one"
+                } else {
+                    "Each image's time, fade included: the nearest whole bars"
+                },
+                min: lo,
+                max: hi,
+                default: 8.0,
                 step: 0.5,
                 decimals: 1,
                 suffix: " s",
@@ -1109,17 +1116,17 @@ impl App {
             let mut fade = g.fade as f64;
             let spec = SliderSpec {
                 id: "fade",
-                label: "Crossfade",
-                help: "The dissolve between images",
+                label: if g.transition == Transition::FadeToBlack { "Fade" } else { "Crossfade" },
+                help: "How long the fade lasts, centred on each change (at most half the shortest image)",
                 min: 0.0,
                 max: MAX_FADE,
-                default: 6.0,
+                default: 2.0,
                 step: 0.5,
                 decimals: 1,
                 suffix: " s",
                 ..Default::default()
             };
-            if widgets::slider(ui, &spec, &mut fade, true) {
+            if widgets::slider(ui, &spec, &mut fade, g.transition.fades()) {
                 g.fade = fade as f32;
             }
             let (mut intro, mut outro) = (g.intro_bars as f64, g.outro_bars as f64);
@@ -1141,7 +1148,7 @@ impl App {
             let spec = SliderSpec {
                 id: "outro",
                 label: "Outro",
-                help: "Bars of music after the last image (credits)",
+                help: "Bars of music after the last image (credits); at least one, as the music rings out",
                 min: 1.0,
                 max: 32.0,
                 default: 2.0,
@@ -1153,38 +1160,111 @@ impl App {
             if widgets::slider(ui, &spec, &mut outro, true) {
                 g.outro_bars = outro as u32;
             }
-            widgets::inset(ui, |ui| {
-                ui.checkbox(&mut g.follow_music, "Change on the music's accents")
-                    .on_hover_text("Move each change to a section, a phrase or a part coming in, rather than an even count");
-            });
         });
-        let plan = self.doc.plan();
-        if self.doc.gallery.fit == Fit::TrackToImages
-            && plan.bars() != self.doc.project.length_bars
-            && (plan.bars() >= self.doc.project.bars() || self.doc.project.untouched())
-        {
-            self.doc.project.length_bars = plan.bars();
-        }
+        // the photos to plan for: those in the folder, or a number given
+        let n_photos = if photos.is_empty() { self.doc.gallery.images } else { photos.len() as u32 };
+        let plan = self.doc.plan_for(n_photos as usize);
+        let fade = if self.doc.gallery.transition.fades() { self.doc.gallery.fade as f64 } else { 0.0 };
+        let mut set_bars = None;
         widgets::section(ui, "plan", "Plan and export", true, |ui| {
-            let (lo, hi) = plan.holds();
+            let p = &self.doc.project;
+            let g = &mut self.doc.gallery;
+            let grid = dd_gallery::slideshow::Grid::new(p.bpm, p.meter);
+            let c = Calc::new(g, grid, p.music_secs(), n_photos);
+            let score_bars = (p.music_secs() / grid.bar()).round() as u32;
+            widgets::subtitle(ui, "Calculator", "Sums to plan with before changing anything");
+            widgets::inset(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Photos");
+                    if photos.is_empty() {
+                        ui.add(egui::DragValue::new(&mut g.images).range(1..=999))
+                            .on_hover_text("How many photos to plan for (or choose a folder)");
+                    } else {
+                        ui.label(egui::RichText::new(format!("{} in the folder", photos.len())).color(t.text_label));
+                    }
+                });
+            });
+            let each = if g.exact {
+                format!("{:.1} s exactly", c.each)
+            } else {
+                let bars = c.each / grid.bar();
+                format!("{:.1} s ({} bar{})", c.each, fmt_bars(bars), if (bars - 1.0).abs() < 1e-6 { "" } else { "s" })
+            };
             let lines = [
-                format!("{} images, {:.1}–{:.1} s each", plan.images, if plan.images > 0 { lo } else { 0.0 }, hi),
+                format!("Each image: {each}{}", if g.follow_music && !g.exact { ", varying with the music" } else { "" }),
+                format!(
+                    "This score: {score_bars} bars ({}) holds {} images, with {:.1} s over for the outro.",
+                    timecode(p.music_secs()),
+                    c.holds,
+                    c.left_over
+                ),
+                format!(
+                    "{n_photos} photos need {} + {n_photos} × {:.1} s + {} = {}: {} bars at {} bpm.",
+                    timecode(c.intro),
+                    c.each,
+                    timecode(c.outro),
+                    timecode(c.needed),
+                    c.needed_bars,
+                    p.bpm
+                ),
+            ];
+            for l in lines {
+                widgets::note(ui, l, "");
+            }
+            let (msg, colour) = match c.needed_bars.cmp(&score_bars) {
+                std::cmp::Ordering::Less => (
+                    format!(
+                        "Trim the score by {} bars ({score_bars} → {}) to fit them exactly.",
+                        score_bars - c.needed_bars,
+                        c.needed_bars
+                    ),
+                    t.caution,
+                ),
+                std::cmp::Ordering::Greater => (
+                    format!(
+                        "Lengthen the score by {} bars ({score_bars} → {}) to fit them all.",
+                        c.needed_bars - score_bars,
+                        c.needed_bars
+                    ),
+                    t.caution,
+                ),
+                std::cmp::Ordering::Equal => ("The score fits them exactly.".to_string(), t.accent),
+            };
+            widgets::note(ui, egui::RichText::new(msg).color(colour).text(), "");
+            if c.needed_bars != score_bars {
+                widgets::inset(ui, |ui| {
+                    if ui
+                        .button(format!("Set the score to {} bars", c.needed_bars))
+                        .on_hover_text("A composed piece is written again at the new length; an edited one is trimmed or extended")
+                        .clicked()
+                    {
+                        set_bars = Some(c.needed_bars);
+                    }
+                });
+            }
+            widgets::divider(ui);
+            widgets::subtitle(ui, "The plan", "Where the images fall in the score as it stands");
+            let (lo, hi) = plan.holds();
+            let held = if plan.images > 0 && (hi - lo).abs() < 0.05 {
+                format!("{:.1} s each", lo)
+            } else {
+                format!("{:.1}–{:.1} s each", if plan.images > 0 { lo } else { 0.0 }, hi)
+            };
+            let lines = [
+                format!("{} images, {held}; {}", plan.images, g.transition.label().to_lowercase()),
                 format!("Intro {}  ·  images to {}  ·  outro {}", timecode(plan.intro), timecode(plan.end), timecode(plan.outro)),
                 format!("Soundtrack {} ({} bars) with its tail", timecode(plan.audio()), plan.bars()),
             ];
             for l in lines {
                 widgets::note(ui, l, "");
             }
-            if !photos.is_empty() && photos.len() as u32 != plan.images {
-                let msg = if (photos.len() as u32) > plan.images {
-                    format!(
-                        "The music holds {} images but there are {} photos: lengthen the piece, shorten the time on screen, or fit the track to the images.",
-                        plan.images,
-                        photos.len()
-                    )
-                } else {
-                    format!("There are {} photos for {} images: the last photo stays up longer.", photos.len(), plan.images)
-                };
+            if !photos.is_empty() && (photos.len() as u32) > plan.images {
+                let msg = format!(
+                    "The score holds {} images but there are {} photos: the last {} won't be used. Lengthen the score, or shorten the time on screen.",
+                    plan.images,
+                    photos.len(),
+                    photos.len() as u32 - plan.images
+                );
                 widgets::note(ui, egui::RichText::new(msg).color(t.caution).text(), "");
             }
             widgets::inset(ui, |ui| {
@@ -1199,19 +1279,28 @@ impl App {
                         self.export_resolve();
                     }
                     if ui.button("Copy cue list").clicked() {
-                        ui.ctx().copy_text(plan.cue_csv(self.doc.gallery.fade as f64));
+                        ui.ctx().copy_text(plan.cue_csv(fade));
                         self.status = "Cue list copied".into();
                     }
                 });
             });
+            let how = match self.doc.gallery.transition {
+                Transition::Crossfade => "with a cross dissolve",
+                Transition::FadeToBlack => "fading to black and up again",
+                Transition::Cut => "with a straight cut",
+            };
             widgets::note(
                 ui,
-                egui::RichText::new("In Resolve: File › Import › Timeline, choose the .fcpxml and let it import the media. Each photo sits at its change with a cross dissolve, over the soundtrack. The .edl holds the changes as markers (Timelines › Import › Timeline Markers from EDL).").color(t.text_dim).text(),
+                egui::RichText::new(format!("In Resolve: File › Import › Timeline, choose the .fcpxml and let it import the media. Each photo sits at its change, {how}, over the soundtrack. The .edl holds the changes as markers (Timelines › Import › Timeline Markers from EDL)."))
+                    .color(t.text_dim)
+                    .text(),
                 "",
             );
         });
-        // the image changes on the ruler
-        let _ = plan;
+        if let Some(bars) = set_bars {
+            self.doc.project.stretch_to(bars);
+            self.status = format!("The score is now {bars} bars, to fit {n_photos} photos");
+        }
     }
 
     // ------------------------------------------------------------ transport
