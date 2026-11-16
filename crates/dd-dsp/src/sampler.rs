@@ -1,6 +1,7 @@
 //! Plays the city kit (`kit.rs`): the drum kit, or the effects (rain, thunder,
 //! machinery hum, neon buzz, distant metal, sub booms, braams, risers, drones,
-//! glass grains and timpani). Sustained effects such as rain loop for as long as
+//! glass grains, timpani, and a derelict ship's hull, pipes, steam, scraping, ticking
+//! and tape hiss). Sustained effects such as rain loop for as long as
 //! the key is held, swelling in and dying away. The rains are real recordings
 //! (`rain.rs`).
 

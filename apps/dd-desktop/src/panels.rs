@@ -680,7 +680,7 @@ impl App {
                     strip_rule(ui, &t);
                     if widgets::lamp_row(ui, "Keep sounds", *keep, true)
                         .on_hover_text(
-                            "New seeds keep my sounds and mix. Off: each seed picks its own instruments and hall. On: tracks keep the sounds and mixer settings you chose",
+                            "New seeds keep my sounds and mix. Off: each seed picks its own instruments and hall. On: tracks keep the sounds and mixer settings you chose. A new style always brings its own sounds",
                         )
                         .clicked()
                     {

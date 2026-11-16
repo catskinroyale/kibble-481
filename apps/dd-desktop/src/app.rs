@@ -326,6 +326,7 @@ impl App {
                 ("momento", dd_seq::compose::Style::Momento),
                 ("noir", dd_seq::compose::Style::Noir),
                 ("overcity", dd_seq::compose::Style::Overcity),
+                ("derelict", dd_seq::compose::Style::Derelict),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
@@ -708,8 +709,9 @@ impl App {
         let before = std::mem::replace(&mut self.shape, now.clone());
         match (before.recipe, now.recipe) {
             (Some(old), Some(r)) if old != r => {
-                // a new seed or style brings new sounds, unless they're kept
-                let keep = (r.seed == old.seed && r.style == old.style) || self.settings.keep_sounds;
+                // a new seed brings new sounds, unless they're kept; a new style always
+                // brings its own (another style's instruments don't suit it)
+                let keep = r.style == old.style && (r.seed == old.seed || self.settings.keep_sounds);
                 self.recompose(r, keep);
                 self.status = format!("\u{201c}{}\u{201d}: {}, seed {}", self.doc.project.title, r.key_label(), r.seed);
             }

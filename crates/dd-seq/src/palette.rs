@@ -126,6 +126,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             font("FM Brass (FreePats)", "FreePats-SynthBrass2.sf2", -11.0, true),
             gm("Brass Section", 61, 1.5),
             gm("French Horns", 60, 1.0),
+            gm("Trombone", 57, -0.2),
         ],
         Role::Pad => vec![
             synth("Rain Pad", 0.0),
@@ -139,6 +140,9 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Warm Pad", 89, 0.5),
             gm("Halo Pad", 94, 3.0),
             font("Synth Choir (FreePats)", "FreePats-SynthPadChoir.sf2", -4.0, false),
+            gm("Soundtrack", 97, -2.4),
+            gm("Metal Pad", 93, 4.7),
+            gm("Space Voice", 91, 4.1),
         ],
         Role::Strings => vec![
             synth("Memory Strings", 0.0),
@@ -148,6 +152,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Slow Strings", 49, -1.5),
             gm("Synth Strings", 50, -2.0),
             gm("Cello", 42, -6.0),
+            gm("Tremolo Strings", 44, 0.4),
         ],
         Role::Lead => vec![
             synth("Smoky Lead", 0.0),
@@ -159,6 +164,9 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Alto Sax", 65, 3.0),
             gm("Shakuhachi", 77, 1.0),
             gm("Flute", 73, -2.5),
+            gm("Cor Anglais", 69, -0.3),
+            gm("Solo Oboe", 68, -1.8),
+            gm("Bassoon", 70, -0.1),
         ],
         Role::Answer => vec![
             font("Tenor Sax (FreePats)", SAX_FONT, -6.0, true),
@@ -169,6 +177,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Oboe", 68, -1.0),
             synth("Glass Lead", 1.5),
             synth("Lonely Horn", 2.4),
+            gm("Muted Trumpet", 59, 9.7),
+            gm("Baritone Sax", 67, 2.3),
         ],
         Role::Bass => vec![
             synth("Sub Pulse Bass", 0.0),
@@ -180,6 +190,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Synth Bass", 38, -2.5),
             gm("Fretless", 35, -5.5),
             gm("Upright Bass", 32, -2.0),
+            gm("Contrabass", 43, -1.0),
         ],
         Role::Bells => vec![
             synth("Night Bells", 0.0),
@@ -202,6 +213,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Harp", 46, -4.0),
             gm("Nylon Guitar", 24, -1.0),
             gm("Kalimba", 108, -5.0),
+            gm("Pizzicato Strings", 45, 0.8),
         ],
         Role::Keys => vec![
             synth("Neon Tine Piano", 0.0),
@@ -221,6 +233,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             synth("Glass Drone", 2.5),
             synth("Sodium Drone", -3.0),
             gm("Bowed Glass", 92, 3.0),
+            gm("Goblin", 101, -1.3),
         ],
         Role::City => vec![Alt { label: "City FX", source: Source::Kit(KitKind::CityFx), trim_db: 0.0, bundled: true }],
         Role::Drums => vec![

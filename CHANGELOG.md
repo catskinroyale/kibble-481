@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.0 — 2026-11-16
+
+- **Derelict**, a seventh composer style: a ship adrift in deep space, analogue drones and
+  failing machinery out of which sparse, dissonant orchestral voices surface. A quiet void
+  (drone, throbbing engines, ticking, a groaning hull), creeping tension (a sub pulsing like
+  failing life support, a worn pad breathing in and out with long silences between, a lone horn,
+  celesta, an oboe or cor anglais fragment), tremolo strings entering one note at a time
+  over a bowed double bass, a harp glissando into one brief orchestral eruption, and a
+  collapse back into the drone with a ghostly muted trumpet or sax. No beat; 48 bpm;
+  `kibble-481-cli compose --style derelict`. The other styles are unchanged.
+- The city kit has a derelict ship's sounds: **Hull Groan** and **Pipe Clang** (tuned, an
+  octave of keys each), **Steam Hiss**, **Metal Scrape**, and **Engine Throb**, **Life
+  Support** (a pump), **Ticking** and **Tape Hiss** that loop while held.
+- New sounds to choose from, all from the bundled GeneralUser GS: Tremolo Strings
+  (Strings), Cor Anglais, Solo Oboe and Bassoon (Lead), Muted Trumpet and Baritone Sax
+  (Answer), Contrabass (Bass), Trombone (Brass), Soundtrack, Metal Pad and Space Voice
+  (Pad), Pizzicato Strings (Pluck), Goblin (Drone).
+- Each seed draws Derelict's harp (or pizzicato) glissandi its own way: the notes they
+  run through (the scale, thirds, five notes of it, or the chord), where they lie and how
+  far they go, their shape and pace, and whether they double an octave down.
+- Derelict's swells breathe from a steady level instead of climbing out of silence on
+  every chord, and its brightness moves smoothly with them, so nothing stabs; the
+  brass, pad and master go without the ensemble chorus, and the brass without echo.
+- Choosing another style always brings that style's own sounds, even with Keep sounds
+  lit (which still keeps them through new seeds in the same style).
+
 ## 0.6.0 — 2026-11-16
 
 - Gallery: **exact seconds**, every image on screen for exactly the time asked (no

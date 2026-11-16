@@ -247,6 +247,66 @@ and cross dissolves out to the gap and in from it, so each change still centres 
 beat; this relies on Resolve treating a dissolve against a gap as a fade to black, which
 is how it handles an edit next to empty track. It is not yet checked in Resolve itself.
 
+## D21 — Derelict (2026-11-16)
+
+A seventh style written to the user's brief: an instrumental deep-space drone score,
+1970s analogue sci-fi horror meeting industrial noir. Dread, isolation, claustrophobia
+and awe; free tempo or very slow; very little melody; long silences and sudden swells; no
+vocals, no drum beat, nothing of modern EDM. The tone references are for feel only: no
+film, score or composer is named in the code, sounds or docs (D3), and the name,
+"Derelict", is an ordinary word. No melody is copied; the few fragments there are come
+from the brief's shape (a horn call turning on a semitone, a reed phrase that never
+resolves, a ghost's blues phrase), not from any tune.
+
+The brief's arc maps onto the five parts: Intro (the quiet void), Neon (creeping
+tension), Swell (its tightening), Night shift (the brief orchestral eruption, about a
+sixth of the piece, never longer than the collapse) and Fade (the collapse back into the
+drone). The sounds it asks for are met from what is bundled, with no new downloads:
+GeneralUser GS's tremolo strings, contrabass, cor anglais, oboe, muted trumpet, French
+horns, celesta and harp (the first five added to the palette), the synth's drones and
+pads, and new synthesised sounds in the city kit for the ship (hull groan, pipe clang,
+steam hiss, metal scrape, ticking, tape hiss); `kit.rs`'s provenance note says so. The
+pitched ship sounds sit on keys 0–23, where their octaves line up with pitch classes; the
+others on 116–119, past the rain. "Free tempo" is written as a slow 48 bpm with most
+entries placed a little off the beat and nothing that marks one; the tape is the
+master's drift, detune and echo wow.
+
+To keep every other style's recipes as they were, the new palette sounds are left out of
+their choosing (`DERELICT_SOUNDS`), and the shared swell curve was only moved into a
+function: all six were recomposed for 40 seeds at five tempos and lengths, default and
+random arrangements, and compared with 0.6.0, identical. Derelict's pieces measure about
+-18 to -21 LUFS with a loudness range of 12 to 16 LU and peaks around -0.5 dBFS: quiet and
+wide, like Noir's level, for a cue with a void in it. The City track stays (the ship's
+sounds live there) but has no rain or thunder; there is no Drums track.
+
+The swells breathe from a floor rather than from silence. At first the pad (and the
+double bass) climbed from nothing to nearly full on every chord, 25 to 40 dB over six
+seconds, every fifteen: heard as one sound coming back louder each time, like a reverb
+running backwards. Now they swell a few dB from a steady level, the pad's sudden swell
+comes once in each tightening, and Derelict's expression curves are written finely
+enough (an eighth of a beat apart) to climb smoothly instead of in stairs. The reverb was
+shortened (size 0.8, about a 30 s tail in the black hole) so the tail doesn't pile up.
+
+After listening, the user found koto and shakuhachi in it and the bed too much like
+noisy tape hiss. So Derelict now chooses only from its own sounds (no weight at all for
+the rest), more of them 1970s orchestral and synth (trombone, bassoon, baritone sax,
+pizzicato, tubular and ring-modulated bells, GeneralUser's soundtrack, metal and
+space-voice pads; the bassoon and baritone written an octave and a half or an octave
+lower); the mains hum is gone and the tape hiss far down, and the bed is two new
+synthesised loops, an engine throbbing at a stroke and a half a second with a knock on
+each stroke, and a life-support pump that breathes and clanks, both failing in the
+collapse. And choosing a style now always brings its own sounds, Keep sounds or not:
+the koto had come from the previous style's piece through Keep sounds.
+
+The brass plays without the ensemble chorus or the echo: on sampled horns and
+trombones the chorus's wavering copies (and an echo a quaver behind) sounded like a
+second player doubling, slightly out of tune. The pad goes without it too, and the
+master ensemble is off in Derelict. Its swells (written finely) now move the brightness
+(CC74) step by step with the expression rather than in three jumps: a filter thrown two
+octaves open at a swell's peak was heard as a stab. A swell that peaks at its end holds
+there, and the eruption takes up the brass and strings where the build left them,
+instead of dropping and kicking back. The other styles' three-point curves are unchanged.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

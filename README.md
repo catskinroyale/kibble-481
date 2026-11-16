@@ -69,7 +69,7 @@ the rest of the piece as it is, so it then counts as edited (⌘Z undoes them). 
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are six **styles**, each playing the same kinds of section its own way, all
+There are seven **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -107,6 +107,26 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   the drone, ending on a last distant bell. The horn swells are written as expression
   (CC11) and brightness (CC74). Soft rain and the city's rumble sit far below; drums only
   mark the great swell. It opens on an Intro.
+- **Derelict** (48 bpm): a ship adrift in deep space, cold, vast and almost free of time,
+  with very little melody and no beat. Out of a quiet void (a detuned analogue drone, the
+  ship's engines throbbing far below, faint mechanical ticking and tape hiss, the hull
+  groaning and a pipe ringing somewhere far off), a life-support pump breathes, a sub
+  pulses in uneven groups, and a worn pad (soundtrack, metal or space-voice pads among
+  others) breathes in and out with long silences between. A lone horn or trombone calls,
+  a celesta, tubular bell or ring-modulated bell answers with a tritone, steam vents, and
+  an oboe, cor anglais or bassoon surfaces with a fragment that never comes home.
+  Tremolo strings creep in one note at a time over a bowed double bass, metal scrapes,
+  and once in each tightening a swell rises hard and cuts off into silence. A harp or
+  pizzicato glissando (its notes, range, shape and pace new with each seed) sweeps up into one brief orchestral
+  eruption (horns, strings, pad, timpani and a deep boom), then everything collapses back
+  into the drone, the engines winding down, the pump and the pulse failing, the ticking
+  stopping, a muted trumpet (or a tenor or baritone sax)
+  drifting past like a ghost, and a last celesta note. Harmony barely moves: bare triads,
+  clusters, a tritone in place of the fifth. Chords last about fourteen seconds; most
+  entries fall a little off the beat. The reverb is cavernous and the whole mix wanders
+  like old tape, with no chorus on anything. It uses only the sounds written for it (no
+  koto or shakuhachi). It opens on an Intro and measures about -18 to -21 LUFS with a wide
+  loudness range (12 to 16 LU), like a film cue.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -126,7 +146,7 @@ notes it keeps them: tempo changes carry your notes with them, a new length cuts
 the piece with notes held to the end (rain, the last chord) held to the new end, and
 **Write again** brings the composed version back. The gallery's calculator can set the
 length to fit your photos. New seeds choose their own instruments, unless **Keep sounds**
-is lit. Every step can be undone.
+is lit; a new style always brings its own. Every step can be undone.
 
 ## The instrument
 
@@ -177,7 +197,10 @@ dropdown under the City track in the track list. Credits in
 
 **The city kit** (from Ambient MIDI Generator, synthesised): machinery
 hum and a buzzing neon sign that loop for as long as you hold the key, thunder, distant
-metal, sub booms, braams, risers, reversed cymbals, glass grains, drones and timpani; and a
+metal, sub booms, braams, risers, reversed cymbals, glass grains, drones and timpani; a
+derelict ship's hull groaning and pipes clanging (both tuned), steam hissing, metal
+scraping, and throbbing engines, a life-support pump, ticking and tape hiss that loop for
+as long as you hold them; and a
 drum kit of dull and heartbeat kicks, a gated snare far off, taiko, tabla and a ticking
 clock.
 

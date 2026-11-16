@@ -1,4 +1,6 @@
-// Copied unchanged from Ambient MIDI Generator (src/kit.rs, MIT).
+// Copied from Ambient MIDI Generator (src/kit.rs, MIT); the ship's sounds (hull groan,
+// pipe clang, steam hiss, ticking, tape hiss, metal scrape, engine throb, life-support
+// pump) were added here for Derelict.
 //! The score kit: trailer drums, and effects (a sub drone, 808-style booms,
 //! braams, risers, reversed cymbals, whooshes, impacts and glassy grains), all
 //! synthesised here from oscillators and seeded noise. The built-in synth
@@ -65,6 +67,22 @@ pub mod fx {
     pub const ANALOG_DRONE: u8 = 84;
     /// A concert timpani, tuned: its octave of keys plays C2 to B2.
     pub const TIMPANI: u8 = 96;
+    /// A ship's hull groaning under strain, tuned: its octave of keys plays C1 to B1.
+    pub const HULL: u8 = 0;
+    /// A struck pipe ringing down a corridor, tuned: its octave of keys plays C3 to B3.
+    pub const PIPE: u8 = 12;
+    /// A valve venting steam.
+    pub const STEAM: u8 = 116;
+    /// Faint mechanical ticking, a relay or a clock, for as long as it's held.
+    pub const TICKING: u8 = 117;
+    /// Tape hiss, for as long as it's held.
+    pub const TAPE_HISS: u8 = 118;
+    /// Metal dragged on metal.
+    pub const SCRAPE: u8 = 119;
+    /// Heavy machinery deep in a ship, throbbing, for as long as it's held.
+    pub const ENGINE: u8 = 120;
+    /// A life-support pump breathing in and out with a clank, for as long as it's held.
+    pub const PUMP: u8 = 121;
 }
 
 /// The drum kit's General MIDI program: the Orchestra kit's place, so a General
@@ -156,6 +174,14 @@ pub fn effects(sr: f64) -> Vec<Sound> {
         pitched(fx::GRAINS, "Glass Grains", 0.32, grains(sr)),
         pitched(fx::ANALOG_DRONE, "Analog Drone", 0.55, analog_drone(sr)),
         pitched(fx::TIMPANI, "Timpani", 1.0, timpani(sr)),
+        pitched(fx::HULL, "Hull Groan", 0.8, hull(sr)),
+        pitched(fx::PIPE, "Pipe Clang", 0.55, pipe(sr)),
+        one(fx::STEAM, "Steam Hiss", 0.3, steam(sr)),
+        looping(fx::TICKING, "Ticking", 0.25, ticking(sr), (0.3, 1.0)),
+        looping(fx::TAPE_HISS, "Tape Hiss", 0.2, tape_hiss(sr), (1.5, 2.0)),
+        one(fx::SCRAPE, "Metal Scrape", 0.4, scrape(sr)),
+        looping(fx::ENGINE, "Engine Throb", 0.7, engine(sr), (2.0, 3.0)),
+        looping(fx::PUMP, "Life Support", 0.45, pump(sr), (0.5, 1.5)),
     ]
 }
 
@@ -910,6 +936,227 @@ fn timpani(sr: f64) -> Vec<f64> {
     out
 }
 
+// ------------------------------------------------------------------ the ship
+
+/// A hull groaning under strain: low, inharmonic partials of a vast metal structure
+/// sagging slowly flat, beating against each other, with creaks of stressed plate.
+fn hull(sr: f64) -> Vec<f64> {
+    let f0 = made_hz(fx::DRONE);
+    // (ratio, level, how fast it beats)
+    const PARTIALS: [(f64, f64, f64); 6] =
+        [(1.0, 1.0, 0.13), (1.93, 0.7, 0.21), (2.87, 0.45, 0.17), (4.12, 0.3, 0.29), (5.63, 0.2, 0.23), (7.4, 0.12, 0.31)];
+    let mut oscs: Vec<Osc> = PARTIALS.iter().map(|_| Osc::default()).collect();
+    let mut noise = Noise::new(51);
+    let (mut creak_bp, mut creak_bp2, mut lp) = (Svf::default(), Svf::default(), Svf::default());
+    let creaks: Vec<(f64, f64, f64)> =
+        (0..7).map(|_| (0.6 + 6.0 * noise.unit(), 280.0 + 700.0 * noise.unit(), 0.3 + 0.7 * noise.unit())).collect();
+    let secs = 9.0;
+    let mut out: Vec<f64> = (0..len(sr, secs))
+        .map(|i| {
+            let t = i as f64 / sr;
+            let swell = (1.0 - (-t / 1.8).exp()) * (-t / 3.6).exp();
+            // sagging a little over a semitone flat as the strain grows
+            let sag = 2f64.powf(-1.2 * (t / secs).powf(0.7) / 12.0);
+            let ring: f64 = oscs
+                .iter_mut()
+                .zip(&PARTIALS)
+                .map(|(o, (r, a, beat))| o.next(f0 * r * sag, sr) * a * (0.6 + 0.4 * (TAU * beat * t).sin()))
+                .sum();
+            let n = noise.next();
+            let creak: f64 = creaks.iter().map(|(at, _, amp)| amp * (-((t - at) / 0.12).powi(2)).exp()).sum();
+            let hz = creaks.iter().min_by(|a, b| (a.0 - t).abs().total_cmp(&(b.0 - t).abs())).map_or(500.0, |c| c.1);
+            let grit = creak_bp2.run(creak_bp.run(n, hz, 9.0, sr).band, hz * 1.5, 6.0, sr).band * creak;
+            lp.run(drive(ring * swell, 1.6) + 3.0 * grit * swell.sqrt(), 1100.0, 0.7, sr).low
+        })
+        .collect();
+    fade(&mut out, sr, 0.01, 1.5);
+    out
+}
+
+/// A pipe struck somewhere down a corridor: the partials of a free metal tube, long and
+/// ringing, a clank of the strike, muffled a little by distance.
+fn pipe(sr: f64) -> Vec<f64> {
+    let f0 = made_hz(fx::BOOM) * 2.0;
+    // (ratio, level, decay in seconds)
+    const MODES: [(f64, f64, f64); 5] = [(1.0, 1.0, 3.8), (2.76, 0.6, 2.4), (5.40, 0.35, 1.4), (8.93, 0.2, 0.8), (13.34, 0.1, 0.4)];
+    let mut oscs: Vec<Osc> = MODES.iter().map(|_| Osc::default()).collect();
+    let mut noise = Noise::new(52);
+    let (mut bp, mut lp) = (Svf::default(), Svf::default());
+    let mut out: Vec<f64> = (0..len(sr, 6.0))
+        .map(|i| {
+            let t = i as f64 / sr;
+            let mut x = 0.0;
+            for (k, (osc, (ratio, amp, decay))) in oscs.iter_mut().zip(&MODES).enumerate() {
+                // each mode wavers a little as the pipe swings
+                let wobble = 1.0 + 0.0015 * (TAU * (1.3 + 0.4 * k as f64) * t).sin();
+                x += amp * osc.next(f0 * ratio * wobble, sr) * (-t / decay).exp();
+            }
+            let clank = bp.run(noise.next(), 2400.0, 2.0, sr).band * (-t / 0.015).exp();
+            lp.run(x + 1.2 * clank, 5000.0, 0.7, sr).low
+        })
+        .collect();
+    fade(&mut out, sr, 0.0005, 1.2);
+    out
+}
+
+/// A valve venting steam: a hiss that bursts out, flutters with the pressure and dies.
+fn steam(sr: f64) -> Vec<f64> {
+    let mut noise = Noise::new(53);
+    let (mut hp, mut bp, mut lp) = (Svf::default(), Svf::default(), Svf::default());
+    let secs = 4.0;
+    let mut out: Vec<f64> = (0..len(sr, secs))
+        .map(|i| {
+            let t = i as f64 / sr;
+            let env = (1.0 - (-t / 0.06).exp()) * if t < 1.2 { 1.0 } else { (-(t - 1.2) / 0.8).exp() };
+            let flutter = 1.0 + 0.25 * (TAU * 9.0 * t).sin() * (TAU * 0.7 * t).sin();
+            let n = noise.next();
+            let air = hp.run(n, 1800.0, 0.7, sr).high;
+            let whistle = bp.run(n, 5200.0 - 900.0 * (t / secs), 4.0, sr).band;
+            lp.run((air + 0.6 * whistle) * env * flutter, 11000.0, 0.7, sr).low
+        })
+        .collect();
+    fade(&mut out, sr, 0.002, 0.6);
+    out
+}
+
+/// Ticking, a relay or a clock somewhere in the machinery: a tick and a tock each half
+/// second, never quite even, over a loop of four seconds that repeats exactly.
+fn ticking(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let n = len(sr, 4.0);
+    let mut out = vec![0.0; n];
+    let mut noise = Noise::new(54);
+    for k in 0..8 {
+        let at = len(sr, 0.1 + 0.5 * k as f64 + 0.025 * noise.next());
+        let (hz, amp) = if k % 2 == 0 { (3100.0, 1.0) } else { (2300.0, 0.7 + 0.2 * noise.unit()) };
+        let (mut bp, mut osc) = (Svf::default(), Osc::default());
+        for j in 0..len(sr, 0.05).min(n - at) {
+            let t = j as f64 / sr;
+            out[at + j] +=
+                amp * (bp.run(noise.next(), hz, 5.0, sr).band * (-t / 0.006).exp() + 0.25 * osc.next(hz * 0.71, sr) * (-t / 0.01).exp());
+        }
+    }
+    let guard: Vec<f64> = out[..8].to_vec();
+    out.extend(guard);
+    (out, (0, n))
+}
+
+/// Tape hiss: soft, bright noise with a little low rumble of the transport.
+fn tape_hiss(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let mut noise = Noise::new(55);
+    let (mut hp, mut lp, mut rumble) = (Svf::default(), Svf::default(), Svf::default());
+    crossfaded(sr, 5.0, 1.0, |_| {
+        let n = noise.next();
+        let hiss = lp.run(hp.run(n, 2500.0, 0.6, sr).high, 12000.0, 0.7, sr).low;
+        hiss + 0.3 * rumble.run(n, 90.0, 0.7, sr).low
+    })
+}
+
+/// Heavy machinery deep in a ship: two great engines a little out of step, beating
+/// slowly against each other, throbbing with each turn of the shaft, a knock at each
+/// stroke, and a faint whine above. Every part repeats a whole number of times in the
+/// loop, so it loops seamlessly without a crossfade.
+fn engine(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 4.0;
+    let n = len(sr, secs);
+    // (Hz, level): whole numbers of cycles in four seconds
+    const PARTS: [(f64, f64); 7] = [(41.0, 1.0), (41.5, 0.8), (82.0, 0.45), (123.25, 0.25), (164.0, 0.15), (205.25, 0.08), (246.0, 0.05)];
+    // the shaft turns one and a half times a second: six strokes in the loop
+    let throb_hz = 1.5;
+    let mut noise = Noise::new(57);
+    // one knock, laid at every stroke, so the loop repeats exactly
+    let knock: Vec<f64> = {
+        let mut bp = Svf::default();
+        let mut v: Vec<f64> = (0..len(sr, 0.12))
+            .map(|i| {
+                let t = i as f64 / sr;
+                bp.run(noise.next(), 180.0, 2.5, sr).band * (-t / 0.03).exp()
+            })
+            .collect();
+        fade(&mut v, sr, 0.001, 0.02);
+        v
+    };
+    let mut out: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / sr;
+            let body: f64 = PARTS.iter().map(|(hz, a)| a * (TAU * hz * t).sin()).sum();
+            // the stroke: a lopsided swell, quick to rise and slow to ebb
+            let ph = (t * throb_hz).fract();
+            let throb = 0.45 + 0.55 * if ph < 0.2 { (ph / 0.2 * PI / 2.0).sin() } else { (1.0 - (ph - 0.2) / 0.8).powf(1.6) };
+            let whine = 0.03 * (TAU * 470.0 * t + 0.4 * (TAU * 0.25 * t).sin()).sin();
+            drive(body * throb, 1.8) + whine
+        })
+        .collect();
+    for k in 0..6 {
+        let at = (k as f64 * sr / throb_hz).round() as usize % n;
+        for (j, v) in knock.iter().enumerate() {
+            out[(at + j) % n] += 1.4 * v;
+        }
+    }
+    let guard: Vec<f64> = out[..8].to_vec();
+    out.extend(guard);
+    (out, (0, n))
+}
+
+/// A life-support pump: air drawn in with a rising hiss and a groan of the bellows, a
+/// valve clanking shut, and the breath let out, falling away, then a short wait. One
+/// cycle, silent at both ends, so it loops cleanly.
+fn pump(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 3.6;
+    let n = len(sr, secs);
+    let mut noise = Noise::new(58);
+    let (mut air, mut groan, mut clank, mut lp) = (Svf::default(), Svf::default(), Svf::default(), Svf::default());
+    let mut bellows = Osc::default();
+    let mut out: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / sr;
+            let x = noise.next();
+            // in (0-1.3 s), the valve (1.3 s), out (1.35-2.8 s), the wait
+            let (inhale, exhale) = (
+                if t < 1.3 { (t / 1.3).powf(1.5) * (1.0 - (-(1.3 - t) / 0.05).exp()) } else { 0.0 },
+                if (1.35..2.8).contains(&t) { (1.0 - (-(t - 1.35) / 0.04).exp()) * (1.0 - (t - 1.35) / 1.45).powf(1.3) } else { 0.0 },
+            );
+            let hiss_hz = if t < 1.3 { 900.0 + 1600.0 * t / 1.3 } else { 2200.0 - 1200.0 * ((t - 1.35) / 1.45).min(1.0) };
+            let hiss = air.run(x, hiss_hz, 1.2, sr).band * (inhale + 0.8 * exhale);
+            let low = bellows.next(55.0 + 10.0 * inhale - 6.0 * exhale, sr) * 0.5 * (inhale + exhale);
+            let g = groan.run(x, 140.0, 4.0, sr).band * (inhale + exhale) * 1.5;
+            let c = if (1.3..1.6).contains(&t) { clank.run(x, 1300.0, 6.0, sr).band * (-(t - 1.3) / 0.025).exp() * 4.0 } else { 0.0 };
+            lp.run(hiss + low + g + c, 5000.0, 0.7, sr).low
+        })
+        .collect();
+    fade(&mut out, sr, 0.01, 0.3);
+    let guard: Vec<f64> = out[..8].to_vec();
+    out.extend(guard);
+    (out, (0, n))
+}
+
+/// Metal dragged over metal: friction that sticks and slips, through the resonances of
+/// the plates it grinds, drifting as it moves.
+fn scrape(sr: f64) -> Vec<f64> {
+    let mut noise = Noise::new(56);
+    let mut res: Vec<Svf> = (0..3).map(|_| Svf::default()).collect();
+    let mut lp = Svf::default();
+    let base = [610.0, 1340.0, 2870.0];
+    let secs = 5.0;
+    let mut grip = 0.0f64;
+    let mut out: Vec<f64> = (0..len(sr, secs))
+        .map(|i| {
+            let t = i as f64 / sr;
+            // stick and slip: the grip jumps now and then and slides back
+            if noise.unit() < 14.0 / sr {
+                grip = 0.5 + 0.5 * noise.unit();
+            }
+            grip *= 1.0 - 1.0 / (0.09 * sr);
+            let env = (1.0 - (-t / 0.4).exp()) * (-t / 2.2).exp();
+            let n = noise.next();
+            let drift = 1.0 + 0.06 * (TAU * 0.3 * t).sin();
+            let ring: f64 = res.iter_mut().zip(base).map(|(f, hz)| f.run(n, hz * drift, 14.0, sr).band).sum();
+            lp.run(ring * (0.3 + grip) * env, 4500.0, 0.7, sr).low
+        })
+        .collect();
+    fade(&mut out, sr, 0.01, 0.8);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -935,6 +1182,23 @@ mod tests {
         assert_eq!(d.data[b..b + 8], d.data[a..a + 8]);
         // its pitch: F#1 played on F#1
         assert_eq!(d.root, fx::DRONE + 6);
+    }
+
+    /// The ship's pitched sounds play their key's pitch class, and the ticking loops
+    /// cleanly.
+    #[test]
+    fn the_ships_sounds_are_tuned_and_loop() {
+        let fx = effects(48000.0);
+        for (name, base) in [("Hull Groan", fx::HULL), ("Pipe Clang", fx::PIPE)] {
+            let s = fx.iter().find(|s| s.name == name).unwrap();
+            assert_eq!((s.keys, s.root), ((base, base + 11), base + 6), "{name}");
+            assert_eq!(base % 12, 0, "{name}");
+        }
+        for name in ["Ticking", "Tape Hiss", "Engine Throb", "Life Support"] {
+            let s = fx.iter().find(|s| s.name == name).unwrap();
+            let (a, b) = s.looped.unwrap();
+            assert_eq!(s.data[b..b + 8], s.data[a..a + 8], "{name}");
+        }
     }
 
     #[test]
