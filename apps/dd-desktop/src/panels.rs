@@ -1026,14 +1026,13 @@ impl App {
         let t = Tokens::get(ui.ctx());
         let photos =
             self.doc.gallery.folder.as_ref().and_then(|d| dd_gallery::resolve::photos(d, self.doc.gallery.order).ok()).unwrap_or_default();
+        let mut choose = false;
         let g = &mut self.doc.gallery;
         widgets::section(ui, "photos", "Photos", true, |ui| {
             widgets::inset(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Choose photo folder…").clicked()
-                        && let Some(d) = rfd::FileDialog::new().pick_folder()
-                    {
-                        g.folder = Some(d);
+                    if ui.button("Choose photo folder…").clicked() {
+                        choose = true;
                     }
                     if g.folder.is_some() && ui.small_button("×").on_hover_text("No photos").clicked() {
                         g.folder = None;
@@ -1300,6 +1299,9 @@ impl App {
         if let Some(bars) = set_bars {
             self.doc.project.stretch_to(bars);
             self.status = format!("The score is now {bars} bars, to fit {n_photos} photos");
+        }
+        if choose {
+            self.ask(crate::dialogs::Want::PhotoFolder, crate::dialogs::Kind::Folder, rfd::AsyncFileDialog::new());
         }
     }
 

@@ -4,6 +4,7 @@
 mod about;
 mod app;
 mod audio;
+mod dialogs;
 mod live;
 mod mixer_ui;
 mod panels;

@@ -1,6 +1,7 @@
 //! The Sound tab: what plays the selected track. A synth patch editor, a SoundFont
 //! preset browser, or the city kit's key map.
 
+use crate::dialogs::{Kind, Want};
 use dd_dsp::patch::{Category, Env, Layer, LfoShape, Patch, factory};
 use dd_dsp::sampler::KitKind;
 use dd_seq::demo::GM_FONT;
@@ -431,6 +432,8 @@ impl App {
         let fonts = self.fonts.clone();
         let mut audition: Option<u8> = None;
         let mut load_font = false;
+        // Save… (with the patch) or Load…, once the patch is no longer borrowed
+        let mut patch_file: Option<Option<Patch>> = None;
         match &mut self.doc.project.tracks[sel].source {
             Source::Synth(patch) => {
                 crt_display(ui, patch, &t);
@@ -453,21 +456,11 @@ impl App {
                                 }
                             },
                         );
-                        if ui.button("Save…").on_hover_text("Save this patch as a file").clicked()
-                            && let Some(path) = rfd::FileDialog::new()
-                                .add_filter("Kibble-481 patch", &["ddpatch"])
-                                .set_file_name(format!("{}.ddpatch", patch.name))
-                                .save_file()
-                        {
-                            let _ = std::fs::write(path, serde_json::to_string_pretty(&*patch).unwrap_or_default());
+                        if ui.button("Save…").on_hover_text("Save this patch as a file").clicked() {
+                            patch_file = Some(Some(patch.clone()));
                         }
-                        if ui.button("Load…").on_hover_text("Load a saved patch").clicked()
-                            && let Some(path) = rfd::FileDialog::new().add_filter("Kibble-481 patch", &["ddpatch"]).pick_file()
-                            && let Ok(p) = std::fs::read_to_string(path)
-                                .map_err(|e| e.to_string())
-                                .and_then(|s| serde_json::from_str::<Patch>(&s).map_err(|e| e.to_string()))
-                        {
-                            *patch = p;
+                        if ui.button("Load…").on_hover_text("Load a saved patch").clicked() {
+                            patch_file = Some(None);
                         }
                     });
                     ui.horizontal(|ui| {
@@ -576,12 +569,44 @@ impl App {
                 self.play_live(Msg::Off(k));
             }
         }
-        if load_font && let Some(path) = rfd::FileDialog::new().add_filter("SoundFont", &["sf2"]).pick_file() {
+        match patch_file {
+            Some(Some(patch)) => {
+                let d = rfd::AsyncFileDialog::new()
+                    .add_filter("Kibble-481 patch", &["ddpatch"])
+                    .set_file_name(format!("{}.ddpatch", patch.name));
+                self.ask(Want::SavePatch(serde_json::to_string_pretty(&patch).unwrap_or_default()), Kind::Save, d);
+            }
+            Some(None) => {
+                self.ask(Want::LoadPatch(sel), Kind::File, rfd::AsyncFileDialog::new().add_filter("Kibble-481 patch", &["ddpatch"]))
+            }
+            None => {}
+        }
+        if load_font {
+            self.ask(Want::SoundFont(sel), Kind::File, rfd::AsyncFileDialog::new().add_filter("SoundFont", &["sf2"]));
+        }
+    }
+
+    /// Load a saved patch onto this track, if it is still a synth track.
+    pub(crate) fn load_patch_from(&mut self, sel: usize, path: std::path::PathBuf) {
+        let loaded = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|s| serde_json::from_str::<Patch>(&s).map_err(|e| e.to_string()));
+        match (loaded, self.doc.project.tracks.get_mut(sel).map(|t| &mut t.source)) {
+            (Ok(p), Some(Source::Synth(patch))) => *patch = p,
+            (Ok(_), _) => {}
+            (Err(e), _) => self.status = format!("Couldn't load the patch: {e}"),
+        }
+    }
+
+    /// Load a SoundFont and give this track its first preset, if it is still a SoundFont track.
+    pub(crate) fn load_font_from(&mut self, sel: usize, path: std::path::PathBuf) {
+        {
             match self.fonts.add(&path) {
                 Ok(()) => {
                     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                     if let Some(f) = self.fonts.get(&name).cloned()
-                        && let Source::SoundFont { font, bank, program, name: pn } = &mut self.doc.project.tracks[sel].source
+                        && let Some(Source::SoundFont { font, bank, program, name: pn }) =
+                            self.doc.project.tracks.get_mut(sel).map(|t| &mut t.source)
                     {
                         *font = f.name.clone();
                         if let Some(p) = f.presets.first() {

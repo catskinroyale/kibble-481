@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::JoinHandle;
 
-use dd_gallery::doc::{Document, EXTENSION, OLD_EXTENSION};
+use crate::dialogs::{Kind, Want};
+pub(crate) use dd_gallery::doc::EXTENSION;
+use dd_gallery::doc::{Document, OLD_EXTENSION};
 use dd_seq::compose::{Recipe, compose, keep_levels, keep_sounds};
 use dd_seq::engine::{Cmd, MixSettings};
 use dd_seq::fonts::{FontBank, make_instrument, soundfont_dir};
@@ -171,6 +173,8 @@ pub struct App {
     play_from: f64,
     rec_from: f64,
     job: Option<Job>,
+    /// The file or folder dialog open, if any (see `dialogs`).
+    pub(crate) asking: Option<crate::dialogs::Asking>,
     pub(crate) status: String,
     pub(crate) about: crate::about::About,
     update: Option<crate::update::UpdateStatus>,
@@ -247,6 +251,7 @@ impl App {
             play_from: 0.0,
             rec_from: 0.0,
             job: None,
+            asking: None,
             status: String::new(),
             about: Default::default(),
             update: None,
@@ -733,12 +738,8 @@ impl App {
     }
 
     pub(crate) fn open(&mut self) {
-        let Some(path) =
-            rfd::FileDialog::new().add_filter("Kibble-481 project or MIDI", &[EXTENSION, OLD_EXTENSION, "mid", "midi"]).pick_file()
-        else {
-            return;
-        };
-        self.open_path(path);
+        let d = rfd::AsyncFileDialog::new().add_filter("Kibble-481 project or MIDI", &[EXTENSION, OLD_EXTENSION, "mid", "midi"]);
+        self.ask(Want::Open, Kind::File, d);
     }
 
     pub(crate) fn open_path(&mut self, path: PathBuf) {
@@ -756,7 +757,10 @@ impl App {
 
     /// Add the tracks of a MIDI file to this project.
     pub(crate) fn merge_midi(&mut self) {
-        let Some(path) = rfd::FileDialog::new().add_filter("MIDI", &["mid", "midi"]).pick_file() else { return };
+        self.ask(Want::MergeMidi, Kind::File, rfd::AsyncFileDialog::new().add_filter("MIDI", &["mid", "midi"]));
+    }
+
+    pub(crate) fn merge_midi_from(&mut self, path: PathBuf) {
         match dd_seq::midi_file::load(&path, &self.fonts) {
             Ok(q) => {
                 let n = q.tracks.len();
@@ -772,16 +776,17 @@ impl App {
     }
 
     pub(crate) fn save(&mut self, as_new: bool) {
-        let path = match (&self.path, as_new) {
-            (Some(p), false) => p.clone(),
+        match (&self.path, as_new) {
+            (Some(p), false) => self.save_to(p.clone()),
             _ => {
                 let name = format!("{}.{EXTENSION}", self.version_name());
-                match rfd::FileDialog::new().add_filter("Kibble-481 project", &[EXTENSION]).set_file_name(name).save_file() {
-                    Some(p) => p.with_extension(EXTENSION),
-                    None => return,
-                }
+                let d = rfd::AsyncFileDialog::new().add_filter("Kibble-481 project", &[EXTENSION]).set_file_name(name);
+                self.ask(Want::Save, Kind::Save, d);
             }
-        };
+        }
+    }
+
+    pub(crate) fn save_to(&mut self, path: PathBuf) {
         match self.doc.save(&path) {
             Ok(()) => {
                 self.saved = self.doc.clone();
@@ -804,11 +809,11 @@ impl App {
     }
 
     pub(crate) fn save_midi(&mut self) {
-        let Some(path) =
-            rfd::FileDialog::new().add_filter("MIDI", &["mid"]).set_file_name(format!("{}.mid", self.version_name())).save_file()
-        else {
-            return;
-        };
+        let d = rfd::AsyncFileDialog::new().add_filter("MIDI", &["mid"]).set_file_name(format!("{}.mid", self.version_name()));
+        self.ask(Want::SaveMidi, Kind::Save, d);
+    }
+
+    pub(crate) fn save_midi_to(&mut self, path: PathBuf) {
         self.status = match dd_seq::midi_file::save(&self.doc.project, &path) {
             Ok(()) => format!("Saved {}", path.display()),
             Err(e) => format!("Couldn't save the MIDI file: {e}"),
@@ -816,11 +821,11 @@ impl App {
     }
 
     pub(crate) fn export_wav(&mut self) {
-        let Some(path) =
-            rfd::FileDialog::new().add_filter("WAV", &["wav"]).set_file_name(format!("{}.wav", self.version_name())).save_file()
-        else {
-            return;
-        };
+        let d = rfd::AsyncFileDialog::new().add_filter("WAV", &["wav"]).set_file_name(format!("{}.wav", self.version_name()));
+        self.ask(Want::ExportWav, Kind::Save, d);
+    }
+
+    pub(crate) fn export_wav_to(&mut self, path: PathBuf) {
         let (p, fonts) = (self.doc.project.clone(), self.fonts.clone());
         self.start_job("Rendering the mix", move |progress, cancel| {
             dd_seq::render::render_wav(&p, &fonts, None, &path, progress, cancel)?;
@@ -829,7 +834,10 @@ impl App {
     }
 
     pub(crate) fn export_stems(&mut self) {
-        let Some(dir) = rfd::FileDialog::new().set_title("Choose a folder for the stems").pick_folder() else { return };
+        self.ask(Want::Stems, Kind::Folder, rfd::AsyncFileDialog::new().set_title("Choose a folder for the stems"));
+    }
+
+    pub(crate) fn export_stems_to(&mut self, dir: PathBuf) {
         let (p, fonts, name) = (self.doc.project.clone(), self.fonts.clone(), self.version_name());
         self.start_job("Rendering stems", move |progress, cancel| {
             let mut n = 0;
@@ -846,7 +854,10 @@ impl App {
     }
 
     pub(crate) fn export_resolve(&mut self) {
-        let Some(dir) = rfd::FileDialog::new().set_title("Choose a folder for the Resolve package").pick_folder() else { return };
+        self.ask(Want::Resolve, Kind::Folder, rfd::AsyncFileDialog::new().set_title("Choose a folder for the Resolve package"));
+    }
+
+    pub(crate) fn export_resolve_to(&mut self, dir: PathBuf) {
         let (doc, fonts, stems, name) = (self.doc.clone(), self.fonts.clone(), self.settings.stems_with_gallery, self.version_name());
         self.start_job("Exporting for Resolve", move |progress, cancel| {
             let out = dd_gallery::export::export_for_resolve(&doc, &fonts, &dir, &name, stems, progress, cancel)?;
@@ -1189,6 +1200,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.keyboard(&ctx);
         self.poll_job();
+        self.poll_dialog(&ctx);
         self.update_meters(&ctx);
         if self.recording() && !self.playing() && self.position() > 0.0 {
             // the take ran into the end

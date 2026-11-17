@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — 2026-11-17
+
+- Fixed a crash on macOS when a folder was dragged onto the Choose photo folder… dialog.
+  Every file and folder dialog (open, save, export, photos, patches, SoundFonts) now
+  opens without holding up the window: on macOS as a sheet on it.
+
 ## 0.7.0 — 2026-11-16
 
 - **Derelict**, a seventh composer style: a ship adrift in deep space, analogue drones and
