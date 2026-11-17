@@ -243,7 +243,7 @@ fn bar_levels_move_with_their_sections() {
     p.tracks[0].levels = vec![Level { bar: 1, value: 40 }, Level { bar: 5, value: 120 }];
     // swap them and add a Fade of 3 bars at the start
     let a = p.arrangement();
-    let fade = Block { name: "Fade".into(), part: Some(Part::Fade), bars: 3 };
+    let fade = Block::new(Part::Fade, 3);
     p.rearrange(&[fade, a[1].clone(), a[0].clone()], &[None, Some(1), Some(0)]);
     assert_eq!(p.length_bars, 11);
     assert_eq!(p.tracks[0].levels, vec![Level { bar: 4, value: 120 }, Level { bar: 8, value: 40 }]);

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0 — 2026-11-17
+
+- **Homeward**, an eighth composer style: a slow, warm, quietly hopeful cinematic score
+  built on one singable eight-bar theme in a minor key, written by the seed, that comes
+  back in every section: on solo piano, then legato cellos, then reharmonised for a
+  flute, clarinet or French horn with a countermelody in the strings, then building
+  under layered strings and a warm analogue pad to one peak in full strings, and home on
+  the piano to a held tonic chord. No drums or city sounds; 69 bpm;
+  `kibble-481-cli compose --style homeward`. The other styles are unchanged.
+- Two more CC0 SoundFonts from FreePats, bundled: a sampled **Concert Harp** (Versilian
+  VCSL samples) and **Synth Strings**, a warm analogue string pad. New sounds to choose
+  from: Concert Harp (Pluck), Synth Strings (Pad), Viola (Strings), Clarinet and French
+  Horn (Lead).
+- Tracks can be **moved** by dragging their ≡ grip in the track list, and **deleted** with
+  the × by their name (⌘Z brings one back). The last track can no longer be deleted.
+
+- **Sections are numbered within their part** (Intro 1, Intro 2, Neon 1…) unless you give
+  them a name. Click a section's name in the Score tab (or right-click it on the Sections
+  strip above the roll) for its menu: rename it, **change its part** (it is written again
+  as the new one), new notes for it, **new notes for one track in it**, duplicate it (a
+  copy after it, notes and all), copy before, delete.
+- Dragging a section's end, or moving, adding or changing sections, in an edited piece
+  now moves the notes with their sections, and writes a section that is new, another part
+  or another length again on its own, to its new length. It used to leave a longer
+  section's new bars empty and the sections after it out of step with their notes. A
+  section given new notes keeps its seed when it is written again.
+- The rain, and anything else held right through, keeps going through copied, deleted and
+  rewritten sections instead of stopping there.
+- **+ Add** is back in the track list: a new track of any role comes with its sound and
+  the notes the piece's style writes for it (a second track of a role plays a line of its
+  own; a role the style doesn't write comes empty). New pieces write them again.
+
 ## 0.7.1 — 2026-11-17
 
 - Fixed a crash on macOS when a folder was dragged onto the Choose photo folder… dialog.

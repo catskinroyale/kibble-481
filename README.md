@@ -33,7 +33,7 @@ command line.
 ## Building
 
 You need [Rust](https://rustup.rs); `rust-toolchain.toml` pins the version (1.99.1) and
-rustup fetches it. The seven bundled SoundFonts are in the repo.
+rustup fetches it. The nine bundled SoundFonts are in the repo.
 
 ```sh
 ./tools/fetch_soundfonts.sh            # optional: five more CC0 banks into soundfonts/extra
@@ -59,17 +59,24 @@ answer as it recedes). A new piece runs Neon, Swell, Night shift, Fade (in Noir,
 Intro); an Intro can open a piece in any style. In the Score tab the
 sections are a swim lane, with the parts to add on the right: drag a part into the lane
 to add it there (or click it to add one at the end), drag a section by its ≡ grip to move
-it, × to remove one, and right-click one to change its part; drag
+it, × to remove one; drag
 the end of a section on the Sections strip above the roll to make it a bar or more longer
-or shorter. A composed piece is written again to follow the arrangement. On the Sections
-strip itself, hover over a section for its own buttons (or right-click it): **↻** writes
-new notes for just that section, in the piece's style and key; **‹+** and **+›** copy it,
-notes and all, in front of or after itself; **×** takes it out, notes and all. These keep
-the rest of the piece as it is, so it then counts as edited (⌘Z undoes them). Set the key and
+or shorter. Sections are numbered within their part (**Intro 1**, **Intro 2**, **Neon 1**…)
+unless you name them. Click a section's name in the Score tab, or right-click it on the
+Sections strip, for its menu: its **name**, its **part** (it is written again as the new
+one), **new notes** for the whole section or for **one track** in it, **duplicate** (a copy
+after it, notes and all), copy before, and delete. On the Sections strip, hover over a
+section for buttons too: **↻** new notes, **‹+** and **+›** copies, **×** out. A composed
+piece that hasn't been edited is written again whole to follow the arrangement. Once
+edited (and after any of these section changes, which keep the rest of the piece as it
+is; ⌘Z undoes them), each section's notes move with it, and a section that is new, made
+another part or another length is written again on its own, to its length, the rest as
+they were. In a piece that wasn't composed, a longer section plays its notes again to
+fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are seven **styles**, each playing the same kinds of section its own way, all
+There are eight **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -127,6 +134,20 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   like old tape, with no chorus on anything. It uses only the sounds written for it (no
   koto or shakuhachi). It opens on an Intro and measures about -18 to -21 LUFS with a wide
   loudness range (12 to 16 LU), like a film cue.
+- **Homeward** (69 bpm): slow, warm, serious and quietly hopeful, built on one singable
+  eight-bar theme in the minor key that the seed writes: a first phrase that rises and
+  rests on the dominant, a second that lifts towards the relative major, peaks and
+  falls home to the tonic over a raised leading tone. Its harmony follows the theme, a
+  chord a bar. The theme returns in every section, each statement ending on its cadence:
+  on solo piano (or soft electric piano) in the Intro; on legato cellos (or violas) in
+  the Neon, over soft piano chords, a sampled concert harp, a bowed double bass and a
+  quiet sub; reharmonised in the Swell for a flute, clarinet or French horn, with a
+  countermelody in the cellos; in the Night shift a soft pulse builds under layered
+  strings and a warm analogue pad to a single peak, the theme in full strings in octaves;
+  and in the Fade on the piano as it began, settling on a held tonic chord with a ninth
+  on top. A natural hall, no chorus, no drums or city. It measures about -21 LUFS with
+  peaks under -2 dBFS. Its tracks: Piano, Cellos, Strings, Double Bass, Sub, Lead, Harp
+  and Pad.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -248,7 +269,11 @@ Load any other `.sf2` from the Sound tab.
   (drag a section's end to resize it, a bar at a time; hover for new notes, copy before or
   after, and delete), ordered in the Score tab.
 - **Tracks**: click anywhere on a track to select it; double-click its name (or Rename in
-  its right-click menu) to rename it.
+  its right-click menu) to rename it. Drag a track by its ≡ grip to move it up or down
+  the list; its **×** deletes it (⌘Z brings it back; the last track stays). **+ Add** adds a track of any role, with its sound
+  and the notes the piece's style writes for that role (a second track of a role plays a
+  line of its own; a role the style doesn't write comes empty, to play into). New pieces
+  write added tracks again for their roles.
 - Undo and redo (⌘Z, ⇧⌘Z) for everything.
 
 ## Mixing

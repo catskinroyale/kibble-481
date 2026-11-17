@@ -162,6 +162,10 @@ pub struct Track {
     pub role: Option<crate::palette::Role>,
     /// Its volume set bar by bar, on top of the fader (see `Level`).
     pub levels: Vec<Level>,
+    /// Added from the track list rather than written with the piece: a new piece
+    /// writes it again for its role, beside the piece's own.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub added: bool,
 }
 
 /// A track's volume from the start of a bar (from 0): 100 is as the fader has it, 0 is
@@ -218,6 +222,7 @@ impl Default for Track {
             strip: Strip::default(),
             role: None,
             levels: Vec::new(),
+            added: false,
         }
     }
 }
@@ -242,6 +247,26 @@ impl Track {
     pub fn sort(&mut self) {
         self.notes.sort_by_key(|n| (n.start, n.key));
         self.ctrls.sort_by_key(|c| c.tick);
+    }
+
+    /// Put `src`'s notes and controllers from `a` to `b` in place of this track's
+    /// (none: leave it empty there). A note held into the span from before is cut where
+    /// it begins, unless it is held right through it and `src` holds one right through it
+    /// too (the rain, a drone held from the start); the new notes end with the span.
+    pub fn replace_span(&mut self, a: u32, b: u32, src: Option<&Track>) {
+        self.notes.retain(|n| n.start < a || n.start >= b);
+        let through = src.is_some_and(|s| s.notes.iter().any(|m| m.start < a && m.end() >= b));
+        for n in self.notes.iter_mut().filter(|n| n.start < a && n.end() > a) {
+            if !(through && n.end() >= b) {
+                n.len = a - n.start;
+            }
+        }
+        self.ctrls.retain(|c| c.tick < a || c.tick >= b);
+        if let Some(src) = src {
+            self.notes.extend(src.notes.iter().filter(|n| n.start >= a && n.start < b).map(|n| Note { len: n.len.min(b - n.start), ..*n }));
+            self.ctrls.extend(src.ctrls.iter().filter(|c| c.tick >= a && c.tick < b).copied());
+        }
+        self.sort();
     }
 
     pub fn end(&self) -> u32 {
@@ -287,10 +312,12 @@ impl Part {
         }
     }
 
-    /// The part a section name stands for (also the names older pieces used).
+    /// The part a section name stands for (also the names older pieces used, and a
+    /// part numbered as the sections show it: "Intro 2").
     pub fn from_name(name: &str) -> Option<Part> {
         let n = name.trim().to_lowercase();
-        match n.as_str() {
+        let n = n.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end();
+        match n {
             "intro" | "opening" | "prelude" => Some(Part::Intro),
             "neon" | "rain" | "streets" | "drizzle" => Some(Part::Neon),
             "swell" | "brass" | "pulse" | "overpass" => Some(Part::Swell),
@@ -309,16 +336,20 @@ pub struct Section {
     /// What the composer writes in it; none for a plain marker (from a MIDI file).
     #[serde(default)]
     pub part: Option<Part>,
+    /// The seed its notes were last written with, when not the piece's (New notes for
+    /// this section): written again to a new length, it is written with this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
 }
 
 impl Section {
     pub fn new(bar: u32, part: Part) -> Section {
-        Section { bar, name: part.label().into(), part: Some(part) }
+        Section { bar, name: part.label().into(), part: Some(part), seed: None }
     }
 
     /// A marker read from a file: a part if its name is one.
     pub fn marker(bar: u32, name: String) -> Section {
-        Section { bar, part: Part::from_name(&name), name }
+        Section { bar, part: Part::from_name(&name), name, seed: None }
     }
 }
 
@@ -328,6 +359,52 @@ pub struct Block {
     pub name: String,
     pub part: Option<Part>,
     pub bars: u32,
+    /// As [`Section::seed`].
+    pub seed: Option<u64>,
+}
+
+impl Block {
+    /// A new section of a part, with its part's name.
+    pub fn new(part: Part, bars: u32) -> Block {
+        Block { name: part.label().into(), part: Some(part), bars, seed: None }
+    }
+
+    /// The name it was given, if it isn't its part's own (plain or numbered).
+    pub fn own_name(&self) -> Option<&str> {
+        let n = self.name.trim();
+        match self.part {
+            _ if n.is_empty() => None,
+            Some(p) if Part::from_name(n) == Some(p) && n.to_lowercase().starts_with(&p.label().to_lowercase()) => None,
+            _ => Some(n),
+        }
+    }
+}
+
+/// What the sections are called, in order: the name a section was given, else its part
+/// and its number among that part's sections (Intro 1, Intro 2), or "(lead-in)" for the
+/// unnamed bars before the first.
+pub fn block_labels(blocks: &[Block]) -> Vec<String> {
+    let mut seen: Vec<(Part, u32)> = Vec::new();
+    blocks
+        .iter()
+        .map(|b| match (b.own_name(), b.part) {
+            (Some(n), _) => n.to_string(),
+            (None, Some(p)) => {
+                let k = match seen.iter_mut().find(|(q, _)| *q == p) {
+                    Some((_, k)) => {
+                        *k += 1;
+                        *k
+                    }
+                    None => {
+                        seen.push((p, 1));
+                        1
+                    }
+                };
+                format!("{} {k}", p.label())
+            }
+            (None, None) => "(lead-in)".into(),
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -464,11 +541,11 @@ impl Project {
         if let Some(first) = secs.first()
             && first.bar > 0
         {
-            out.push(Block { name: String::new(), part: None, bars: first.bar });
+            out.push(Block { name: String::new(), part: None, bars: first.bar, seed: None });
         }
         for (i, s) in secs.iter().enumerate() {
             let to = secs.get(i + 1).map_or(end, |n| n.bar);
-            out.push(Block { name: s.name.clone(), part: s.part.or_else(|| Part::from_name(&s.name)), bars: to - s.bar });
+            out.push(Block { name: s.name.clone(), part: s.part.or_else(|| Part::from_name(&s.name)), bars: to - s.bar, seed: s.seed });
         }
         out
     }
@@ -479,7 +556,7 @@ impl Project {
         self.sections.clear();
         for b in blocks {
             if !b.name.is_empty() || b.part.is_some() {
-                self.sections.push(Section { bar, name: b.name.clone(), part: b.part });
+                self.sections.push(Section { bar, name: b.name.clone(), part: b.part, seed: b.seed });
             }
             bar += b.bars.max(1);
         }
@@ -494,6 +571,83 @@ impl Project {
             return None;
         }
         self.arrangement().into_iter().map(|b| b.part.map(|p| (p, b.bars))).collect()
+    }
+
+    /// What the sections are called, in order (see [`block_labels`]).
+    pub fn section_labels(&self) -> Vec<String> {
+        block_labels(&self.arrangement())
+    }
+
+    /// Lay out a new arrangement whose blocks came from the old one (as [`rearrange`]),
+    /// taking each block's notes and controllers with it as well as its bar levels. A
+    /// block made longer plays its notes again from its start to fill the new bars; one
+    /// made shorter loses those past its new end; a new one is empty. A note held over a
+    /// block's end into the next is held as long as before, and one held to the piece's
+    /// end is held to the new end.
+    ///
+    /// [`rearrange`]: Project::rearrange
+    pub fn rearrange_with_notes(&mut self, blocks: &[Block], origin: &[Option<usize>]) {
+        let old = self.block_ticks();
+        if old.is_empty() {
+            self.set_arrangement(blocks);
+            return;
+        }
+        let bar_t = self.bar_ticks();
+        let old_blocks_end = old.last().map_or(0, |b| b.1);
+        let old_end = self.end_tick();
+        let mut starts = Vec::with_capacity(blocks.len());
+        let mut at = 0;
+        for b in blocks {
+            starts.push(at * bar_t);
+            at += b.bars.max(1);
+        }
+        let new_blocks_end = at * bar_t;
+        // anything past the sections (the piece held on after them) moves with the end
+        let new_end = new_blocks_end + old_end.saturating_sub(old_blocks_end);
+        for t in self.tracks.iter_mut() {
+            let mut notes = Vec::new();
+            let mut ctrls = Vec::new();
+            for (i, from) in origin.iter().enumerate() {
+                let Some(&(oa, ob)) = from.and_then(|j| old.get(j)) else { continue };
+                let (old_len, new_len, na) = (ob - oa, blocks[i].bars.max(1) * bar_t, starts[i]);
+                let mut shift = 0;
+                while shift < new_len {
+                    for n in t.notes.iter().filter(|n| n.start >= oa && n.start < ob) {
+                        let off = n.start - oa + shift;
+                        if off >= new_len {
+                            continue;
+                        }
+                        let len = if n.end() >= old_end && shift == 0 {
+                            new_end - (na + off)
+                        } else if n.end() <= ob || shift > 0 {
+                            n.len.min(new_len - off)
+                        } else {
+                            n.len.min(new_end - (na + off))
+                        };
+                        notes.push(Note { start: na + off, len: len.max(1), ..*n });
+                    }
+                    for c in t.ctrls.iter().filter(|c| c.tick >= oa && c.tick < ob) {
+                        let off = c.tick - oa + shift;
+                        if off < new_len {
+                            ctrls.push(Ctrl { tick: na + off, ..*c });
+                        }
+                    }
+                    shift += old_len.max(1);
+                }
+            }
+            let past = |x: u32| x - old_blocks_end + new_blocks_end;
+            notes.extend(t.notes.iter().filter(|n| n.start >= old_blocks_end).map(|n| Note { start: past(n.start), ..*n }));
+            ctrls.extend(t.ctrls.iter().filter(|c| c.tick >= old_blocks_end).map(|c| Ctrl { tick: past(c.tick), ..*c }));
+            t.notes = notes;
+            t.ctrls = ctrls;
+            t.sort();
+        }
+        self.rearrange(blocks, origin);
+        if let Some((x, y)) = self.loop_bars
+            && y > self.length_bars
+        {
+            self.loop_bars = (x < self.length_bars).then_some((x, self.length_bars));
+        }
     }
 
     /// Lay out a new arrangement whose blocks came from the old one (`origin[i]` is the
@@ -592,9 +746,11 @@ impl Project {
 
     /// Copy section `i` with its notes, its controllers and its tracks' bar levels,
     /// putting the copy straight before or after it; what follows moves up to make room.
-    /// A note held across where the copy goes is cut there.
+    /// A note held across where the copy goes is cut there, unless it is held to the end
+    /// (the rain): that is held to the new end.
     pub fn copy_section(&mut self, i: usize, after: bool) {
         let blocks = self.arrangement();
+        let end = self.end_tick();
         let Some(&(a, b)) = self.block_ticks().get(i) else { return };
         let len = b - a;
         let at = if after { b } else { a };
@@ -610,6 +766,8 @@ impl Project {
             for n in t.notes.iter_mut() {
                 if n.start >= at {
                     n.start += len;
+                } else if n.end() >= end {
+                    n.len += len;
                 } else if n.end() > at {
                     n.len = at - n.start;
                 }
@@ -632,7 +790,8 @@ impl Project {
 
     /// Take section `i` out with its notes, controllers and bar levels; what follows
     /// moves back to close the gap. A note held into it from before is cut where it
-    /// began. The last section left can't be taken out.
+    /// began, unless it is held past it (the rain): that is held as much less. The last
+    /// section left can't be taken out.
     pub fn delete_section(&mut self, i: usize) {
         let blocks = self.arrangement();
         if blocks.len() < 2 {
@@ -645,6 +804,8 @@ impl Project {
             for n in t.notes.iter_mut() {
                 if n.start >= b {
                     n.start -= len;
+                } else if n.end() > b {
+                    n.len -= len;
                 } else if n.end() > a {
                     n.len = a - n.start;
                 }
@@ -675,18 +836,7 @@ impl Project {
         let same_count = self.tracks.len() == from.tracks.len();
         for (j, t) in self.tracks.iter_mut().enumerate() {
             let src = from.tracks.iter().find(|f| f.name == t.name).or_else(|| same_count.then(|| &from.tracks[j]));
-            t.notes.retain(|n| n.start < a || n.start >= b);
-            for n in t.notes.iter_mut().filter(|n| n.start < a && n.end() > a) {
-                n.len = a - n.start;
-            }
-            t.ctrls.retain(|c| c.tick < a || c.tick >= b);
-            if let Some(src) = src {
-                t.notes
-                    .extend(src.notes.iter().filter(|n| n.start >= a && n.start < b).map(|n| Note { len: n.len.min(b - n.start), ..*n }));
-                t.ctrls.extend(src.ctrls.iter().filter(|c| c.tick >= a && c.tick < b).copied());
-            }
-            t.notes.sort_by_key(|n| (n.start, n.key));
-            t.ctrls.sort_by_key(|c| c.tick);
+            t.replace_span(a, b, src);
         }
     }
 

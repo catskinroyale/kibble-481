@@ -12,7 +12,7 @@ use dd_gallery::doc::{Document, OLD_EXTENSION};
 use dd_seq::compose::{Recipe, compose, keep_levels, keep_sounds};
 use dd_seq::engine::{Cmd, MixSettings};
 use dd_seq::fonts::{FontBank, make_instrument, soundfont_dir};
-use dd_seq::project::{PPQ, Project, Source};
+use dd_seq::project::{Block, PPQ, Project, Source};
 use dd_seq::record::Take;
 use dd_seq::timeline::{Msg, Timeline};
 use eframe::egui;
@@ -316,7 +316,7 @@ impl App {
             }
             if snap.wants("added") {
                 let mut b = app.doc.project.arrangement();
-                b.push(dd_seq::project::Block { name: "Neon".into(), part: Some(dd_seq::project::Part::Neon), bars: 4 });
+                b.push(Block::new(dd_seq::project::Part::Neon, 4));
                 app.doc.project.set_arrangement(&b);
             }
             if snap.wants("long") {
@@ -332,6 +332,7 @@ impl App {
                 ("noir", dd_seq::compose::Style::Noir),
                 ("overcity", dd_seq::compose::Style::Overcity),
                 ("derelict", dd_seq::compose::Style::Derelict),
+                ("homeward", dd_seq::compose::Style::Homeward),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
@@ -608,6 +609,7 @@ impl App {
     /// given, else to the current one (if the composer can write it).
     fn recompose_to(&mut self, recipe: Recipe, keep: bool, plan: Option<Vec<(dd_seq::project::Part, u32)>>) {
         let old = &self.doc.project;
+        let same_sections = plan.is_none();
         let mut p = match plan.or_else(|| old.plan()) {
             Some(plan) => dd_seq::compose::compose_plan(&recipe, old.bpm, old.meter, &plan),
             None => compose(&recipe, old.bpm, old.meter, old.length_bars.max(2)),
@@ -616,6 +618,13 @@ impl App {
             keep_sounds(&mut p, old);
         }
         keep_levels(&mut p, old);
+        dd_seq::compose::keep_added(&mut p, old, keep);
+        // the same sections keep the names they were given
+        if same_sections && p.sections.len() == old.sections.len() {
+            for (s, o) in p.sections.iter_mut().zip(&old.sections) {
+                s.name = o.name.clone();
+            }
+        }
         let bars = p.bars();
         p.loop_bars = old.loop_bars.filter(|(a, _)| *a < bars).map(|(a, b)| (a, b.min(bars)));
         self.doc.project = p;
@@ -665,39 +674,118 @@ impl App {
         self.status = format!("\u{201c}{}\u{201d}: {} in {}, seed {}", self.doc.project.title, r.style.label(), r.key_label(), r.seed);
     }
 
-    /// Do what a section's button asked: the piece keeps its other notes, and isn't
-    /// written again around the change (it now counts as edited).
+    /// Do what a section's button or menu asked: the piece keeps its other notes, and
+    /// isn't written again around the change (it now counts as edited).
     pub(crate) fn section_action(&mut self, act: crate::roll::SectionAct) {
         use crate::roll::SectionAct;
-        let name =
-            |p: &Project, i: usize| p.arrangement().get(i).map_or(String::new(), |b| b.part.map_or(b.name.clone(), |p| p.label().into()));
+        let i = act.section();
+        let what = self.doc.project.section_labels().get(i).cloned().unwrap_or_default();
         let p = &mut self.doc.project;
-        let what = name(
-            p,
-            match act {
-                SectionAct::Regenerate(i) | SectionAct::Copy(i, _) | SectionAct::Delete(i) => i,
-            },
-        );
         self.status = match act {
             SectionAct::Regenerate(i) => {
                 let seed = entropy() % 1_000_000;
                 if dd_seq::compose::regenerate_section(p, i, seed) {
-                    format!("New notes for the {what} (seed {seed})")
+                    format!("New notes for {what} (seed {seed})")
                 } else {
                     "Only a composed piece can have new notes written".into()
                 }
             }
+            SectionAct::RegenerateTrack(i, k) => {
+                let seed = entropy() % 1_000_000;
+                let name = p.tracks.get(k).map_or(String::new(), |t| t.name.clone());
+                if dd_seq::compose::regenerate_track_section(p, i, k, seed) {
+                    self.sel = k;
+                    format!("New notes for the {name} in {what} (seed {seed})")
+                } else if p.recipe.is_none() || p.plan().is_none() {
+                    "Only a composed piece can have new notes written".into()
+                } else {
+                    format!("The style doesn't write a part for the {name}")
+                }
+            }
             SectionAct::Copy(i, after) => {
                 p.copy_section(i, after);
-                format!("Copied the {what} {}", if after { "after itself" } else { "in front of itself" })
+                format!("Copied {what} {}", if after { "after itself" } else { "in front of itself" })
             }
             SectionAct::Delete(i) => {
                 p.delete_section(i);
-                format!("Took out the {what}")
+                format!("Took out {what}")
+            }
+            SectionAct::Rename(i, name) => {
+                let mut blocks = p.arrangement();
+                if let Some(b) = blocks.get_mut(i) {
+                    b.name = if name.is_empty() { b.part.map_or(String::new(), |p| p.label().into()) } else { name };
+                }
+                p.set_arrangement(&blocks);
+                let now = p.section_labels().get(i).cloned().unwrap_or_default();
+                format!("{what} is now {now}")
+            }
+            SectionAct::SetPart(i, part) => {
+                let mut blocks = p.arrangement();
+                let origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
+                if let Some(b) = blocks.get_mut(i) {
+                    let named = b.own_name().is_some();
+                    *b =
+                        Block { name: if named { b.name.clone() } else { part.label().into() }, part: Some(part), seed: None, ..b.clone() };
+                }
+                self.apply_arrangement_with(blocks, origin, &[i]);
+                format!("{what} is now a {}", part.label())
             }
         };
         self.roll.selected.clear();
         // so the change isn't taken for a new arrangement to write the piece again to
+        self.shape = Shape::of(&self.doc.project);
+    }
+
+    /// Lay the sections out anew (`origin[i]`: the section block `i` was, none for a new
+    /// one). An untouched composed piece is written again whole to fit (once the mouse
+    /// is let go). Otherwise each section's notes move with it, and in a composed piece
+    /// every section that is new, another part or another length is written again for
+    /// its part and length, the rest kept as they are; in one that wasn't composed, a
+    /// longer section plays its notes again to fill it.
+    pub(crate) fn apply_arrangement(&mut self, blocks: Vec<Block>, origin: Vec<Option<usize>>) {
+        self.apply_arrangement_with(blocks, origin, &[]);
+    }
+
+    /// As [`apply_arrangement`](Self::apply_arrangement), writing sections `also` again too.
+    fn apply_arrangement_with(&mut self, blocks: Vec<Block>, origin: Vec<Option<usize>>, also: &[usize]) {
+        let p = &mut self.doc.project;
+        if blocks.is_empty() {
+            p.sections.clear();
+            return;
+        }
+        if p.untouched() {
+            p.rearrange(&blocks, &origin);
+            return;
+        }
+        let old = p.arrangement();
+        let rewrite: Vec<usize> = blocks
+            .iter()
+            .zip(&origin)
+            .enumerate()
+            .filter(|(i, (b, o))| also.contains(i) || o.and_then(|j| old.get(j)).is_none_or(|ob| ob.part != b.part || ob.bars != b.bars))
+            .map(|(i, _)| i)
+            .collect();
+        p.rearrange_with_notes(&blocks, &origin);
+        if !rewrite.is_empty() {
+            dd_seq::compose::rewrite_sections(p, &rewrite);
+        }
+        self.roll.selected.clear();
+        self.shape = Shape::of(&self.doc.project);
+    }
+
+    /// Add a track of `role` with the notes the piece's style writes for it.
+    pub(crate) fn add_track(&mut self, role: dd_seq::palette::Role) {
+        let style = self.doc.project.recipe.map(|r| r.style);
+        let (i, notes) = dd_seq::compose::add_track(&mut self.doc.project, role, None);
+        self.sel = i;
+        let name = self.doc.project.tracks[i].name.clone();
+        self.status = match (notes, style) {
+            (true, Some(s)) => format!("Added the {name}, as {} writes it", s.label()),
+            (false, Some(s)) => {
+                format!("Added the {name}: {} doesn't write a {} part, so it's empty to play into", s.label(), role.label())
+            }
+            (_, None) => format!("Added the {name}: the piece wasn't composed, so it's empty to play into"),
+        };
         self.shape = Shape::of(&self.doc.project);
     }
 

@@ -12,6 +12,8 @@ commercially. Each licence travels with its font.
 | `FreePats-SweepPad.sf2` | a sweeping analogue pad | FreePats | CC0 1.0 |
 | `FreePats-NewAge.sf2` | a bright bell pad | FreePats | CC0 1.0 |
 | `FreePats-TenorSaxophone.sf2` | a sampled tenor saxophone (Versilian VCSL samples) | FreePats, Versilian Studios | CC0 1.0 |
+| `FreePats-ConcertHarp.sf2` | a sampled concert harp (Versilian VCSL samples) | FreePats, Versilian Studios | CC0 1.0 |
+| `FreePats-SynthStrings1.sf2` | warm analogue synth strings (made with ZynAddSubFX/Yoshimi) | FreePats | CC0 1.0 |
 
 Each FreePats font's own readme is beside it. Their archives' SHA-256s are in
 `docs/decisions.md` (D4).

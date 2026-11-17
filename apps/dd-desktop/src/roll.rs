@@ -11,7 +11,7 @@
 
 use std::collections::BTreeSet;
 
-use dd_seq::project::{Block, Ctrl, CtrlKind, LEVEL_UNITY, Note, PPQ, Project, level_at, level_gain, set_level};
+use dd_seq::project::{Block, Ctrl, CtrlKind, LEVEL_UNITY, Note, PPQ, Part, Project, level_at, level_gain, set_level};
 use dd_seq::record::quantize_notes;
 use dd_seq::timeline::Msg;
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
@@ -126,14 +126,107 @@ impl RollState {
     }
 }
 
-/// What a section's buttons (or its menu on the ruler) asked for.
-#[derive(Clone, Copy, Debug)]
+/// What a section's buttons (or its menu, on the ruler or in the Score tab) asked for.
+#[derive(Clone, Debug)]
 pub(crate) enum SectionAct {
     /// New notes for section `i`.
     Regenerate(usize),
+    /// New notes for section `i` on one track only.
+    RegenerateTrack(usize, usize),
     /// Copy section `i`, after it if true, else before.
     Copy(usize, bool),
     Delete(usize),
+    /// Make section `i` another part, written again as it.
+    SetPart(usize, Part),
+    /// Call section `i` this (empty: its part and number again).
+    Rename(usize, String),
+}
+
+impl SectionAct {
+    pub(crate) fn section(&self) -> usize {
+        match *self {
+            SectionAct::Regenerate(i)
+            | SectionAct::RegenerateTrack(i, _)
+            | SectionAct::Copy(i, _)
+            | SectionAct::Delete(i)
+            | SectionAct::SetPart(i, _)
+            | SectionAct::Rename(i, _) => i,
+        }
+    }
+}
+
+impl App {
+    /// The menu of section `i` (right-click on the Sections strip, or its name in the
+    /// Score tab): its name, part, new notes (all of it or one track), copies, delete.
+    pub(crate) fn section_menu(&self, ui: &mut egui::Ui, i: usize) -> Option<SectionAct> {
+        let p = &self.doc.project;
+        let blocks = p.arrangement();
+        let b = blocks.get(i)?;
+        let labels = dd_seq::project::block_labels(&blocks);
+        let can_regen = p.recipe.is_some() && p.plan().is_some();
+        let mut act = None;
+        ui.label(egui::RichText::new(&labels[i]).strong());
+        // the name, edited in place; Enter (or leaving it) renames
+        let id = ui.scope_id().with(("section-name", i));
+        let mut text: String = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| b.own_name().unwrap_or_default().to_string());
+        ui.horizontal(|ui| {
+            ui.label("Name");
+            let hint = b.part.map_or_else(String::new, |_| labels[i].clone());
+            let r = ui.add(egui::TextEdit::singleline(&mut text).hint_text(hint).desired_width(130.0));
+            if r.changed() {
+                ui.data_mut(|d| d.insert_temp(id, text.clone()));
+            }
+            if r.lost_focus() && text.trim() != b.own_name().unwrap_or_default() {
+                act = Some(SectionAct::Rename(i, text.trim().to_string()));
+                ui.data_mut(|d| d.remove::<String>(id));
+            }
+        })
+        .response
+        .on_hover_text("Leave it empty for the part's name and number (Intro 1, Intro 2)");
+        if b.part.is_some() {
+            ui.menu_button("Part", |ui| {
+                for part in Part::ALL {
+                    if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
+                        act = Some(SectionAct::SetPart(i, part));
+                        ui.close();
+                    }
+                }
+            });
+        }
+        ui.separator();
+        if ui
+            .add_enabled(can_regen, egui::Button::new("New notes for this section"))
+            .on_disabled_hover_text("Only a composed piece, every section a part, can have new notes written")
+            .clicked()
+        {
+            act = Some(SectionAct::Regenerate(i));
+            ui.close();
+        }
+        ui.add_enabled_ui(can_regen, |ui| {
+            ui.menu_button("New notes for one track", |ui| {
+                for (k, tr) in p.tracks.iter().enumerate() {
+                    let name = if k == self.sel { format!("{}  (selected)", tr.name) } else { tr.name.clone() };
+                    if ui.button(name).clicked() {
+                        act = Some(SectionAct::RegenerateTrack(i, k));
+                        ui.close();
+                    }
+                }
+            });
+        });
+        if ui.button("Duplicate (copy after)").clicked() {
+            act = Some(SectionAct::Copy(i, true));
+            ui.close();
+        }
+        if ui.button("Copy before").clicked() {
+            act = Some(SectionAct::Copy(i, false));
+            ui.close();
+        }
+        if ui.add_enabled(blocks.len() > 1, egui::Button::new("Delete section")).clicked() {
+            act = Some(SectionAct::Delete(i));
+            ui.close();
+        }
+        act
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -419,6 +512,7 @@ impl App {
         }
         // sections: a block each, from its start to the next
         let blocks = p.arrangement();
+        let labels = dd_seq::project::block_labels(&blocks);
         let dragging = match &self.roll.drag {
             Some(Drag::SectionEnd { index, .. }) => Some(*index),
             _ => None,
@@ -439,8 +533,7 @@ impl App {
                 };
                 painter.rect_filled(r, 3.0, t.accent.gamma_multiply(a));
                 painter.vline(x0, rect.top()..=rect.top() + 20.0, Stroke::new(2.0, t.accent));
-                let name = b.part.map_or(b.name.as_str(), |p| p.label());
-                let label = format!("{name} · {}", b.bars);
+                let label = format!("{} · {}", labels[i], b.bars);
                 boxes.push((i, r));
                 painter.with_clip_rect(r.intersect(rect)).text(
                     pos2(x0 + 5.0, rect.top() + 10.5),
@@ -469,7 +562,7 @@ impl App {
             if !hovered || r.width() < 4.0 * 17.0 + 14.0 {
                 continue;
             }
-            let name = blocks[i].part.map_or(blocks[i].name.as_str(), |p| p.label());
+            let name = &labels[i];
             let buttons = [
                 (SectionIcon::Regenerate, can_regen, format!("New notes for this {name}, in the piece's style and key")),
                 (SectionIcon::CopyBefore, true, format!("Copy this {name}, notes and all, in front of it")),
@@ -554,11 +647,24 @@ impl App {
                     }
                     let origin: Vec<Option<usize>> = (0..fresh.len()).map(Some).collect();
                     self.doc.project.rearrange(&fresh, &origin);
-                    self.status = format!("{}: {} bars", fresh[i].part.map_or(fresh[i].name.as_str(), |p| p.label()), fresh[i].bars);
+                    self.status = format!("{}: {} bars", labels[i], fresh[i].bars);
                 }
             }
-            if h.drag_stopped() {
-                self.roll.drag = None;
+            if h.drag_stopped()
+                && let Some(Drag::SectionEnd { orig, levels, .. }) = self.roll.drag.take()
+            {
+                // an edited piece: its notes move with the sections, and the section is
+                // written again to its new length (an untouched one is written again
+                // whole, once the mouse is let go)
+                let fresh = self.doc.project.arrangement();
+                if fresh != orig && !self.doc.project.untouched() {
+                    self.doc.project.set_arrangement(&orig);
+                    for (t, l) in self.doc.project.tracks.iter_mut().zip(levels) {
+                        t.levels = l;
+                    }
+                    let origin: Vec<Option<usize>> = (0..fresh.len()).map(Some).collect();
+                    self.apply_arrangement(fresh, origin);
+                }
             }
         }
         let shift = ui.input(|i| i.modifiers.shift);
@@ -608,28 +714,14 @@ impl App {
             })
         }
         .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
-        resp.on_hover_text(
-            "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section's end to change its length.",
-        )
-        .context_menu(|ui| {
+        let resp = resp.on_hover_text(
+            "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section's end to change its length. Right-click a section to rename it, change its part, write new notes or duplicate it.",
+        );
+        // stays open while its name is typed; closed when something is chosen
+        egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
             if let Some(i) = menu_section {
-                let name = blocks[i].part.map_or(blocks[i].name.as_str(), |p| p.label());
-                ui.label(egui::RichText::new(name).strong());
-                if ui.add_enabled(can_regen, egui::Button::new("New notes for this section")).clicked() {
-                    act = Some(SectionAct::Regenerate(i));
-                    ui.close();
-                }
-                if ui.button("Copy before").clicked() {
-                    act = Some(SectionAct::Copy(i, false));
-                    ui.close();
-                }
-                if ui.button("Copy after").clicked() {
-                    act = Some(SectionAct::Copy(i, true));
-                    ui.close();
-                }
-                if ui.add_enabled(can_delete, egui::Button::new("Delete section")).clicked() {
-                    act = Some(SectionAct::Delete(i));
-                    ui.close();
+                if let Some(a) = self.section_menu(ui, i) {
+                    act = Some(a);
                 }
                 ui.separator();
             }
@@ -644,6 +736,7 @@ impl App {
             }
         });
         if let Some(a) = act {
+            egui::Popup::close_all(ui.ctx());
             self.section_action(a);
         }
     }

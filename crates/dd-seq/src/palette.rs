@@ -143,6 +143,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Soundtrack", 97, -2.4),
             gm("Metal Pad", 93, 4.7),
             gm("Space Voice", 91, 4.1),
+            font("Synth Strings (FreePats)", "FreePats-SynthStrings1.sf2", -3.6, true),
         ],
         Role::Strings => vec![
             synth("Memory Strings", 0.0),
@@ -153,6 +154,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Synth Strings", 50, -2.0),
             gm("Cello", 42, -6.0),
             gm("Tremolo Strings", 44, 0.4),
+            gm("Viola", 41, 1.0),
         ],
         Role::Lead => vec![
             synth("Smoky Lead", 0.0),
@@ -167,6 +169,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Cor Anglais", 69, -0.3),
             gm("Solo Oboe", 68, -1.8),
             gm("Bassoon", 70, -0.1),
+            gm("Clarinet", 71, 0.4),
+            gm("French Horn", 60, 1.3),
         ],
         Role::Answer => vec![
             font("Tenor Sax (FreePats)", SAX_FONT, -6.0, true),
@@ -214,6 +218,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Nylon Guitar", 24, -1.0),
             gm("Kalimba", 108, -5.0),
             gm("Pizzicato Strings", 45, 0.8),
+            font("Concert Harp (FreePats)", "FreePats-ConcertHarp.sf2", -10.1, true),
         ],
         Role::Keys => vec![
             synth("Neon Tine Piano", 0.0),

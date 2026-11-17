@@ -4,14 +4,13 @@
 use dd_dsp::fx::{EchoTime, Interval, Space, Tuning};
 use dd_dsp::kit::fx;
 use dd_dsp::rain::RainKind;
-use dd_dsp::sampler::KitKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
 use dd_gallery::slideshow::{Calc, EXACT_MIN, MAX_FADE, MAX_HOLD, MIN_HOLD, Transition, timecode};
 use dd_seq::city;
 use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
 use dd_seq::palette::{Alt, Role, alternatives, apply, position};
-use dd_seq::project::{Block, NEON, Part, Source, Track};
+use dd_seq::project::{Block, NEON, Part, Source};
 use dd_seq::timeline::Msg;
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
@@ -160,10 +159,6 @@ pub fn toggle(ui: &mut egui::Ui, label: &str, on: &mut bool, color: Color32, hel
     clicked
 }
 
-/// Whether the track list offers **+ Add** (a new track of any role, the city or the drums).
-/// Off for now (D15): pieces come with their tracks. The menu is kept for when it returns.
-const ADD_TRACKS: bool = false;
-
 impl App {
     // ------------------------------------------------------------ tracks
 
@@ -172,47 +167,43 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Tracks").font(t.semibold(14.0)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if !ADD_TRACKS {
-                    return;
-                }
+                let mut add = None;
+                let style = self.doc.project.recipe.map(|r| r.style);
                 ui.menu_button("+ Add", |ui| {
-                    let n = self.doc.project.tracks.len();
-                    for role in Role::ALL.into_iter().filter(|r| !matches!(r, Role::City | Role::Drums)) {
+                    ui.label(egui::RichText::new("A new track, with the notes the style writes for it").color(t.text_dim));
+                    for role in Role::ALL {
                         let alts = alternatives(role);
-                        let list: Vec<&str> = alts.iter().map(|a| a.label).collect();
+                        // Noir has no rain, weather or literal sounds (D18)
+                        let allowed = !(role == Role::City && style == Some(dd_seq::compose::Style::Noir));
+                        let help = match role {
+                            Role::City => "Rain, thunder, the machinery hum and neon".to_string(),
+                            Role::Drums => "The drum kit".to_string(),
+                            _ => format!("Starts as {}; it can be any of {} sounds", alts[0].label, alts.len()),
+                        };
                         if ui
-                            .button(role.label())
-                            .on_hover_text(format!("Starts as {}; alternatives: {}", list[0], list[1..].join(", ")))
+                            .add_enabled(allowed, egui::Button::new(role.label()))
+                            .on_hover_text(help)
+                            .on_disabled_hover_text("Noir has no city sounds")
                             .clicked()
                         {
-                            let mut tr = Track::new(role.label(), alts[0].source.clone(), n);
-                            apply(&mut tr, role, &alts[0]);
-                            self.doc.project.tracks.push(tr);
-                            self.sel = n;
+                            add = Some(role);
                             ui.close();
                         }
                     }
-                    ui.separator();
-                    if ui.button("City: rain, thunder, hum, neon").clicked() {
-                        let mut tr = Track::new("City", Source::Kit(KitKind::CityFx), n);
-                        tr.role = Some(Role::City);
-                        self.doc.project.tracks.push(tr);
-                        self.sel = n;
-                        ui.close();
-                    }
-                    if ui.button("Drums").clicked() {
-                        let mut tr = Track::new("Drums", Source::Kit(KitKind::Drums), n);
-                        tr.role = Some(Role::Drums);
-                        self.doc.project.tracks.push(tr);
-                        self.sel = n;
-                        ui.close();
-                    }
-                });
+                })
+                .response
+                .on_hover_text("Add a track: its sound and the notes the piece's style writes for its part");
+                if let Some(role) = add {
+                    self.add_track(role);
+                }
             });
         });
         ui.add_space(4.0);
         let mut action: Option<(usize, &str)> = None;
         let mut row_action: Option<(usize, RowAction)> = None;
+        let mut delete_now: Option<usize> = None;
+        let mut rows: Vec<Rect> = Vec::new();
+        let dragging = egui::DragAndDrop::payload::<TrackDrag>(ui.ctx()).map(|d| d.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let n = self.doc.project.tracks.len();
             for i in 0..n {
@@ -250,6 +241,14 @@ impl App {
                         frame.show(ui, |ui| {
                             let tr = &mut self.doc.project.tracks[i];
                             ui.horizontal(|ui| {
+                                // the grip, to drag the track up or down the list
+                                let (gr, grip) = ui.allocate_exact_size(vec2(9.0, 30.0), Sense::drag());
+                                let grip = grip.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text("Drag to move this track");
+                                grip.dnd_set_drag_payload(TrackDrag(i));
+                                let gc = if grip.hovered() { t.text } else { t.text_dim };
+                                for dy in [-3.0, 0.0, 3.0] {
+                                    ui.painter().hline(gr.x_range().shrink(1.0), gr.center().y + dy, Stroke::new(1.0, gc));
+                                }
                                 let (r, sw) = ui.allocate_exact_size(vec2(10.0, 30.0), Sense::click());
                                 ui.painter().rect_filled(r, 2.0, rgb(tr.color));
                                 if sw.on_hover_text("Click to change the colour").clicked() {
@@ -273,13 +272,31 @@ impl App {
                                         rename_done = r.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Escape));
                                     } else {
                                         let (r, _) = ui.allocate_exact_size(vec2(name_w, 17.0), Sense::hover());
-                                        name_rect = r;
+                                        // the × to delete it, at the name's end
+                                        let xr = Rect::from_center_size(pos2(r.right() - 7.0, r.center().y), vec2(14.0, 14.0));
+                                        let name_r = Rect::from_min_max(r.min, pos2(xr.left() - 2.0, r.bottom()));
+                                        name_rect = name_r;
                                         let galley = ui.painter().layout_no_wrap(tr.name.clone(), t.semibold(12.5), t.text);
-                                        ui.painter().with_clip_rect(r).galley(
-                                            r.left_center() - vec2(0.0, galley.size().y / 2.0),
+                                        ui.painter().with_clip_rect(name_r).galley(
+                                            name_r.left_center() - vec2(0.0, galley.size().y / 2.0),
                                             galley,
                                             t.text,
                                         );
+                                        if n > 1 {
+                                            let x = ui
+                                                .interact(xr, ui.scope_id().with(("track-x", i)), Sense::click())
+                                                .on_hover_text("Delete this track (⌘Z brings it back)");
+                                            if x.hovered() {
+                                                ui.painter().rect_filled(xr, 3.0, t.hover);
+                                            }
+                                            let xc = if x.hovered() { t.text } else { t.text_dim.gamma_multiply(0.6) };
+                                            let d = 3.0;
+                                            ui.painter().line_segment([xr.center() + vec2(-d, -d), xr.center() + vec2(d, d)], Stroke::new(1.2, xc));
+                                            ui.painter().line_segment([xr.center() + vec2(-d, d), xr.center() + vec2(d, -d)], Stroke::new(1.2, xc));
+                                            if x.clicked() {
+                                                delete_now = Some(i);
+                                            }
+                                        }
                                     }
                                     let w = (ui.available_width() - 76.0).max(80.0);
                                     let col = if err.is_some() { t.caution } else { t.text_dim };
@@ -379,6 +396,10 @@ impl App {
                         })
                     })
                     .response;
+                rows.push(resp.rect);
+                if dragging == Some(i) {
+                    ui.painter().rect_filled(resp.rect, 4.0, t.hover.gamma_multiply(0.6));
+                }
                 if resp.clicked() || touched {
                     self.sel = i;
                 }
@@ -411,7 +432,7 @@ impl App {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Delete track").clicked() {
+                    if ui.add_enabled(n > 1, egui::Button::new("Delete track")).clicked() {
                         action = Some((i, "delete"));
                         ui.close();
                     }
@@ -420,7 +441,7 @@ impl App {
             }
             ui.add_space(6.0);
             ui.label(
-                egui::RichText::new("The selected track is the one you play and record. Right-click a track for more.")
+                egui::RichText::new("The selected track is the one you play and record. Drag a track by its grip to move it, × to delete it; right-click for more.")
                     .font(t.font(10.5))
                     .color(t.text_dim),
             );
@@ -450,6 +471,49 @@ impl App {
             }
             self.sel = i;
         }
+        // a track dragged by its grip: show where it will land, and move it there on release
+        if let (Some(from), Some(at)) = (dragging, ui.ctx().pointer_interact_pos()) {
+            let slot = rows.iter().filter(|r| r.center().y < at.y).count();
+            let list = rows.iter().fold(Rect::NOTHING, |a, r| a.union(*r)).expand(12.0);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            if list.contains(at) {
+                let y = match (rows.get(slot), rows.last()) {
+                    (Some(r), _) => r.top() - 2.0,
+                    (None, Some(r)) => r.bottom() + 1.0,
+                    (None, None) => list.top(),
+                };
+                ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, ui.scope_id().with("track-drop"))).hline(
+                    list.x_range().shrink(12.0),
+                    y,
+                    Stroke::new(2.0, t.accent),
+                );
+                if ui.input(|i| i.pointer.any_released()) {
+                    egui::DragAndDrop::clear_payload(ui.ctx());
+                    let to = if slot > from { slot - 1 } else { slot };
+                    if to != from && from < self.doc.project.tracks.len() {
+                        let tracks = &mut self.doc.project.tracks;
+                        let tr = tracks.remove(from);
+                        let name = tr.name.clone();
+                        tracks.insert(to.min(tracks.len()), tr);
+                        let sel = self.sel;
+                        self.sel = if sel == from {
+                            to
+                        } else if from < sel && to >= sel {
+                            sel - 1
+                        } else if from > sel && to <= sel {
+                            sel + 1
+                        } else {
+                            sel
+                        };
+                        self.renaming = None;
+                        self.status = format!("Moved the {name}");
+                    }
+                }
+            }
+        }
+        if let Some(i) = delete_now {
+            action = Some((i, "delete"));
+        }
         if let Some((i, what)) = action {
             self.renaming = None;
             let tracks = &mut self.doc.project.tracks;
@@ -476,9 +540,14 @@ impl App {
                     tracks[i].notes.clear();
                     tracks[i].ctrls.clear();
                 }
-                "delete" => {
-                    tracks.remove(i);
-                    self.sel = self.sel.min(tracks.len().saturating_sub(1));
+                // (the last track left stays: there is always one to play)
+                "delete" if tracks.len() > 1 => {
+                    let gone = tracks.remove(i);
+                    if self.sel > i {
+                        self.sel -= 1;
+                    }
+                    self.sel = self.sel.min(tracks.len() - 1);
+                    self.status = format!("Deleted the {} (⌘Z brings it back)", gone.name);
                 }
                 _ => {}
             }
@@ -748,16 +817,17 @@ impl App {
         } else if again && let Some(r) = self.doc.project.recipe {
             self.recompose(r, true);
         }
-        let p = &mut self.doc.project;
         ui.add_space(8.0);
         // the sections as a swim lane on the left, the parts to drag into it on the right
         {
-            let mut blocks = p.arrangement();
+            let length_bars = self.doc.project.length_bars;
+            let mut blocks = self.doc.project.arrangement();
+            let labels = dd_seq::project::block_labels(&blocks);
             let before = blocks.clone();
-            // where each block came from, so the tracks' bar levels move with their sections
+            // where each block came from, so the notes and bar levels move with their sections
             let mut origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
             let mut remove = None;
-            let mut change: Option<(usize, Part)> = None;
+            let mut menu_act: Option<crate::roll::SectionAct> = None;
             let mut rows: Vec<Rect> = Vec::new();
             let mut lane = Rect::NOTHING;
             let dragging = egui::DragAndDrop::payload::<SectionDrag>(ui.ctx()).map(|d| *d);
@@ -792,11 +862,35 @@ impl App {
                                 for dy in [-3.0, 0.0, 3.0] {
                                     painter.hline(gr.x_range().shrink(3.0), gr.center().y + dy, Stroke::new(1.0, gc));
                                 }
-                                let name = b.part.map_or_else(
-                                    || if b.name.is_empty() { "(lead-in)".to_string() } else { b.name.clone() },
-                                    |p| p.label().to_string(),
-                                );
-                                painter.text(pos2(gr.right() + 4.0, r.center().y), Align2::LEFT_CENTER, name, t.semibold(11.0), t.text);
+                                // the name: click for the section's menu (its name, part, new notes…)
+                                let nr = Rect::from_min_max(pos2(gr.right() + 2.0, r.top() + 2.0), pos2(r.right() - 70.0, r.bottom() - 2.0));
+                                let name_resp = ui
+                                    .interact(nr, ui.scope_id().with(("lane-name", i)), Sense::click())
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .on_hover_text("Click to rename it, change its part, write new notes or duplicate it");
+                                let painter = ui.painter();
+                                if name_resp.hovered() {
+                                    painter.rect_filled(nr, 3.0, t.hover);
+                                }
+                                let galley = painter.layout_no_wrap(labels[i].clone(), t.semibold(11.0), t.text);
+                                let w = galley.size().x;
+                                painter.galley(pos2(nr.left() + 2.0, r.center().y - galley.size().y / 2.0), galley, t.text);
+                                if let Some(part) = b.part.filter(|_| b.own_name().is_some()) {
+                                    painter.text(
+                                        pos2(nr.left() + w + 8.0, r.center().y),
+                                        Align2::LEFT_CENTER,
+                                        part.label(),
+                                        t.font(10.0),
+                                        t.text_dim,
+                                    );
+                                }
+                                painter.text(pos2(nr.right() - 2.0, r.center().y), Align2::RIGHT_CENTER, "▾", t.font(10.0), t.text_dim);
+                                let keep_open = egui::PopupCloseBehavior::CloseOnClickOutside;
+                                egui::Popup::menu(&name_resp).close_behavior(keep_open).show(|ui| {
+                                    if let Some(a) = self.section_menu(ui, i) {
+                                        menu_act = Some(a);
+                                    }
+                                });
                                 // its length, and the × to take it out
                                 let xr = Rect::from_center_size(pos2(r.right() - 10.0, r.center().y), vec2(16.0, 16.0));
                                 painter.text(
@@ -817,13 +911,10 @@ impl App {
                                 if x.clicked() {
                                     remove = Some(i);
                                 }
-                                body.on_hover_text("Right-click to change its part").context_menu(|ui| {
-                                    ui.label(egui::RichText::new("Change to").color(t.text_dim));
-                                    for part in Part::ALL {
-                                        if ui.selectable_label(b.part == Some(part), part.label()).on_hover_text(part.help()).clicked() {
-                                            change = Some((i, part));
-                                            ui.close();
-                                        }
+                                let body = body.on_hover_text("Right-click for its menu");
+                                egui::Popup::context_menu(&body).close_behavior(keep_open).show(|ui| {
+                                    if let Some(a) = self.section_menu(ui, i) {
+                                        menu_act = Some(a);
                                     }
                                 });
                                 rows.push(r);
@@ -853,7 +944,7 @@ impl App {
                             if resp.clicked() {
                                 if blocks.is_empty() {
                                     // the first section spans the piece
-                                    blocks.push(Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) });
+                                    blocks.push(Block::new(part, length_bars.max(1)));
                                 } else {
                                     blocks.push(new_block(&blocks, part));
                                 }
@@ -863,10 +954,6 @@ impl App {
                     });
                 });
             });
-            if let Some((i, part)) = change {
-                blocks[i].part = Some(part);
-                blocks[i].name = part.label().into();
-            }
             if let Some(i) = remove {
                 blocks.remove(i);
                 origin.remove(i);
@@ -879,7 +966,7 @@ impl App {
                 let slot = rows.iter().filter(|r| r.center().y < at.y).count();
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 let label = match what {
-                    SectionDrag::Move(i) => blocks.get(i).map_or(String::new(), |b| b.part.map_or(b.name.clone(), |p| p.label().into())),
+                    SectionDrag::Move(i) => labels.get(i).cloned().unwrap_or_default(),
                     SectionDrag::New(part) => format!("+ {}", part.label()),
                 };
                 let ghost = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("section-ghost")));
@@ -905,11 +992,7 @@ impl App {
                                 origin.insert(to, o);
                             }
                             SectionDrag::New(part) => {
-                                let b = if blocks.is_empty() {
-                                    Block { name: part.label().into(), part: Some(part), bars: p.length_bars.max(1) }
-                                } else {
-                                    new_block(&blocks, part)
-                                };
+                                let b = if blocks.is_empty() { Block::new(part, length_bars.max(1)) } else { new_block(&blocks, part) };
                                 blocks.insert(slot.min(blocks.len()), b);
                                 origin.insert(slot.min(origin.len()), None);
                             }
@@ -918,12 +1001,11 @@ impl App {
                     }
                 }
             }
-            if blocks != before {
-                if blocks.is_empty() {
-                    p.sections.clear();
-                } else {
-                    p.rearrange(&blocks, &origin);
-                }
+            if let Some(a) = menu_act {
+                egui::Popup::close_all(ui.ctx());
+                self.section_action(a);
+            } else if blocks != before {
+                self.apply_arrangement(blocks, origin);
             }
         }
     }
@@ -941,7 +1023,7 @@ impl App {
         let status = if untouched {
             "Composed: written again to fit whenever you change the tempo, metre, length or sections."
         } else {
-            "Edited by hand: tempo and length changes keep your notes. Changing the settings below writes the piece again (undo brings yours back)."
+            "Edited by hand: tempo and length changes keep your notes, and sections keep theirs as they move; a section added, made another part or another length is written again on its own. Changing the settings below writes the whole piece again (undo brings yours back)."
         };
         widgets::note(ui, egui::RichText::new(status).color(if untouched { t.text_dim } else { t.caution }).text(), "");
         ui.add_space(4.0);
@@ -1567,6 +1649,10 @@ impl App {
 }
 
 /// A section being dragged in the Score tab: one of the arrangement's, or a new one.
+/// A track being dragged by its grip, from this place in the list.
+#[derive(Clone, Copy)]
+struct TrackDrag(usize);
+
 #[derive(Clone, Copy)]
 enum SectionDrag {
     Move(usize),
@@ -1576,5 +1662,5 @@ enum SectionDrag {
 /// A new section of a part: as long as the last of its kind, or 8 bars.
 fn new_block(blocks: &[Block], part: Part) -> Block {
     let bars = blocks.iter().rev().find(|b| b.part == Some(part)).map_or(8, |b| b.bars);
-    Block { name: part.label().into(), part: Some(part), bars }
+    Block::new(part, bars)
 }

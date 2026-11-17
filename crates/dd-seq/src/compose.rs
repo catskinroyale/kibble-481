@@ -58,7 +58,7 @@ impl Mode {
         }
     }
 
-    fn steps(self) -> [u8; 7] {
+    pub(crate) fn steps(self) -> [u8; 7] {
         match self {
             Mode::Aeolian => [0, 2, 3, 5, 7, 8, 10],
             Mode::Dorian => [0, 2, 3, 5, 7, 9, 10],
@@ -92,11 +92,19 @@ pub enum Style {
     /// failing, sparse dissonant orchestral voices surfacing out of the drone, one brief
     /// eruption and a collapse back into the dark.
     Derelict,
+    /// Slow, warm and quietly hopeful: one singable eight-bar theme in a minor key,
+    /// introduced on the piano, passed to the cellos, reharmonised for a woodwind or horn,
+    /// built to one peak in full strings and brought home to a final cadence.
+    Homeward,
 }
 
+/// The sounds added to the palette for Homeward: the other styles leave them out of
+/// their choosing, so every recipe they had still sounds as it did.
+pub(crate) const HOMEWARD_SOUNDS: [&str; 5] = ["Synth Strings (FreePats)", "Viola", "Clarinet", "French Horn", "Concert Harp (FreePats)"];
+
 impl Style {
-    pub const ALL: [Style; 7] =
-        [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict];
+    pub const ALL: [Style; 8] =
+        [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict, Style::Homeward];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -107,6 +115,7 @@ impl Style {
             Style::Noir => "Noir",
             Style::Overcity => "Overcity",
             Style::Derelict => "Derelict",
+            Style::Homeward => "Homeward",
         }
     }
 
@@ -125,6 +134,9 @@ impl Style {
             Style::Derelict => {
                 "Cold and almost free of time, a ship adrift in deep space: drones, tape hiss and failing machinery, a lone horn, oboe and tremolo strings out of the dark, one brief eruption, no beat"
             }
+            Style::Homeward => {
+                "Slow, warm and quietly hopeful: one singable theme, on the piano, then the cellos, a woodwind or horn, full strings at a single peak, and home to a final cadence"
+            }
         }
     }
 
@@ -138,6 +150,7 @@ impl Style {
             Style::Noir => 64.0,
             Style::Overcity => 60.0,
             Style::Derelict => 48.0,
+            Style::Homeward => 69.0,
         }
     }
 
@@ -151,6 +164,8 @@ impl Style {
             Style::Noir => (7.5, 4),
             Style::Overcity => (8.0, 4),
             Style::Derelict => (14.0, 6),
+            // (Homeward's harmony follows its theme, a chord a bar)
+            Style::Homeward => (3.5, 1),
         }
     }
 }
@@ -237,7 +252,7 @@ struct Chord {
 }
 
 /// Keys of the pitch class nearest `target`.
-fn near(pc: u8, target: i32) -> u8 {
+pub(crate) fn near(pc: u8, target: i32) -> u8 {
     let base = target - target.rem_euclid(12) + pc as i32;
     let cands = [base - 12, base, base + 12];
     cands.into_iter().min_by_key(|k| (k - target).abs()).unwrap_or(base).clamp(0, 127) as u8
@@ -330,6 +345,7 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         Style::Noir => *rng.pick(&NOIR),
         Style::Overcity => *rng.pick(&OVERCITY),
         Style::Derelict => *rng.pick(&DERELICT),
+        Style::Homeward => *rng.pick(&ROMANTIC),
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
@@ -398,6 +414,8 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 (_, 1) => vec![a, c, pc(deg + 1), b],
                 _ => vec![a, b, (a + 6) % 12],
             },
+            // (Homeward harmonises its theme itself; these stand in for anything else)
+            Style::Homeward => vec![a, b, c],
         };
         let prev = out.last().map(|c| c.voicing.clone());
         let voicing =
@@ -445,6 +463,9 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
             }
         }
         return bounds.iter().enumerate().map(|(i, (part, b))| (*part, bounds.get(i + 1).map_or(bars, |n| n.1) - b)).collect();
+    }
+    if style == Style::Homeward {
+        return crate::homeward::plan(bars);
     }
     if style == Style::Overcity && bars >= cb * 5 {
         // a long breath first, the theme, its development, the great swell, and dissolving
@@ -525,7 +546,9 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
     // an intro now and then (in Noir, Overcity and Derelict, always), a chord or two taken from the opening
     // section or else the longest (its own stream, so the rest is as it was)
     let mut ir = Rng::stream(r.seed, "intro-form");
-    if units >= 4 && ir.chance(if matches!(r.style, Style::Noir | Style::Overcity | Style::Derelict) { 1.0 } else { 0.35 }) {
+    if units >= 4
+        && ir.chance(if matches!(r.style, Style::Noir | Style::Overcity | Style::Derelict | Style::Homeward) { 1.0 } else { 0.35 })
+    {
         let len = if units >= 10 { 2 * cb } else { cb };
         let from = if plan[0].1 > len {
             Some(0)
@@ -609,6 +632,10 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Derelict", "Silent", "Cold", "Drifting", "Dead", "Lower", "Outer", "Failing", "Hollow", "Last"],
             ["Hull", "Corridor", "Airlock", "Reactor", "Bulkhead", "Orbit", "Signal", "Cargo Hold", "Void", "Beacon"],
         ),
+        Style::Homeward => (
+            ["Long", "Quiet", "Last", "Distant", "Patient", "Winter", "Gentle", "Evening", "Northern", "Open"],
+            ["Road", "Harbour", "Light", "Fields", "Lantern", "Return", "Shore", "Hearth", "Promise", "Horizon"],
+        ),
     };
     p.title = format!("{} {}", names_rng.pick(&adjectives), names_rng.pick(&nouns));
 
@@ -617,14 +644,15 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let mut snd = Rng::stream(r.seed, "sounds");
     let pad_role = if snd.chance(0.25) { Role::Strings } else { Role::Pad };
     // (Derelict's strings have a track of their own: its pad is the tape-worn synth)
-    let pad_role = if style == Style::Derelict { Role::Pad } else { pad_role };
+    let pad_role = if matches!(style, Style::Derelict | Style::Homeward) { Role::Pad } else { pad_role };
     let mut pick = |role: Role, not: Option<&Source>| -> Alt {
         let alts: Vec<Alt> = alternatives(role)
             .into_iter()
             // a stab can't hold a chord
             .filter(|a| a.bundled && a.label != "Dark Stab" && not.is_none_or(|n| !same_sound(n, &a.source)))
             // (sounds added for Derelict, so the other styles choose as they always have)
-            .filter(|a| style == Style::Derelict || !DERELICT_SOUNDS.contains(&a.label))
+            .filter(|a| matches!(style, Style::Derelict | Style::Homeward) || !DERELICT_SOUNDS.contains(&a.label))
+            .filter(|a| style == Style::Homeward || !HOMEWARD_SOUNDS.contains(&a.label))
             .collect();
         let w: Vec<f64> = match style {
             Style::Nocturne => (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect(),
@@ -634,7 +662,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 .iter()
                 .map(|a| match (prefers(style, role, a.label), style) {
                     (true, _) => 3.0,
-                    (false, Style::Derelict) => 0.0,
+                    (false, Style::Derelict | Style::Homeward) => 0.0,
                     _ => 0.4,
                 })
                 .collect(),
@@ -658,6 +686,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Noir => [5.0, 3.0, 1.0],
         Style::Overcity => [1.0, 5.0, 3.0],
         Style::Derelict => [0.3, 2.0, 5.0],
+        // intimate and natural: the hall, now and then the cathedral
+        Style::Homeward => [6.0, 1.0, 0.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -685,6 +715,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Noir => (-2.0, -5.0, -4.0, -2.0),
         Style::Overcity => (-2.0, -4.0, -2.0, -3.0),
         Style::Derelict => (-3.0, -3.0, 0.0, 0.0),
+        Style::Homeward => (-4.0, -3.0, 0.0, 0.0),
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -711,11 +742,12 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ..s
         },
     );
-    let t_keys = matches!(style, Style::Momento | Style::Noir).then(|| {
+    let t_keys = matches!(style, Style::Momento | Style::Noir | Style::Homeward).then(|| {
         // from its own stream, so the other parts' sounds stay as they were
         let mut kr = Rng::stream(r.seed, "keys");
         let alts: Vec<Alt> = alternatives(Role::Keys).into_iter().filter(|a| a.bundled).collect();
-        let w: Vec<f64> = alts.iter().map(|a| if prefers(style, Role::Keys, a.label) { 3.0 } else { 0.4 }).collect();
+        let other = if style == Style::Homeward { 0.0 } else { 0.4 };
+        let w: Vec<f64> = alts.iter().map(|a| if prefers(style, Role::Keys, a.label) { 3.0 } else { other }).collect();
         let alt = alts[kr.weighted(&w)].clone();
         add(Role::Keys, alt, Strip { reverb: 0.45, echo: 0.2, pan: -0.25, gain_db: 1.0, ..s })
     });
@@ -734,7 +766,39 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         let tb = add(Role::Bass, low, Strip { reverb: 0.55, width: 1.2, gain_db: -2.0, pan: -0.1, ..s });
         (ts, tb)
     });
+    // Homeward's strings: cellos (or violas) for the theme, a string section, and a
+    // double bass (their own stream, so the other parts' sounds stay as they were)
+    let strings = (style == Style::Homeward).then(|| {
+        let mut or = Rng::stream(r.seed, "homeward-strings");
+        let mut take = |role: Role, liked: &[f64], labels: &[&str]| {
+            let alts: Vec<Alt> = alternatives(role).into_iter().filter(|a| a.bundled).collect();
+            let w: Vec<f64> = alts.iter().map(|a| labels.iter().position(|l| *l == a.label).map_or(0.0, |i| liked[i])).collect();
+            alts[or.weighted(&w)].clone()
+        };
+        let cellos = take(Role::Strings, &[3.0, 1.0], &["Cello", "Viola"]);
+        let section = take(Role::Strings, &[3.0, 2.0], &["Slow Strings", "Strings"]);
+        let low = take(Role::Bass, &[1.0], &["Contrabass"]);
+        let tc = add(Role::Strings, cellos, Strip { reverb: 0.5, pan: -0.25, width: 1.2, gain_db: -1.0, ..s });
+        let ts = add(Role::Strings, section, Strip { reverb: 0.6, width: 1.6, gain_db: -3.0, ..s });
+        let tb = add(Role::Bass, low, Strip { reverb: 0.35, pan: -0.1, gain_db: -2.0, ..s });
+        (tc, ts, tb)
+    });
     p.tracks = tracks;
+    if let (Some((tc, ts, tb)), Some(tk)) = (strings, t_keys) {
+        let tracks = crate::homeward::Tracks {
+            piano: tk,
+            cellos: tc,
+            strings: ts,
+            double_bass: tb,
+            sub: t_bass,
+            pad: t_pad,
+            lead: t_lead,
+            harp: t_pluck,
+        };
+        crate::homeward::mix(&mut p, &tracks);
+        crate::homeward::write(&mut p, &tracks, r, &secs, density);
+        return finish(p, r);
+    }
     // the dark is quieter at heart: bring it up to sit with the others
     if style == Style::Blackout {
         p.master_db = 1.0;
@@ -1013,7 +1077,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             }
         }
         // (Derelict is written by `derelict`)
-        Style::Nocturne | Style::Derelict => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
@@ -1118,7 +1182,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         // few notes, held, a sigh now and then
         Style::Noir => vec![&[3.0, 1.0], &[4.0], &[2.0, 2.0], &[1.5, 0.5, 2.0], &[6.0, 2.0]],
         // (Overcity writes its own theme; these only keep the stream as it would be)
-        Style::Overcity | Style::Derelict => vec![&[4.0], &[6.0, 2.0]],
+        Style::Overcity | Style::Derelict | Style::Homeward => vec![&[4.0], &[6.0, 2.0]],
     };
     let phrase_beats = (phrase_bars * beats_per_bar) as f64;
     let rhythm_a: Vec<f64> = {
@@ -1530,7 +1594,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Momento | Style::Noir | Style::Derelict => {}
+        Style::Nocturne | Style::Momento | Style::Noir | Style::Derelict | Style::Homeward => {}
     }
     if style == Style::Noir {
         // told in music alone: no rain, hum, neon or thunder
@@ -1574,7 +1638,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Derelict => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward => {}
     }
     if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
@@ -1611,7 +1675,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
 
 /// The last touches to a composed piece: its tracks sorted, the silent ones gone, and
 /// its recipe and fingerprint kept.
-fn finish(mut p: Project, r: &Recipe) -> Project {
+pub(crate) fn finish(mut p: Project, r: &Recipe) -> Project {
     for tr in p.tracks.iter_mut() {
         tr.sort();
     }
@@ -2513,6 +2577,11 @@ fn prefers(style: Style, role: Role, label: &str) -> bool {
         (Style::Derelict, Role::Bells) => &["Celesta", "Celesta Glow", "Tubular Bells", "Ring Bells"],
         (Style::Derelict, Role::Pluck) => &["Harp", "Pizzicato Strings"],
         (Style::Derelict, Role::Drone) => &["Abyss Drone", "Ozone Drone", "Sodium Drone"],
+        (Style::Homeward, Role::Pad) => &["Synth Strings (FreePats)", "Warm Pad"],
+        (Style::Homeward, Role::Lead) => &["Flute", "Clarinet", "French Horn"],
+        (Style::Homeward, Role::Bass) => &["Pure Sub"],
+        (Style::Homeward, Role::Pluck) => &["Concert Harp (FreePats)", "Harp"],
+        (Style::Homeward, Role::Keys) => &["Grand Piano", "Electric Piano"],
         _ => &[],
     };
     liked.is_empty() || liked.contains(&label)
@@ -2782,8 +2851,154 @@ pub fn regenerate_section(p: &mut Project, i: usize, seed: u64) -> bool {
         return false;
     }
     let fresh = compose_plan(&Recipe { seed, ..r }, p.bpm, p.meter, &plan);
-    p.replace_section(i, &fresh);
+    replace_with(p, i, &fresh, seed);
+    let mut blocks = p.arrangement();
+    blocks[i].seed = (seed != r.seed).then_some(seed);
+    p.set_arrangement(&blocks);
     true
+}
+
+/// Section `i`'s notes from `fresh` (the same arrangement, written with `seed`): the
+/// piece's own tracks from theirs, and each added track from the track of its role.
+fn replace_with(p: &mut Project, i: usize, fresh: &Project, seed: u64) {
+    let Some(&(a, b)) = p.block_ticks().get(i) else { return };
+    let added: Vec<Option<Track>> = p
+        .tracks
+        .iter()
+        .map(|t| if t.added { t.role.and_then(|role| role_track(p, role, added_seed(p, &t.name, role, seed))) } else { None })
+        .collect();
+    let same_count = p.tracks.len() == fresh.tracks.len();
+    for (j, t) in p.tracks.iter_mut().enumerate() {
+        let src = if t.added {
+            added[j].as_ref()
+        } else {
+            fresh.tracks.iter().find(|f| f.name == t.name).or_else(|| same_count.then(|| &fresh.tracks[j]))
+        };
+        t.replace_span(a, b, src);
+    }
+}
+
+/// Write sections `which` again for their parts and lengths, each with its own seed
+/// (else the piece's), leaving the rest as they are. Needs a composed piece whose
+/// sections are all parts; returns whether it could.
+pub fn rewrite_sections(p: &mut Project, which: &[usize]) -> bool {
+    let (Some(r), Some(plan)) = (p.recipe, p.plan()) else { return false };
+    let blocks = p.arrangement();
+    let mut seeds: Vec<u64> = which.iter().filter_map(|&i| blocks.get(i)).map(|b| b.seed.unwrap_or(r.seed)).collect();
+    seeds.sort_unstable();
+    seeds.dedup();
+    for seed in seeds {
+        let fresh = compose_plan(&Recipe { seed, ..r }, p.bpm, p.meter, &plan);
+        for &i in which.iter().filter(|&&i| blocks.get(i).is_some_and(|b| b.seed.unwrap_or(r.seed) == seed)) {
+            replace_with(p, i, &fresh, seed);
+        }
+    }
+    true
+}
+
+/// New notes for one track in section `i` only, with a new seed: the piece's style,
+/// key, mode and density. Needs a composed piece whose sections are all parts, and a
+/// track the style writes; returns whether it could.
+pub fn regenerate_track_section(p: &mut Project, i: usize, track: usize, seed: u64) -> bool {
+    let (Some(r), Some(plan)) = (p.recipe, p.plan()) else { return false };
+    let (Some(&(a, b)), Some(t)) = (p.block_ticks().get(i), p.tracks.get(track)) else { return false };
+    let src = if t.added {
+        t.role.and_then(|role| role_track(p, role, seed))
+    } else {
+        let fresh = compose_plan(&Recipe { seed, ..r }, p.bpm, p.meter, &plan);
+        fresh.tracks.iter().find(|f| f.name == t.name).cloned().or_else(|| t.role.and_then(|role| role_track(p, role, seed)))
+    };
+    let Some(src) = src else { return false };
+    p.tracks[track].replace_span(a, b, Some(&src));
+    true
+}
+
+/// The track the piece's style writes for `role` over the piece's sections: written
+/// with `seed`, or (when the style leaves the role out with that seed) the next seed
+/// that has it. None if the piece isn't composed or the style never writes the role.
+pub fn role_track(p: &Project, role: Role, seed: u64) -> Option<Track> {
+    let (r, plan) = (p.recipe?, p.plan()?);
+    (0..16u64).find_map(|k| {
+        let fresh = compose_plan(&Recipe { seed: seed.wrapping_add(k), ..r }, p.bpm, p.meter, &plan);
+        fresh.tracks.into_iter().find(|t| t.role == Some(role))
+    })
+}
+
+/// The seed an added track named `name` is written with where the piece is written
+/// with `seed`: the same, so it plays what the style writes for its role, unless the
+/// piece has a track of that role of its own; then one of the track's own, so it plays
+/// something else.
+fn added_seed(p: &Project, name: &str, role: Role, seed: u64) -> u64 {
+    if p.tracks.iter().any(|t| !t.added && t.role == Some(role)) {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in name.bytes() {
+            h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        seed ^ h
+    } else {
+        seed
+    }
+}
+
+/// Add a track of `role` with the notes and sound the piece's style writes for it (a
+/// second track of a role it has already is written with a seed of its own, so it
+/// plays something else). A role the style doesn't write, or a piece that wasn't
+/// composed, gets the role's usual sound and no notes. Returns the new track's index
+/// and whether it has notes. A piece that was untouched stays so. It is called `name`,
+/// else after its role (numbered if the piece has one already).
+pub fn add_track(p: &mut Project, role: Role, name: Option<&str>) -> (usize, bool) {
+    let untouched = p.untouched();
+    let mut name = name.map_or_else(|| role.label().to_string(), str::to_string);
+    let mut k = 2;
+    while p.tracks.iter().any(|t| t.name == name) {
+        name = format!("{} {k}", role.label());
+        k += 1;
+    }
+    let index = p.tracks.len();
+    let seed = added_seed(p, &name, role, p.recipe.map_or(0, |r| r.seed));
+    let mut t = match role_track(p, role, seed) {
+        Some(t) => t,
+        None => {
+            let alt = alternatives(role).into_iter().find(|a| a.bundled).unwrap_or_else(|| alternatives(role).remove(0));
+            let mut t = Track::new(role.label(), alt.source.clone(), index);
+            crate::palette::apply(&mut t, role, &alt);
+            t
+        }
+    };
+    let bars = p.length_bars.max(p.bars());
+    let end = bars * p.bar_ticks();
+    t.notes.retain(|n| n.start < end);
+    for x in t.notes.iter_mut() {
+        x.len = x.len.min(end - x.start);
+    }
+    t.ctrls.retain(|c| c.tick < end);
+    t.name = name;
+    t.color = crate::project::NEON[index % crate::project::NEON.len()];
+    t.levels.clear();
+    t.added = true;
+    let has_notes = !t.notes.is_empty();
+    p.tracks.push(t);
+    if untouched {
+        p.composed = fingerprint(p);
+    }
+    (index, has_notes)
+}
+
+/// Give a freshly composed piece the tracks added to the one it replaces, each
+/// written again for its role (keeping its name, and its sound, mix and colour if
+/// `keep`).
+pub fn keep_added(new: &mut Project, old: &Project, keep: bool) {
+    for o in old.tracks.iter().filter(|t| t.added) {
+        let Some(role) = o.role else { continue };
+        let (i, _) = add_track(new, role, Some(&o.name));
+        let t = &mut new.tracks[i];
+        t.levels = o.levels.clone();
+        if keep {
+            t.source = o.source.clone();
+            t.strip = o.strip;
+            t.color = o.color;
+        }
+    }
 }
 
 /// Give a freshly composed piece the bar levels of the matching tracks (by name) of the
@@ -2880,7 +3095,7 @@ mod tests {
     #[test]
     fn every_style_fits_any_tempo_metre_and_length() {
         let f = fonts();
-        for style in [Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict] {
+        for style in [Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict, Style::Homeward] {
             for seed in 0..15u64 {
                 let r = Recipe { style, ..Recipe::random(seed) };
                 for (bpm, meter, bars) in
@@ -3157,7 +3372,8 @@ mod tests {
             runs.insert(pluck.notes.iter().map(|n| (n.start - first, n.key)).collect::<Vec<_>>());
         }
         assert!(runs.len() >= 15, "only {} different glissandi in 16 seeds", runs.len());
-        for style in Style::ALL.into_iter().filter(|s| *s != Style::Derelict) {
+        // (Homeward, written after, shares its contrabass and pizzicato on purpose)
+        for style in Style::ALL.into_iter().filter(|s| !matches!(s, Style::Derelict | Style::Homeward)) {
             for seed in 0..60 {
                 let p = compose(&Recipe { seed, style, ..Recipe::random(seed) }, style.tempo(), (4, 4), 32);
                 for t in &p.tracks {
@@ -3325,7 +3541,7 @@ mod tests {
         // older pieces' names still stand for parts
         let demo = crate::demo::rain_on_neon();
         assert_eq!(demo.plan().unwrap().len(), 4);
-        let old = Section { bar: 0, name: "Recede".into(), part: None };
+        let old = Section { bar: 0, name: "Recede".into(), part: None, seed: None };
         assert_eq!(Project { sections: vec![old], ..Project::default() }.plan().unwrap()[0].0, Part::Fade);
     }
 
@@ -3360,5 +3576,221 @@ mod rain_choice {
         println!("{counts:?}");
         let dense: i32 = ["Window", "WetStreet", "City"].iter().map(|k| counts.get(*k).copied().unwrap_or(0)).sum();
         assert!((dense as f64) < n as f64 * 0.15, "{counts:?}");
+    }
+}
+
+#[cfg(test)]
+mod section_tests {
+    use super::*;
+    use crate::project::{Block, PPQ, block_labels};
+
+    fn edited(style: Style, seed: u64) -> Project {
+        let r = Recipe { style, ..Recipe::random(seed) };
+        let mut p = compose(&r, 72.0, (4, 4), 32);
+        // a note moved by hand: the piece counts as edited from now on
+        let t = p.tracks.iter_mut().find(|t| t.role == Some(Role::Bass)).expect("bass");
+        t.notes[0].vel = t.notes[0].vel.saturating_sub(1).max(1);
+        assert!(!p.untouched());
+        p
+    }
+
+    /// What a dragged section's end does to an edited composed piece (as the app does it).
+    fn drag_end(p: &mut Project, i: usize, bars: u32) {
+        let mut blocks = p.arrangement();
+        blocks[i].bars = bars;
+        let origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
+        p.rearrange_with_notes(&blocks, &origin);
+        assert!(rewrite_sections(p, &[i]));
+    }
+
+    fn notes_in(t: &Track, a: u32, b: u32) -> usize {
+        t.notes.iter().filter(|n| n.start >= a && n.start < b).count()
+    }
+
+    /// Made longer, a section of an edited piece is written again to its new length:
+    /// no empty bars in it, the sections after it keep their notes (moved with them),
+    /// and the rain still falls to the end.
+    #[test]
+    fn a_longer_section_is_written_again_and_the_rest_move_with_it() {
+        for style in [Style::Nocturne, Style::Overcity, Style::Derelict] {
+            for seed in 0..4 {
+                let mut p = edited(style, seed);
+                let before = p.clone();
+                let old = p.block_ticks();
+                let i = 1;
+                let grow = 6;
+                let bars = p.arrangement()[i].bars + grow;
+                drag_end(&mut p, i, bars);
+                let shift = grow * p.bar_ticks();
+                let now = p.block_ticks();
+                assert_eq!(p.length_bars, before.length_bars + grow, "{style:?} {seed}");
+                // every track playing in the section plays in its new bars too
+                let (a, b) = now[i];
+                for t in &p.tracks {
+                    let was = before.tracks.iter().find(|o| o.name == t.name).unwrap();
+                    if notes_in(was, old[i].0, old[i].1) > 2 && t.role != Some(Role::City) {
+                        let tail = b - shift.min(b - a) / 2;
+                        assert!(notes_in(t, a, b) > 0, "{style:?} {seed} {}: empty", t.name);
+                        assert!(t.notes.iter().any(|n| n.end() > tail), "{style:?} {seed} {}: silent at the end", t.name);
+                    }
+                }
+                // the later sections are as they were, moved along
+                for j in i + 1..old.len() {
+                    for (t, o) in p.tracks.iter().zip(&before.tracks) {
+                        let moved: Vec<(u32, u8)> = o
+                            .notes
+                            .iter()
+                            .filter(|n| n.start >= old[j].0 && n.start < old[j].1)
+                            .map(|n| (n.start + shift, n.key))
+                            .collect();
+                        let here: Vec<(u32, u8)> =
+                            t.notes.iter().filter(|n| n.start >= now[j].0 && n.start < now[j].1).map(|n| (n.start, n.key)).collect();
+                        assert_eq!(moved, here, "{style:?} {seed} {} in section {j}", t.name);
+                    }
+                }
+                let rains = |p: &Project| {
+                    p.tracks
+                        .iter()
+                        .filter(|t| t.role == Some(Role::City))
+                        .any(|t| t.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.start == 0 && n.end() == p.end_tick()))
+                };
+                assert_eq!(rains(&p), rains(&before), "{style:?} {seed}");
+            }
+        }
+    }
+
+    /// New notes for a section keep the rain and anything else held through it.
+    #[test]
+    fn new_notes_for_a_section_keep_what_is_held_through_it() {
+        let mut p = edited(Style::Nocturne, 3);
+        assert!(regenerate_section(&mut p, 2, 777));
+        let city = p.tracks.iter().find(|t| t.role == Some(Role::City)).unwrap();
+        assert!(city.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.start == 0 && n.end() == p.end_tick()));
+        assert_eq!(p.arrangement()[2].seed, Some(777));
+        // made longer, it is written again with its own seed
+        let a = p.block_ticks()[2].0;
+        let bars = p.arrangement()[2].bars;
+        drag_end(&mut p, 2, bars + 2);
+        assert_eq!(p.arrangement()[2].seed, Some(777));
+        let mut q = p.clone();
+        regenerate_section(&mut q, 2, 777);
+        let lead = |p: &Project| p.tracks.iter().find(|t| t.name == "Lead").map(|t| t.notes.iter().filter(|n| n.start >= a).count());
+        assert_eq!(lead(&p), lead(&q));
+    }
+
+    /// Copying or taking out a section keeps the rain falling to the end.
+    #[test]
+    fn copies_and_deletions_keep_the_rain() {
+        let rains = |p: &Project| {
+            p.tracks.iter().any(|t| t.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.start == 0 && n.end() == p.end_tick()))
+        };
+        let mut p = edited(Style::Nocturne, 6);
+        assert!(rains(&p));
+        p.copy_section(1, true);
+        assert!(rains(&p));
+        p.delete_section(2);
+        assert!(rains(&p));
+        p.delete_section(0);
+        assert!(p.tracks.iter().any(|t| t.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.end() == p.end_tick())));
+    }
+
+    /// Moving sections in an edited piece takes their notes with them.
+    #[test]
+    fn moved_sections_take_their_notes() {
+        let mut p = edited(Style::Pursuit, 1);
+        let before = p.clone();
+        let old = p.block_ticks();
+        let mut blocks = p.arrangement();
+        let origin = vec![Some(1), Some(0), Some(2), Some(3)][..blocks.len()].to_vec();
+        blocks.swap(0, 1);
+        p.rearrange_with_notes(&blocks, &origin);
+        let now = p.block_ticks();
+        for (t, o) in p.tracks.iter().zip(&before.tracks) {
+            let shape = |t: &Track, (a, b): (u32, u32)| -> Vec<(u32, u8)> {
+                t.notes.iter().filter(|n| n.start >= a && n.start < b).map(|n| (n.start - a, n.key)).collect()
+            };
+            assert_eq!(shape(t, now[0]), shape(o, old[1]), "{}", t.name);
+            assert_eq!(shape(t, now[1]), shape(o, old[0]), "{}", t.name);
+        }
+    }
+
+    /// A hand-made piece's longer section plays its notes again to fill the new bars.
+    #[test]
+    fn a_longer_hand_made_section_repeats() {
+        let mut p = Project { length_bars: 4, ..Project::default() };
+        p.sections = vec![Section::new(0, Part::Neon), Section::new(2, Part::Fade)];
+        let bar = p.bar_ticks();
+        let mut t = Track::new("Keys", Source::Synth(dd_dsp::patch::by_name("Rain Pad")), 0);
+        t.notes = vec![
+            Note { start: 0, len: PPQ, key: 60, vel: 90 },
+            Note { start: bar, len: PPQ, key: 62, vel: 90 },
+            Note { start: 2 * bar, len: PPQ, key: 64, vel: 90 },
+        ];
+        p.tracks.push(t);
+        let mut blocks = p.arrangement();
+        blocks[0].bars = 5;
+        p.rearrange_with_notes(&blocks, &[Some(0), Some(1)]);
+        let starts: Vec<(u32, u8)> = p.tracks[0].notes.iter().map(|n| (n.start / bar, n.key)).collect();
+        assert_eq!(starts, vec![(0, 60), (1, 62), (2, 60), (3, 62), (4, 60), (5, 64)]);
+        assert_eq!(p.length_bars, 7);
+    }
+
+    /// Sections are numbered within their part unless given a name; numbered names read
+    /// back as their parts.
+    #[test]
+    fn sections_are_numbered_within_their_part() {
+        let mut blocks = vec![Block::new(Part::Intro, 2), Block::new(Part::Neon, 4), Block::new(Part::Intro, 2), Block::new(Part::Neon, 4)];
+        blocks[3].name = "Rooftop".into();
+        assert_eq!(block_labels(&blocks), ["Intro 1", "Neon 1", "Intro 2", "Rooftop"]);
+        assert_eq!(Part::from_name("Intro 2"), Some(Part::Intro));
+        assert_eq!(Part::from_name("Night shift 12"), Some(Part::NightShift));
+        blocks[0].name = "Intro 7".into();
+        assert_eq!(blocks[0].own_name(), None);
+    }
+
+    /// A new track plays what the style writes for its role; a second of a role plays
+    /// something of its own; a role the style doesn't write comes empty. Adding to an
+    /// untouched piece leaves it untouched, and a new piece writes added tracks again.
+    #[test]
+    fn added_tracks_are_written_by_the_style() {
+        let r = Recipe { style: Style::Derelict, ..Recipe::random(5) };
+        let mut p = compose(&r, 48.0, (4, 4), 32);
+        let pad = p.tracks.iter().find(|t| t.role == Some(Role::Pad)).unwrap().clone();
+        let (i, notes) = add_track(&mut p, Role::Pad, None);
+        assert!(notes && p.tracks[i].added && p.tracks[i].name == "Pad 2");
+        assert_ne!(p.tracks[i].notes, pad.notes);
+        assert!(p.untouched());
+        let (j, notes) = add_track(&mut p, Role::Drums, None);
+        assert!(!notes && p.tracks[j].notes.is_empty());
+        // Keys: Derelict writes none, Nocturne does
+        let mut q = compose(&Recipe { style: Style::Nocturne, ..r }, 70.0, (4, 4), 32);
+        let had = q.tracks.iter().any(|t| t.role == Some(Role::Bells));
+        let (k, notes) = add_track(&mut q, Role::Bells, None);
+        assert!(notes, "bells");
+        if !had {
+            assert_eq!(q.tracks[k].name, "Bells");
+        }
+        let mut fresh = compose(&Recipe { seed: r.seed + 1, ..r }, 48.0, (4, 4), 32);
+        keep_added(&mut fresh, &p, true);
+        assert!(fresh.tracks.iter().any(|t| t.name == "Pad 2" && t.added && !t.notes.is_empty()));
+        assert!(fresh.untouched());
+    }
+
+    /// New notes for one track in one section change only those.
+    #[test]
+    fn new_notes_for_one_track_in_one_section() {
+        let mut p = edited(Style::Overcity, 2);
+        let before = p.clone();
+        let k = p.tracks.iter().position(|t| t.role == Some(Role::Lead)).unwrap();
+        let (a, b) = p.block_ticks()[2];
+        assert!(regenerate_track_section(&mut p, 2, k, 4242));
+        for (j, (t, o)) in p.tracks.iter().zip(&before.tracks).enumerate() {
+            let outside = |t: &Track| t.notes.iter().filter(|n| n.start < a || n.start >= b).map(|n| (n.start, n.key)).collect::<Vec<_>>();
+            assert_eq!(outside(t), outside(o), "{}", t.name);
+            if j != k {
+                assert_eq!(t.notes, o.notes, "{}", t.name);
+            }
+        }
+        assert_ne!(p.tracks[k].notes, before.tracks[k].notes);
     }
 }

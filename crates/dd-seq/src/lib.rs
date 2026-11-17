@@ -7,6 +7,7 @@ pub mod compose;
 pub mod demo;
 pub mod engine;
 pub mod fonts;
+mod homeward;
 pub mod midi_file;
 pub mod palette;
 pub mod project;

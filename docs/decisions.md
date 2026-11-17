@@ -39,6 +39,13 @@ Electronic (MIT, ours), and FreePats CC0 banks: SynthBrass1 (archive SHA-256
 (`f7640cf2039662b15b4521bb5615e1ddc426731559b4c31079cb5e9f50e16fa0`). About 58 MB for the
 five, committed like the midigen fonts.
 
+Added for Homeward (D23), bundled, CC0: FreePats Concert Harp 2020-07-02 (Versilian
+VCSL samples; archive `ConcertHarp-SF2-20200702.tar.xz`, SHA-256
+`a328faa1996369154f20f960dde2e255b96e823574d5cf80eb9e7f00aed6a150`, 19 MB unpacked) and
+Synth Strings 1 2020-05-28 (`SynthStrings1-SF2-20200528.7z`,
+`1fed457941efbd6e1deca6937d1859db7920946709732265426785e9e11bcf55`, 6 MB). FreePats has
+no CC0 cello, viola, double bass, flute, clarinet or horn; GeneralUser GS plays those.
+
 Optional, by `tools/fetch_soundfonts.sh` (hashes in the script): FreePats FM-Piano1,
 TubularBells, Timpani, SynthPadChoir, UprightPianoKW (CC0); MuseScore_General (MIT, 216 MB;
 size-checked only, as it wasn't downloaded while this was written; pin its hash when it is).
@@ -143,7 +150,7 @@ exactly, `$DDREAM_SOUNDFONTS` is still read, and the settings stored under DDrea
 copied across the first time the app runs. The crates keep their short `dd-` names
 (internal, and renaming them would churn every `use`).
 
-## D15 — No adding tracks, for now (2026-11-11)
+## D15 — No adding tracks, for now (2026-11-11; reversed by D22)
 
 The track list's **+ Add** menu is hidden: a piece comes with its tracks (the composer's
 roles, the city and the drums), and the sounds are changed from each track's dropdown. The
@@ -306,6 +313,67 @@ master ensemble is off in Derelict. Its swells (written finely) now move the bri
 octaves open at a swell's peak was heard as a stab. A swell that peaks at its end holds
 there, and the eruption takes up the brass and strings where the build left them,
 instead of dropping and kicking back. The other styles' three-point curves are unchanged.
+
+## D22 — Sections by name, moving with their notes; adding tracks again (2026-11-17)
+
+Sections show as their part and a number within it (Intro 1, Intro 2) unless given a name
+of their own (`Block::own_name`, `block_labels`); a numbered name reads back as its part,
+so MIDI markers round-trip. A section's menu (its name in the Score tab, or right-click on
+the Sections strip) renames it, changes its part, writes new notes for it or for one track
+in it, and duplicates it.
+
+Rearranging an edited piece used to move the bar levels but not the notes: a section made
+longer showed empty bars, and the sections after it slid out from under their notes. Now
+(`Project::rearrange_with_notes`) the notes and controllers go with their sections, and in
+a composed piece a section that is new, another part or another length is written again on
+its own (`compose::rewrite_sections`), with the seed it was last written with
+(`Section::seed`, set by New notes for a section), the rest kept as they are. An untouched
+composed piece is still written again whole. A piece that wasn't composed fills a longer
+section by playing its notes again. Notes held right through (the rain, held drones) stay
+held through copies, deletions and rewritten sections instead of being cut.
+
+**+ Add** is back (reversing D15): a track of any role gets the sound and notes the piece's
+style writes for it (`compose::add_track`); a second track of a role the piece has is
+written with a seed of its own (from its name), so it plays something else; a role the
+style never writes comes empty; Noir offers no City (D18). Added tracks are marked
+(`Track::added`) and written again for their roles by a new piece; adding one to an
+untouched piece leaves it untouched.
+
+## D23 — Homeward (2026-11-17)
+
+An eighth style written to the user's brief: an instrumental cinematic score, slow, warm,
+melodic and serious, built around one memorable theme that returns in varied forms;
+66–72 bpm in a soft, felt pulse; reflective, dignified, quietly hopeful; nothing sudden.
+It lives in `homeward.rs`, called from `compose_plan` like Derelict's writer.
+
+The seed writes an eight-bar theme in the piece's mode: rhythms from gentle patterns per
+metre (the second phrase repeats the first's, to be remembered), a first phrase rising
+and resting on the dominant (or the second), a second lifting towards the relative major,
+peaking and falling home (to the octave when the way down starts high, the leading tone
+rising to it), never a leap past a fifth. A chord a bar holds each bar's main note, with
+a major dominant at the cadences, and a reharmonisation (other chords holding the same
+notes, with sevenths, the cadences kept) for the middle statement.
+
+Each section states the theme in whole statements from its start, and what is left over
+its last bars, so every section ends on its cadence (an Intro, or a section opening the
+piece, too short for a statement opens the theme instead). Intro: the piano alone. Neon:
+the cellos (or violas), with soft piano chords, harp, bowed bass, sub, a soft string bed.
+Swell: the lead (flute, clarinet or horn) varied with passing notes, the cellos' contrary
+countermelody, the reharmonised chords. Night shift: a build (a beat-by-beat pulse in
+cellos, bass and piano, strings adding voices, the pad entering, expression rising, the
+dominant just before the peak) to a peak of up to eight bars, the theme in the strings in
+octaves over the cellos. Fade: the theme on the piano again, then a held tonic chord with
+a ninth above, everything gliding down. The usual arrangement is Intro, Neon, Swell,
+Night shift, Fade in eight-bar units (four or two when short); new pieces always open
+with an Intro.
+
+Sounds: the bundled GM cello, viola, strings, contrabass, flute, clarinet, horn, grand and
+electric piano, plus two new CC0 FreePats banks (D4): Concert Harp and Synth Strings (the
+analogue pad). The new alternatives are left out of the other styles' choosing
+(`HOMEWARD_SOUNDS`), so every earlier recipe sounds as before (checked: identical
+fingerprints, titles and sounds across 168 pieces). Mix: a natural hall, no ensemble,
+the piano high-cut like felt, the sub low-passed and quiet; about -21 LUFS, LRA 11–12 LU,
+peaks under -2 dBFS.
 
 ## Open
 

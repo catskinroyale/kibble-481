@@ -71,7 +71,19 @@ pub fn to_bytes(p: &Project) -> std::io::Result<Vec<u8>> {
     let end = p.end_tick();
     let embedded = format!("{PROJECT_PREFIX}{}", serde_json::to_string(p).unwrap_or_default());
     let names: Vec<String> = p.tracks.iter().map(|t| format!("{} ({})", t.name, t.source.label())).collect();
-    let section_names: Vec<(u32, String)> = p.sections.iter().map(|s| (s.bar * p.bar_ticks(), s.name.clone())).collect();
+    // as the sections show them (Intro 1, Intro 2), which read back as their parts
+    let section_names: Vec<(u32, String)> = {
+        let mut at = 0;
+        p.arrangement()
+            .iter()
+            .zip(p.section_labels())
+            .filter_map(|(b, name)| {
+                let tick = at * p.bar_ticks();
+                at += b.bars;
+                (b.part.is_some() || !b.name.is_empty()).then_some((tick, name))
+            })
+            .collect()
+    };
     let us_per_quarter = (60_000_000.0 / p.bpm).round() as u32;
     let denom_pow = (p.meter.1.max(1) as f32).log2() as u8;
 
