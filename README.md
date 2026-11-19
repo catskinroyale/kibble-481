@@ -76,7 +76,7 @@ fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are eight **styles**, each playing the same kinds of section its own way, all
+There are eleven **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -148,6 +148,47 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   on top. A natural hall, no chorus, no drums or city. It measures about -21 LUFS with
   peaks under -2 dBFS. Its tracks: Piano, Cellos, Strings, Double Bass, Sub, Lead, Harp
   and Pad.
+- **Return** (66 bpm, E minor): Homeward at dawn, with its instruments chosen. The theme
+  opens on a soft electric piano; violas carry it in the Neon; a clarinet varies it in
+  the Swell over new chords, answered by cellos of their own; the build peaks with the
+  theme in full strings in octaves (the violas and cellos with them); and the solo piano
+  brings it home to a long-held E minor chord with an added ninth, fading to silence.
+  Its lift reaches the relative major (G major under the theme's peak where the note
+  allows). Choosing it sets E minor as well as its tempo, and each new piece keeps it.
+  The concert hall, no drums or city; about -20 LUFS with peaks under -2 dBFS. Its
+  tracks: Electric Piano, Piano, Violas, Cellos, Strings, Double Bass, Sub, Clarinet,
+  Harp and Pad.
+- **Chamber** (62 bpm): a chamber orchestra in a dark, sci-fi noir. A small orchestra
+  plays over a cold machine: a glass drone, and a sub that beats like a heart (and, at
+  the climax, like an engine). Its harmony is noir and a little uncanny, two bars a
+  chord, always turning on a dominant seventh: the flat sixth, the Neapolitan, a minor
+  chord a major third down or a major one a major third up. The seed writes one
+  eight-bar theme from a motif: stated, sequenced on the next chord, raised to a climax
+  and falling to the leading tone. The Intro is the void, with the heartbeat, the motif
+  on a celesta and a far violin harmonic. In the Neon a clarinet (or cor anglais) has
+  the theme over a ticking pizzicato, held low strings and a harp. In the Swell a solo
+  violin takes it, with the violas against it, a bassoon walking below, horn swells and
+  the celesta echoing. The Night shift builds on tremolo strings, the engine and low
+  piano clusters to the theme in three octaves of strings. In the Fade the clarinet
+  hands it to the cellos, settling on a held minor chord with a major seventh and a
+  ninth. A natural hall, no drums or city; about -19 LUFS with peaks under -1.5 dBFS.
+  Its tracks: Celesta, Clarinet, Bassoon, Horn, Harp, Piano, Violin, Violas, Cellos,
+  Double Bass, Pizzicato, Tremolo Strings, Glass and Pulse.
+- **Orbit** (92 bpm, A minor, 15/8): a hypnotic minimalist score, eerie and serious. The
+  bar is fifteen quavers felt as seven and eight, and everything turns on one short piano
+  figure of two bars, written by the seed, that loops from the first bar to the last on
+  a soft, felted grand. The Intro is the figure alone. Layers join it one at a time, each
+  looping a simple pattern of its own: a rounded bass guitar, a glockenspiel figure in
+  dotted crotchets (five to the bar against the piano's seven and eight), a warm drawbar
+  organ holding the chords, a clean acoustic guitar's counter-line. Under the loop the
+  harmony moves two bars a chord, leaning towards C major (the flat sixth, the relative
+  major, a suspended seventh) without ever resolving there. It builds by accumulation
+  only, each layer fading in, to a peak where tubular bells ring a slow melody over the
+  full ensemble, the loudest moment; then the layers leave in the order they came, back
+  to the piano alone, fading onto a held A minor seventh. Choosing it sets A minor and
+  15/8 as well as its tempo (15/8 is also in the Metre list). A concert hall with a
+  little tape drift, no drums or city; about -20 LUFS with peaks under -2 dBFS. Its
+  tracks: Piano, Bass, Glockenspiel, Organ, Guitar and Tubular Bells.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -320,8 +361,14 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   always follows the score as it stands, with no more images than photos (the rest goes to
   the outro). The **calculator** in Plan and export works out, before you change
   anything, how many images the score holds and what's left over, and how many bars your
-  photos need with the intro and outro, and says how far to trim or lengthen the score;
-  **Set the score to N bars** does it.
+  photos need with the intro and outro, and says how far to trim or lengthen the score.
+  It lists the sections with their lengths now and the lengths proposed, the change shared
+  among them in proportion (whole 4-bar phrases where the sections are made of them, any
+  bars over going to the last section); change any proposal there, or leave them and drag
+  the sections' ends in the piano roll. **Set the sections to these** applies them: each
+  section whose length changes is written again at its new length. With the photos
+  counted, the plan places every one the score holds, following the music only in where
+  each change falls.
 - **Import** any MIDI file as a project, or add its tracks to this one. Files from Ambient
   MIDI Generator (Neon Noir, Megacity Rain, Neon Glide) get their score kit and city effects
   back.

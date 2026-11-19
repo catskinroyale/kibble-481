@@ -130,6 +130,14 @@ fn fmt_bars(b: f64) -> String {
     if (b - b.round()).abs() < 1e-6 { format!("{}", b.round() as u32) } else { format!("{b:.1}") }
 }
 
+/// Section lengths the calculator proposes to fit the photos: shared from `from` (the
+/// sections as they are) in proportion, to sum to `target`, and changed by hand after.
+pub(crate) struct FitPlan {
+    from: Vec<u32>,
+    target: u32,
+    bars: Vec<u32>,
+}
+
 /// What a track row's dropdown asked for.
 enum RowAction {
     Alt(Role, Box<Alt>),
@@ -804,7 +812,7 @@ impl App {
                     );
                 });
                 fx_strip(ui, &t, "Metre", "Beats in a bar, and the beat's note value", |ui| {
-                    for m in [(4u32, 4u32), (3, 4), (6, 8), (5, 4), (7, 8)] {
+                    for m in [(4u32, 4u32), (3, 4), (6, 8), (5, 4), (7, 8), (15, 8)] {
                         if widgets::lamp_row(ui, &format!("{}/{}", m.0, m.1), p.meter == m, true).clicked() {
                             p.meter = m;
                         }
@@ -1032,9 +1040,14 @@ impl App {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 fx_strip(ui, t, "Style", "How the composer writes. Choosing one sets its tempo", |ui| {
                     for s in Style::ALL {
-                        let help = format!("{}. Choosing it sets {} bpm.", s.help(), s.tempo());
+                        let key = s.key().map_or(String::new(), |(k, m)| format!(" in {} {}", KEY_NAMES[k as usize], m.label()));
+                        let metre = s.meter().map_or(String::new(), |(a, b)| format!(" in {a}/{b}"));
+                        let help = format!("{}. Choosing it sets {} bpm{key}{metre}.", s.help(), s.tempo());
                         if widgets::lamp_row(ui, s.label(), r.style == s, true).on_hover_text(help).clicked() && r.style != s {
                             r.style = s;
+                            if let Some((k, m)) = s.key() {
+                                (r.root, r.mode) = (k, m);
+                            }
                             new_style = Some(s);
                         }
                     }
@@ -1098,9 +1111,12 @@ impl App {
             });
         });
         if let Some(s) = new_style {
-            // the style's own tempo; the piece is written again for both together
+            // the style's own tempo (and metre, if it has one); the piece is written again
+            // for them together
             self.doc.project.bpm = s.tempo();
-            self.status = format!("{}: {}, at {} bpm", s.label(), s.help(), s.tempo());
+            self.doc.project.meter = s.meter_from(self.doc.project.meter);
+            let key = s.key().map_or(String::new(), |(k, m)| format!(" in {} {}", KEY_NAMES[k as usize], m.label()));
+            self.status = format!("{}: {}, at {} bpm{key}", s.label(), s.help(), s.tempo());
         }
     }
 
@@ -1247,6 +1263,7 @@ impl App {
         let plan = self.doc.plan_for(n_photos as usize);
         let fade = if self.doc.gallery.transition.fades() { self.doc.gallery.fade as f64 } else { 0.0 };
         let mut set_bars = None;
+        let mut fit_to: Option<Vec<dd_seq::project::Block>> = None;
         widgets::section(ui, "plan", "Plan and export", true, |ui| {
             let p = &self.doc.project;
             let g = &mut self.doc.gallery;
@@ -1313,15 +1330,94 @@ impl App {
             };
             widgets::note(ui, egui::RichText::new(msg).color(colour).text(), "");
             if c.needed_bars != score_bars {
-                widgets::inset(ui, |ui| {
-                    if ui
-                        .button(format!("Set the score to {} bars", c.needed_bars))
-                        .on_hover_text("A composed piece is written again at the new length; an edited one is trimmed or extended")
-                        .clicked()
-                    {
-                        set_bars = Some(c.needed_bars);
+                let blocks = p.arrangement();
+                if blocks.is_empty() {
+                    widgets::inset(ui, |ui| {
+                        if ui.button(format!("Set the score to {} bars", c.needed_bars)).clicked() {
+                            set_bars = Some(c.needed_bars);
+                        }
+                    });
+                } else {
+                    let from: Vec<u32> = blocks.iter().map(|b| b.bars).collect();
+                    let fit = self.fit.get_or_insert_with(|| FitPlan { from: Vec::new(), target: 0, bars: Vec::new() });
+                    if fit.from != from || fit.target != c.needed_bars {
+                        *fit = FitPlan { bars: dd_seq::project::share_bars(&from, c.needed_bars), from, target: c.needed_bars };
                     }
-                });
+                    widgets::subtitle(
+                        ui,
+                        "Sections",
+                        "Each section's share of the change, in proportion to its length. Change any of them here, or set them yourself in the piano roll by dragging a section's end",
+                    );
+                    let labels = dd_seq::project::block_labels(&blocks);
+                    let bar = grid.bar();
+                    widgets::inset(ui, |ui| {
+                        egui::Grid::new("fit-sections").num_columns(4).spacing([14.0, 3.0]).striped(true).show(ui, |ui| {
+                            let head = |ui: &mut egui::Ui, s: &str| {
+                                ui.label(egui::RichText::new(s).font(t.font(11.0)).color(t.text_label));
+                            };
+                            head(ui, "Section");
+                            head(ui, "Now");
+                            head(ui, "Proposed");
+                            head(ui, "Change");
+                            ui.end_row();
+                            for (i, label) in labels.iter().enumerate() {
+                                ui.label(label);
+                                ui.label(format!("{} ({})", fit.from[i], timecode(fit.from[i] as f64 * bar)));
+                                ui.add(egui::DragValue::new(&mut fit.bars[i]).range(1..=400).suffix(" bars"))
+                                    .on_hover_text("Drag or type to try another length");
+                                let d = fit.bars[i] as i64 - fit.from[i] as i64;
+                                let (s, col) = match d.cmp(&0) {
+                                    std::cmp::Ordering::Greater => (format!("+{d}"), t.accent),
+                                    std::cmp::Ordering::Less => (format!("{d}"), t.caution),
+                                    std::cmp::Ordering::Equal => ("–".to_string(), t.text_dim),
+                                };
+                                ui.label(egui::RichText::new(s).color(col));
+                                ui.end_row();
+                            }
+                            let (now, then) = (fit.from.iter().sum::<u32>(), fit.bars.iter().sum::<u32>());
+                            ui.label(egui::RichText::new("Total").strong());
+                            ui.label(format!("{now} ({})", timecode(now as f64 * bar)));
+                            ui.label(format!("{then} ({})", timecode(then as f64 * bar)));
+                            let d = then as i64 - now as i64;
+                            ui.label(if d > 0 { format!("+{d}") } else { format!("{d}") });
+                            ui.end_row();
+                        });
+                    });
+                    let then: u32 = fit.bars.iter().sum();
+                    if then != c.needed_bars {
+                        let msg = if then < c.needed_bars {
+                            format!("These add up to {then} bars: {} short of the {} the photos need.", c.needed_bars - then, c.needed_bars)
+                        } else {
+                            format!(
+                                "These add up to {then} bars: {} more than the {} the photos need (the outro grows).",
+                                then - c.needed_bars,
+                                c.needed_bars
+                            )
+                        };
+                        widgets::note(ui, egui::RichText::new(msg).color(t.caution).text(), "");
+                    }
+                    let how = if p.untouched() {
+                        "The piece is written again with these sections"
+                    } else {
+                        "Each section whose length changes is written again at its new length; the others keep their notes. ⌘Z undoes it"
+                    };
+                    widgets::inset(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button(format!("Set the sections to these ({then} bars)")).on_hover_text(how).clicked() {
+                                fit_to = Some(
+                                    blocks
+                                        .iter()
+                                        .zip(&fit.bars)
+                                        .map(|(b, n)| dd_seq::project::Block { bars: *n, ..b.clone() })
+                                        .collect::<Vec<_>>(),
+                                );
+                            }
+                            if ui.button("Share again").on_hover_text("Back to the proportional shares").clicked() {
+                                fit.bars = dd_seq::project::share_bars(&fit.from, fit.target);
+                            }
+                        });
+                    });
+                }
             }
             widgets::divider(ui);
             widgets::subtitle(ui, "The plan", "Where the images fall in the score as it stands");
@@ -1381,6 +1477,13 @@ impl App {
         if let Some(bars) = set_bars {
             self.doc.project.stretch_to(bars);
             self.status = format!("The score is now {bars} bars, to fit {n_photos} photos");
+        }
+        if let Some(blocks) = fit_to {
+            let bars: u32 = blocks.iter().map(|b| b.bars).sum();
+            let origin = (0..blocks.len()).map(Some).collect();
+            self.apply_arrangement(blocks, origin);
+            self.fit = None;
+            self.status = format!("The sections now make {bars} bars, for {n_photos} photos");
         }
         if choose {
             self.ask(crate::dialogs::Want::PhotoFolder, crate::dialogs::Kind::Folder, rfd::AsyncFileDialog::new());

@@ -206,7 +206,7 @@ impl About {
         for (what, how) in [
             (
                 "Compose",
-                "Writes a seeded piece to your tempo, metre and length in eight styles (Nocturne, Pursuit, Blackout, Momento, Noir, Overcity, Derelict, Homeward), in sections you can arrange: Intro, Neon, Swell, Night shift and Fade. The same seed always writes the same notes.",
+                "Writes a seeded piece to your tempo, metre and length in eleven styles (Nocturne, Pursuit, Blackout, Momento, Noir, Overcity, Derelict, Homeward, Return, Chamber, Orbit), in sections you can arrange: Intro, Neon, Swell, Night shift and Fade. The same seed always writes the same notes.",
             ),
             (
                 "Play and record",

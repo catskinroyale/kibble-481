@@ -12,7 +12,7 @@ use dd_seq::fonts::{FontBank, soundfont_dir};
 const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 
   kibble-481-cli demo <out.kibble>                 write the hand-written scene, Rain on Neon
-  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento|noir|overcity|derelict|homeward] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
+  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento|noir|overcity|derelict|homeward|return|chamber|orbit] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
                                                compose a new piece (a random seed if none given)
   kibble-481-cli render <in.kibble|.mid> <out.wav> [--stem <track>]
                                                render the mix (24-bit, 48 kHz), or one track
@@ -65,17 +65,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 r.seed = n.parse().map_err(|_| "--seed takes a number")?;
             }
             if let Some(n) = flag(&args, "--style") {
-                r.style = *dd_seq::compose::Style::ALL
-                    .iter()
-                    .find(|s| s.label().eq_ignore_ascii_case(&n))
-                    .ok_or("--style takes nocturne, pursuit, blackout, momento, noir, overcity, derelict or homeward")?;
+                r.style = *dd_seq::compose::Style::ALL.iter().find(|s| s.label().eq_ignore_ascii_case(&n)).ok_or(
+                    "--style takes nocturne, pursuit, blackout, momento, noir, overcity, derelict, homeward, return, chamber or orbit",
+                )?;
+                if let Some((k, m)) = r.style.key() {
+                    (r.root, r.mode) = (k, m);
+                }
             }
             if let Some(n) = flag(&args, "--key") {
                 r.root = n.parse::<u8>().map_err(|_| "--key takes 0 (C) to 11 (B)")? % 12;
             }
             let bpm = flag(&args, "--bpm").map_or(Ok(r.style.tempo()), |n| n.parse::<f64>()).map_err(|_| "--bpm takes a number")?;
             let bars = flag(&args, "--bars").map_or(Ok(24), |n| n.parse::<u32>()).map_err(|_| "--bars takes a number")?;
-            let p = dd_seq::compose::compose(&r, bpm, (4, 4), bars);
+            let p = dd_seq::compose::compose(&r, bpm, r.style.meter().unwrap_or((4, 4)), bars);
             println!(
                 "\"{}\": {}, seed {}, {}, {} bars at {} bpm, {} tracks",
                 p.title,

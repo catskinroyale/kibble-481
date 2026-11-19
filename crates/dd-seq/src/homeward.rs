@@ -11,6 +11,12 @@
 //! under layered strings and a warm analogue pad to one peak, the theme in full strings
 //! in octaves; and the Fade brings it back on the piano as it began, and settles on a
 //! held tonic chord. No drums, no city, nothing sudden.
+//!
+//! Return (D24) is Homeward with its instruments chosen: the theme opens on a soft
+//! electric piano, the violas carry it, a clarinet takes the variation with cellos of
+//! their own answering, and the solo piano brings it home. Its lift goes to the relative
+//! major (the III chord under the theme's peak where the note allows), and its plan
+//! leaves the final chord room to fade.
 
 use crate::compose::{Recipe, near};
 use crate::project::{Ctrl, CtrlKind, Note, Part, Project, Source};
@@ -26,6 +32,16 @@ pub(crate) struct Tracks {
     pub pad: usize,
     pub lead: usize,
     pub harp: usize,
+    /// Return's: the electric piano that opens it, and cellos apart from the violas that
+    /// carry the theme (the countermelody, the pulse and the peak's low octave).
+    pub ep: Option<usize>,
+    pub counter: Option<usize>,
+}
+
+impl Tracks {
+    fn is_return(&self) -> bool {
+        self.ep.is_some()
+    }
 }
 
 /// The usual arrangement: the theme's statements in whole eight bars where the piece is
@@ -50,6 +66,18 @@ pub(crate) fn plan(bars: u32) -> Vec<(Part, u32)> {
     bounds.iter().enumerate().map(|(i, (part, b))| (*part, bounds.get(i + 1).map_or(bars, |n| n.1) - b)).collect()
 }
 
+/// Return's arrangement: Intro, Neon and Swell a statement each, the Night shift twice
+/// that (the build and the peak), and the Fade half as long again to hold its last chord,
+/// shared in proportion to the length (as Homeward's when too short to share).
+pub(crate) fn return_plan(bars: u32) -> Vec<(Part, u32)> {
+    if bars < 20 {
+        return plan(bars);
+    }
+    let parts = [Part::Intro, Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
+    let lens = crate::project::share_bars(&[8, 8, 8, 16, 12], bars);
+    parts.into_iter().zip(lens).filter(|(_, n)| *n > 0).collect()
+}
+
 /// The mix: intimate and spacious, a natural hall, no chorus, the piano soft as felt.
 pub(crate) fn mix(p: &mut Project, t: &Tracks) {
     let viola = matches!(&p.tracks[t.cellos].source, Source::SoundFont { name, .. } if name == "Viola");
@@ -60,10 +88,14 @@ pub(crate) fn mix(p: &mut Project, t: &Tracks) {
         (t.double_bass, "Double Bass"),
         (t.sub, "Sub"),
         (t.pad, "Pad"),
-        (t.lead, "Lead"),
+        (t.lead, if t.is_return() { "Clarinet" } else { "Lead" }),
         (t.harp, "Harp"),
     ] {
         p.tracks[ti].name = name.into();
+    }
+    if let (Some(ep), Some(c)) = (t.ep, t.counter) {
+        p.tracks[ep].name = "Electric Piano".into();
+        p.tracks[c].name = "Cellos".into();
     }
     let set = |p: &mut Project, ti: usize, rev: f32, echo: f32, pan: f32, width: f32| {
         let st = &mut p.tracks[ti].strip;
@@ -77,6 +109,14 @@ pub(crate) fn mix(p: &mut Project, t: &Tracks) {
     set(p, t.pad, 0.6, 0.0, 0.0, 1.5);
     set(p, t.lead, 0.5, 0.12, 0.2, 1.0);
     set(p, t.harp, 0.55, 0.1, 0.35, 1.3);
+    if let (Some(ep), Some(c)) = (t.ep, t.counter) {
+        set(p, ep, 0.45, 0.08, -0.1, 1.3);
+        set(p, c, 0.5, 0.0, 0.25, 1.2);
+        // the violas a little left, the cellos right, as they sit
+        p.tracks[t.cellos].strip.pan = -0.3;
+        p.tracks[ep].strip.high_cut = 6000.0;
+        p.tracks[c].strip.high_cut = 6000.0;
+    }
     // felt: the piano's brightness rounded off
     p.tracks[t.piano].strip.high_cut = 5000.0;
     p.tracks[t.piano].strip.gain_db += 2.0;
@@ -179,7 +219,7 @@ fn harmonise(deg: i32, prefs: &[i32], not: Option<i32>) -> Option<i32> {
 }
 
 impl Theme {
-    fn new(seed: u64, bpb: u32) -> Theme {
+    fn new(seed: u64, bpb: u32, relative_lift: bool) -> Theme {
         let mut rng = Rng::stream(seed, "homeward-theme");
         // where each bar starts, and where the first phrase comes to rest
         let s1 = [0, 2, 4][rng.weighted(&[3.0, 2.0, 1.0])];
@@ -237,7 +277,9 @@ impl Theme {
             bars.push(notes);
         }
         // a chord a bar: on the bar's first note (the first phrase's close on its last)
-        let prefs: [&[i32]; 8] = [&[0], &[5, 3, 2], &[3, 5, 6], &[4], &[5, 2], &[5, 3, 0], &[4], &[0]];
+        // (Return's lift reaches the relative major itself: III under the peak where it can)
+        let peak: &[i32] = if relative_lift { &[2, 5, 3, 0] } else { &[5, 3, 0] };
+        let prefs: [&[i32]; 8] = [&[0], &[5, 3, 2], &[3, 5, 6], &[4], &[5, 2], peak, &[4], &[0]];
         let mut base = [0; 8];
         let mut alt = [0; 8];
         for b in 0..8 {
@@ -323,7 +365,13 @@ impl Writer {
 
     /// The expression gliding from `from` to `to` over `len` ticks, a step every half beat.
     fn glide(&mut self, track: usize, a: u32, len: u32, from: f64, to: f64) {
-        let step = (self.beat / 2).max(1);
+        self.ramp(track, 11, a, len, from, to, self.beat / 2);
+    }
+
+    /// A controller gliding from `from` to `to` over `len` ticks, a step every `step`.
+    #[allow(clippy::too_many_arguments)]
+    fn ramp(&mut self, track: usize, cc: u8, a: u32, len: u32, from: f64, to: f64, step: u32) {
+        let step = step.max(1);
         let n = (len / step).max(1);
         for i in 0..=n {
             let tick = a + i * step;
@@ -331,8 +379,22 @@ impl Writer {
                 break;
             }
             let v = from + (to - from) * i as f64 / n as f64;
-            self.ctrls[track].push(Ctrl { tick, kind: CtrlKind::Cc(11), value: v.round().clamp(0.0, 127.0) as i16 });
+            self.ctrls[track].push(Ctrl { tick, kind: CtrlKind::Cc(cc), value: v.round().clamp(0.0, 127.0) as i16 });
         }
+    }
+
+    /// One controller value.
+    fn cc(&mut self, track: usize, tick: u32, cc: u8, v: f64) {
+        if tick < self.end {
+            self.ctrls[track].push(Ctrl { tick, kind: CtrlKind::Cc(cc), value: v.round().clamp(0.0, 127.0) as i16 });
+        }
+    }
+
+    /// Legato pedalling: the pedal lifted as a new chord sounds, down again just after,
+    /// so each harmony rings into the next without blurring them.
+    fn pedal(&mut self, track: usize, t0: u32) {
+        self.cc(track, t0, 64, 0.0);
+        self.cc(track, t0 + self.beat / 6, 64, 127.0);
     }
 }
 
@@ -342,7 +404,7 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
     let bpb = p.meter.0.max(1);
     let end = secs.last().map_or(bar, |s| s.2);
     let steps = r.mode.steps();
-    let theme = Theme::new(r.seed, bpb);
+    let theme = Theme::new(r.seed, bpb, t.is_return());
     let mut w = Writer {
         notes: vec![Vec::new(); p.tracks.len()],
         ctrls: vec![Vec::new(); p.tracks.len()],
@@ -360,6 +422,13 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
     // strings' upper octave at the peak
     let tonic = |target: i32| near(r.root % 12, target) as i32;
     let (piano_t, cello_t, strings_t) = (tonic(67), tonic(if viola { 57 } else { 50 }), tonic(72));
+    // what opens the theme, and the low strings under it (the cellos of their own, in
+    // Return, or the same section)
+    let opener = t.ep.unwrap_or(t.piano);
+    let (low, low_t) = match t.counter {
+        Some(c) => (c, tonic(50)),
+        None => (t.cellos, cello_t),
+    };
     let lead_t = tonic(match lead_prog {
         71 => 62,
         60 => 55,
@@ -394,7 +463,7 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
         let n = (z - a).div_ceil(bar);
         let bars = layout(part, n, si == 0);
         let last_section = si + 1 == secs.len();
-        let mut counter_prev = cello_t + 7;
+        let mut counter_prev = low_t + 7;
         for (k, &what) in bars.iter().enumerate() {
             let t0 = a + k as u32 * bar;
             if t0 >= z {
@@ -446,18 +515,76 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                     w.note(track, s, len, pitch(tonic, n.deg, raise), vel + lift);
                 }
             };
+            // Return's piano and violas, played with grace (D24): the theme's notes shaped by
+            // the phrase (louder towards its peak, lighter on short notes, sighing at the
+            // cadences), the peak's first note and a cadence's last arriving a touch late,
+            // legato; the violas bowed, each long note swelling and its vibrato blooming
+            // (`bow` the expression they sit around)
+            let sing = |w: &mut Writer, track: usize, tonic: i32, vel: f64, bow: Option<f64>| {
+                let notes = &theme.bars[tb];
+                let (s0, s1) = (shape, SHAPE[(tb + 1) % 8]);
+                let cadence = tb == 3 || tb == 7;
+                for (j, n) in notes.iter().enumerate() {
+                    let arc = s0 + (s1 - s0) * n.at / bpb as f64;
+                    let last_note = j + 1 == notes.len();
+                    let lean = if (tb == 5 && j == 0) || (cadence && last_note && j > 0) { beat / 16 } else { 0 };
+                    let s = t0 + (n.at * beat as f64).round() as u32 + lean;
+                    let dur = ((n.len * beat as f64).round() as u32).saturating_sub(lean);
+                    let len = if final_bar && last_note { end - s } else { dur + beat / 6 };
+                    let metric = if n.at == 0.0 {
+                        4.0
+                    } else if bpb.is_multiple_of(2) && n.at == (bpb / 2) as f64 {
+                        2.0
+                    } else {
+                        0.0
+                    };
+                    let light = if n.len < 1.0 { -5.0 } else { 0.0 };
+                    let sigh = if cadence && last_note { -6.0 } else { 0.0 };
+                    w.note(track, s, len, pitch(tonic, n.deg, raise), vel + 14.0 * arc + metric + light + sigh);
+                    if let Some(base) = bow {
+                        let e = base + 18.0 * arc + sigh;
+                        if n.len >= 1.5 {
+                            // a swell over the note, and a vibrato that blooms as it's held
+                            let rise = dur * 3 / 5;
+                            w.ramp(track, 11, s, rise, e - 10.0, e + 6.0, beat / 8);
+                            w.ramp(track, 11, s + rise, dur - rise, e + 6.0, e - 2.0, beat / 8);
+                            w.cc(track, s, 1, 8.0);
+                            w.ramp(track, 1, s + dur / 3, dur - dur / 3, 8.0, 52.0, beat / 8);
+                        } else {
+                            w.ramp(track, 11, s, dur, e - 6.0, e, beat / 8);
+                            w.cc(track, s, 1, 16.0);
+                        }
+                    }
+                }
+            };
+            let graceful = t.is_return();
             let held = |len: u32| if final_bar { len.max(blen) } else { len };
             match part {
                 // the theme on the piano alone, a soft chord under each half bar
+                Part::Intro if graceful => {
+                    sing(&mut w, opener, piano_t, 56.0, None);
+                    piano_flow(&mut w, opener, t0, blen, beat, &voicing(root, false, 55), bass_key + 12, 34.0, final_bar);
+                    w.pedal(opener, t0);
+                    if k + 1 == bars.len() && !final_bar {
+                        // let go as the violas begin
+                        w.cc(opener, z, 64, 0.0);
+                    }
+                }
                 Part::Intro => {
-                    melody(&mut w, t.piano, piano_t, 58.0, false, false);
-                    piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, false, 55), bass_key + 12, 36.0, final_bar);
+                    melody(&mut w, opener, piano_t, 58.0, false, false);
+                    piano_chords(&mut w, opener, t0, blen, bpb, beat, &voicing(root, false, 55), bass_key + 12, 36.0, final_bar);
                 }
                 Part::Neon => {
                     // the cellos take the theme, legato, breathing with it
-                    melody(&mut w, t.cellos, cello_t, 76.0, true, false);
-                    w.glide(t.cellos, t0, blen, 88.0 + 18.0 * shape, 88.0 + 18.0 * SHAPE[(tb + 1) % 8]);
-                    piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, false, 57), bass_key + 12, 32.0, final_bar);
+                    if graceful {
+                        sing(&mut w, t.cellos, cello_t, 72.0, Some(86.0));
+                        piano_flow(&mut w, t.piano, t0, blen, beat, &voicing(root, false, 57), bass_key + 12, 30.0, final_bar);
+                        w.pedal(t.piano, t0);
+                    } else {
+                        melody(&mut w, t.cellos, cello_t, 76.0, true, false);
+                        w.glide(t.cellos, t0, blen, 88.0 + 18.0 * shape, 88.0 + 18.0 * SHAPE[(tb + 1) % 8]);
+                        piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, false, 57), bass_key + 12, 32.0, final_bar);
+                    }
                     for &k in &voicing(root, false, 64) {
                         w.note(t.strings, t0, held(blen), k, 40.0);
                     }
@@ -495,16 +622,21 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                         let cands: Vec<i32> =
                             tones.iter().copied().filter(|&k| if up { k <= counter_prev } else { k >= counter_prev }).collect();
                         let pick = cands.into_iter().min_by_key(|&k| ((k - counter_prev).abs() - 2).abs()).unwrap_or(tones[0]);
-                        let pick = pick.clamp(cello_t, cello_t + 14);
-                        w.note(t.cellos, s, held(len + beat / 8), pick, 58.0 + 6.0 * shape);
+                        let pick = pick.clamp(low_t, low_t + 14);
+                        w.note(low, s, held(len + beat / 8), pick, 58.0 + 6.0 * shape);
                         counter_prev = pick;
                     }
-                    w.glide(t.cellos, t0, blen, 62.0, 66.0);
+                    w.glide(low, t0, blen, 62.0, 66.0);
                     for &k in &voicing(root, seventh, 65) {
                         w.note(t.strings, t0, held(blen), k, 44.0);
                     }
                     w.glide(t.strings, t0, blen, 60.0, 64.0);
-                    piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, seventh, 58), bass_key + 12, 32.0, final_bar);
+                    if graceful {
+                        piano_flow(&mut w, t.piano, t0, blen, beat, &voicing(root, seventh, 58), bass_key + 12, 30.0, final_bar);
+                        w.pedal(t.piano, t0);
+                    } else {
+                        piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, seventh, 58), bass_key + 12, 32.0, final_bar);
+                    }
                     w.note(t.double_bass, t0, held(blen), bass_key, 54.0);
                     w.note(t.sub, t0, held(blen), sub_key, 48.0);
                     harp(
@@ -539,23 +671,26 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                             w.note(t.pad, t0, blen, k, 44.0 + 20.0 * bx);
                         }
                         w.glide(t.pad, t0, blen, 50.0 + 40.0 * bx, 50.0 + 40.0 * lift.min(1.0));
+                        if graceful {
+                            w.cc(t.piano, t0, 64, 0.0);
+                        }
                         // the soft pulse: the root and fifth in the cellos and bass, a beat at a time
-                        let fifth = chord_key(root, root + 4, cello_t + 7);
+                        let fifth = chord_key(root, root + 4, low_t + 7);
                         for b in 0..bpb {
                             let s = t0 + b * beat;
                             if s >= t0 + blen {
                                 break;
                             }
                             let accent = if b == 0 { 6.0 } else { 0.0 };
-                            w.note(t.cellos, s, beat * 9 / 10, chord_key(root, root, cello_t), 48.0 + 30.0 * bx + accent);
-                            w.note(t.cellos, s, beat * 9 / 10, fifth, 42.0 + 30.0 * bx);
+                            w.note(low, s, beat * 9 / 10, chord_key(root, root, low_t), 48.0 + 30.0 * bx + accent);
+                            w.note(low, s, beat * 9 / 10, fifth, 42.0 + 30.0 * bx);
                             w.note(t.double_bass, s, beat * 9 / 10, bass_key, 50.0 + 30.0 * bx + accent);
                             w.note(t.piano, s, beat * 8 / 10, voicing(root, false, 60)[0], 30.0 + 26.0 * bx);
                             for &k in voicing(root, false, 60).iter().skip(1) {
                                 w.note(t.piano, s, beat * 8 / 10, k, 28.0 + 26.0 * bx);
                             }
                         }
-                        w.glide(t.cellos, t0, blen, 70.0 + 30.0 * bx, 70.0 + 30.0 * lift.min(1.0));
+                        w.glide(low, t0, blen, 70.0 + 30.0 * bx, 70.0 + 30.0 * lift.min(1.0));
                         w.note(t.sub, t0, blen, sub_key, 48.0 + 20.0 * bx);
                         harp(&mut w, &mut harp_rng, t.harp, t0, blen, beat, bpb, &voicing(root, false, 62), 46.0 + 24.0 * bx, true, false);
                     }
@@ -564,13 +699,22 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                         melody(&mut w, t.strings, strings_t, 96.0, true, false);
                         melody(&mut w, t.strings, strings_t - 12, 88.0, true, false);
                         w.glide(t.strings, t0, blen, 100.0 + 15.0 * shape, 100.0 + 15.0 * SHAPE[(tb + 1) % 8]);
-                        melody(&mut w, t.cellos, cello_t, 90.0, true, false);
-                        w.glide(t.cellos, t0, blen, 100.0, 104.0);
+                        melody(&mut w, low, low_t, 90.0, true, false);
+                        w.glide(low, t0, blen, 100.0, 104.0);
+                        if t.counter.is_some() {
+                            // the violas join the strings' lower octave, bowed with the phrase
+                            sing(&mut w, t.cellos, cello_t, 82.0, Some(98.0));
+                        }
                         for &k in &voicing(root, false, 58) {
                             w.note(t.pad, t0, held(blen), k, 62.0);
                         }
                         w.glide(t.pad, t0, blen, 90.0, 92.0);
-                        piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, false, 60), bass_key + 12, 56.0, final_bar);
+                        if graceful {
+                            piano_flow(&mut w, t.piano, t0, blen, beat, &voicing(root, false, 60), bass_key + 12, 52.0, final_bar);
+                            w.pedal(t.piano, t0);
+                        } else {
+                            piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &voicing(root, false, 60), bass_key + 12, 56.0, final_bar);
+                        }
                         for h in [0, bar / 2] {
                             if h < blen {
                                 w.note(
@@ -593,11 +737,17 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                         continue;
                     }
                     let fade = 1.0 - x;
-                    melody(&mut w, t.piano, piano_t, 52.0, false, false);
                     // the theme's last bar in the piece's last section: the final chord
                     let last_theme = last_section && tb == 7 && bars[k + 1..].iter().all(|b| *b == Bar::Hold);
                     let chord = voicing(root, false, 57);
-                    piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &chord, bass_key + 12, 30.0, final_bar || last_theme);
+                    if graceful {
+                        sing(&mut w, t.piano, piano_t, 50.0, None);
+                        piano_flow(&mut w, t.piano, t0, blen, beat, &chord, bass_key + 12, 28.0, final_bar || last_theme);
+                        w.pedal(t.piano, t0);
+                    } else {
+                        melody(&mut w, t.piano, piano_t, 52.0, false, false);
+                        piano_chords(&mut w, t.piano, t0, blen, bpb, beat, &chord, bass_key + 12, 30.0, final_bar || last_theme);
+                    }
                     let ring = if last_theme || final_bar { end.saturating_sub(t0) } else { blen };
                     {
                         let mut top = voicing(root, false, 64);
@@ -608,8 +758,8 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                         for &kk in &top {
                             w.note(t.strings, t0, ring, kk, 40.0);
                         }
-                        w.note(t.cellos, t0, ring, chord_key(root, root, cello_t), 44.0);
-                        w.note(t.cellos, t0, ring, chord_key(root, root + 4, cello_t + 7), 40.0);
+                        w.note(low, t0, ring, chord_key(root, root, low_t), 44.0);
+                        w.note(low, t0, ring, chord_key(root, root + 4, low_t + 7), 40.0);
                         w.note(t.double_bass, t0, ring, bass_key, 44.0);
                         if x < 0.5 || last_theme {
                             w.note(t.sub, t0, ring, sub_key, 40.0);
@@ -629,7 +779,7 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
                     let span = if last_theme { end.saturating_sub(t0) } else { blen };
                     let (from, to) = if last_theme { (from, 18.0) } else { (from, to) };
                     w.glide(t.strings, t0, span, from, to);
-                    w.glide(t.cellos, t0, span, from, to);
+                    w.glide(low, t0, span, from, to);
                     if k == 0 {
                         harp(&mut w, &mut harp_rng, t.harp, t0, blen, beat, bpb, &chord, 40.0, false, false);
                     }
@@ -644,7 +794,10 @@ pub(crate) fn write(p: &mut Project, t: &Tracks, r: &Recipe, secs: &[(Part, u32,
     }
     // the tracks as an orchestra sits: the piano, the strings low to high, the lead,
     // the harp and the pad (the others, silent, go)
-    let order = [t.piano, t.cellos, t.strings, t.double_bass, t.sub, t.lead, t.harp, t.pad];
+    let order: Vec<usize> = match (t.ep, t.counter) {
+        (Some(ep), Some(c)) => vec![ep, t.piano, t.cellos, c, t.strings, t.double_bass, t.sub, t.lead, t.harp, t.pad],
+        _ => vec![t.piano, t.cellos, t.strings, t.double_bass, t.sub, t.lead, t.harp, t.pad],
+    };
     let mut tracks = std::mem::take(&mut p.tracks);
     let mut sorted: Vec<crate::project::Track> = order.iter().map(|&i| std::mem::take(&mut tracks[i])).collect();
     for (i, tr) in sorted.iter_mut().enumerate() {
@@ -672,6 +825,42 @@ fn piano_chords(w: &mut Writer, track: usize, t0: u32, blen: u32, bpb: u32, beat
         for &k in chord {
             w.note(track, t0 + h * step + beat / 12, step * 9 / 10, k, vel - if h > 0 { 4.0 } else { 0.0 });
         }
+    }
+}
+
+/// Return's piano under the theme: the bass on the downbeat, then the chord broken
+/// gently up and back in quavers, swelling a little through the bar (pedalled); at the
+/// end, the bass and the chord rolled slowly upwards and held.
+#[allow(clippy::too_many_arguments)]
+fn piano_flow(w: &mut Writer, track: usize, t0: u32, blen: u32, beat: u32, chord: &[i32], low: i32, vel: f64, ring: bool) {
+    let low = if low > 52 { low - 12 } else { low };
+    let mut ladder: Vec<i32> = chord.to_vec();
+    ladder.sort_unstable();
+    if ladder.is_empty() {
+        return;
+    }
+    if ring {
+        w.note(track, t0, w.end - t0, low, vel);
+        for (i, &k) in ladder.iter().enumerate() {
+            let s = t0 + beat / 8 + i as u32 * beat / 6;
+            w.note(track, s, w.end.saturating_sub(s), k, vel - 2.0 + 2.0 * i as f64);
+        }
+        return;
+    }
+    if ladder.len() < 4 {
+        ladder.push(ladder[0] + 12);
+    }
+    w.note(track, t0, blen, low, vel + 2.0);
+    let step = (beat / 2).max(1);
+    let count = (blen / step) as usize;
+    let up = ladder.len();
+    let period = 2 * (up - 1).max(1);
+    for i in 1..count {
+        let m = (i - 1) % period;
+        let j = if m < up { m } else { period - m };
+        let arc = (std::f64::consts::PI * i as f64 / count as f64).sin();
+        let on_beat = (i as u32 * step).is_multiple_of(beat);
+        w.note(track, t0 + i as u32 * step, step * 2, ladder[j], vel - 7.0 + 6.0 * arc + if on_beat { 2.0 } else { 0.0 });
     }
 }
 
@@ -730,6 +919,56 @@ mod tests {
 
     fn piece(seed: u64, bars: u32, meter: (u32, u32)) -> Project {
         compose(&Recipe { style: Style::Homeward, ..Recipe::random(seed) }, 69.0, meter, bars)
+    }
+
+    /// Return: the electric piano opens alone, the violas carry the theme, the clarinet
+    /// varies it answered by the cellos, the strings peak, the solo piano brings it home
+    /// to the tonic chord with its ninth, held; E minor at 66 bpm; and the lift reaches
+    /// the relative major wherever the theme's peak note is in it.
+    #[test]
+    fn return_is_homeward_with_its_own_instruments() {
+        assert_eq!(return_plan(52).iter().map(|s| s.1).collect::<Vec<_>>(), [8, 8, 8, 16, 12]);
+        for bars in [20, 33, 48, 64, 100] {
+            assert_eq!(return_plan(bars).iter().map(|s| s.1).sum::<u32>(), bars);
+        }
+        let mut lifted = 0;
+        for seed in 0..12 {
+            let mut r = Recipe { style: Style::Return, ..Recipe::random(seed) };
+            (r.root, r.mode) = Style::Return.key().unwrap();
+            let p = compose(&r, Style::Return.tempo(), (4, 4), 52);
+            let names: Vec<&str> = p.tracks.iter().map(|t| t.name.as_str()).collect();
+            assert_eq!(
+                names,
+                ["Electric Piano", "Piano", "Violas", "Cellos", "Strings", "Double Bass", "Sub", "Clarinet", "Harp", "Pad"],
+                "seed {seed}"
+            );
+            let b = p.block_ticks();
+            for t in p.tracks.iter().filter(|t| t.name != "Electric Piano") {
+                assert_eq!(in_span(&p, &t.name, b[0]), 0, "seed {seed}: {} in the Intro", t.name);
+            }
+            assert_eq!(in_span(&p, "Electric Piano", (b[1].0, p.end_tick())), 0, "seed {seed}");
+            assert!(in_span(&p, "Violas", b[1]) >= 8, "seed {seed}");
+            assert_eq!(in_span(&p, "Violas", b[2]) + in_span(&p, "Violas", b[4]), 0, "seed {seed}");
+            assert!(in_span(&p, "Clarinet", b[2]) >= 8 && in_span(&p, "Cellos", b[2]) >= 8, "seed {seed}");
+            for i in [0, 1, 3, 4] {
+                assert_eq!(in_span(&p, "Clarinet", b[i]), 0, "seed {seed}: the clarinet in section {i}");
+            }
+            assert!(in_span(&p, "Piano", b[4]) >= 8, "seed {seed}");
+            // the last chord: E minor with its ninth (F sharp), held to the end
+            let end = p.end_tick();
+            let held: Vec<u8> = p.tracks.iter().flat_map(|t| &t.notes).filter(|n| n.end() == end).map(|n| n.key % 12).collect();
+            for pc in [4, 7, 11, 6] {
+                assert!(held.contains(&pc), "seed {seed}: {held:?}");
+            }
+            assert!(p.tracks.iter().all(|t| !matches!(t.role, Some(Role::Drums | Role::City))));
+            // the lift: III under the peak bar wherever its first note is G, B or D
+            let th = Theme::new(r.seed, 4, true);
+            if matches!(th.bars[5][0].deg.rem_euclid(7), 2 | 4 | 6) {
+                assert_eq!(th.base[5], 2, "seed {seed}");
+                lifted += 1;
+            }
+        }
+        assert!(lifted >= 3, "{lifted}");
     }
 
     fn in_span(p: &Project, name: &str, (a, b): (u32, u32)) -> usize {
@@ -815,7 +1054,7 @@ mod tests {
     fn the_theme_is_eight_singable_bars() {
         for seed in 0..40 {
             for bpb in [3, 4, 5, 6] {
-                let th = Theme::new(seed, bpb);
+                let th = Theme::new(seed, bpb, false);
                 assert_eq!(th.bars.len(), 8);
                 for b in &th.bars {
                     assert!((b.iter().map(|n| n.len).sum::<f64>() - bpb as f64).abs() < 1e-9);
@@ -837,10 +1076,11 @@ mod tests {
         }
     }
 
-    /// Other styles never choose Homeward's new sounds.
+    /// Other styles never choose the sounds added for Homeward (and Return, which shares them).
     #[test]
     fn its_sounds_are_its_own() {
-        for style in Style::ALL.into_iter().filter(|s| *s != Style::Homeward) {
+        // (Chamber, written after, shares its strings, woodwinds, horn and harp on purpose)
+        for style in Style::ALL.into_iter().filter(|s| !matches!(s, Style::Homeward | Style::Return | Style::Chamber | Style::Orbit)) {
             for seed in 0..20 {
                 let p = compose(&Recipe { style, ..Recipe::random(seed) }, 70.0, (4, 4), 32);
                 for t in &p.tracks {

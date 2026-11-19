@@ -59,9 +59,42 @@ pub fn plan(p: &Project, g: &Slideshow, photos: Option<usize>) -> Plan {
     // (older documents may ask to size the track; the calculator does that now)
     let g = Slideshow { fit: Fit::ImagesToTrack, ..g.clone() };
     let plan = Plan::for_track(&g, grid, p.music_secs());
-    let plan = if g.follow_music && !g.exact { plan.follow(&g, &Accents::of(p)) } else { plan };
+    let follow = g.follow_music && !g.exact;
     match photos {
-        Some(n) if n > 0 => plan.limit(n as u32),
+        // the score holds them all: as many images as photos, the accents only moving
+        // where each change falls (else following the music could hold fewer than the
+        // calculator promised)
+        Some(n) if n > 0 && follow && plan.images >= n as u32 => {
+            let g = Slideshow { fit: Fit::TrackToImages, ..g };
+            plan.limit(n as u32).follow(&g, &Accents::of(p))
+        }
+        Some(n) if n > 0 => if follow { plan.follow(&g, &Accents::of(p)) } else { plan }.limit(n as u32),
+        _ if follow => plan.follow(&g, &Accents::of(p)),
         _ => plan,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::slideshow::Calc;
+    use dd_seq::compose::{Recipe, compose};
+
+    /// Set to the calculator's length, the score holds every photo, following the music
+    /// or not.
+    #[test]
+    fn the_calculators_length_holds_every_photo() {
+        for (seed, photos, hold, follow) in [(1u64, 30u32, 12.0f32, true), (2, 30, 12.0, false), (3, 12, 8.0, true), (4, 50, 6.0, true)] {
+            let g = Slideshow { hold, follow_music: follow, ..Slideshow::default() };
+            let r = Recipe::random(seed);
+            let p = compose(&r, 66.0, (4, 4), 24);
+            let grid = Grid::new(p.bpm, p.meter);
+            let c = Calc::new(&g, grid, p.music_secs(), photos);
+            let p = compose(&r, 66.0, (4, 4), c.needed_bars);
+            let plan = plan(&p, &g, Some(photos as usize));
+            assert_eq!(plan.images, photos, "seed {seed}, {photos} photos, follow {follow}");
+            assert!(plan.starts.windows(2).all(|w| w[1] > w[0]));
+            assert!(plan.end <= p.music_secs() + 1e-6);
+        }
     }
 }

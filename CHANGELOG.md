@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.9.0 — 2026-11-19
+
+- **Orbit**, an eleventh style: a hypnotic minimalist score in 15/8 (seven and eight
+  quavers) in A minor. One seeded two-bar figure on a soft, felted piano loops all the
+  way through; a bass guitar, a glockenspiel, a drawbar organ and an acoustic guitar
+  join one at a time, each looping its own pattern, while the harmony drifts towards C
+  major without resolving. It builds by accumulation to a peak of tubular bells over the
+  full ensemble, then the layers leave one by one, back to the piano alone. Choosing it
+  sets 92 bpm, A minor and 15/8; 15/8 joins the Metre list, and choosing another style
+  afterwards puts the metre back to 4/4. `kibble-481-cli compose --style orbit` (the CLI
+  now writes a style in its own metre). New sounds: **Drawbar Organ** (Keys), **Finger
+  Bass** (Bass) and **Steel Guitar** (Pluck). The other styles are unchanged.
+- With the mixer open and nothing playing, the app no longer redraws 60 times a second
+  (its meters ask for frames only while they move): idle CPU falls from about a third of
+  a core to about a tenth.
+- **Return** plays with more grace: the piano and violas phrase the theme (swelling
+  towards its peak, lighter on short notes, easing into the cadences, a breath before
+  the climax), the violas swell on long notes with a vibrato that blooms, and the piano
+  breaks its chords into gentle pedalled arpeggios instead of repeated block chords.
+  Other styles are unchanged.
+- **Chamber**, a tenth style: a chamber orchestra with a dark, sci-fi noir twist. A solo
+  violin, violas, cellos, double bass, pizzicato, clarinet (or cor anglais), bassoon,
+  horn, harp, celesta and piano play over a glass drone and a sub that beats like a
+  heart. The harmony is chromatic noir (Neapolitan, chromatic mediants, the flat sixth)
+  turning on a dominant seventh, and the piece ends on a minor chord with a major seventh
+  and a ninth. One seeded theme passes from the clarinet to the violin to three octaves
+  of strings at the climax. 62 bpm; `kibble-481-cli compose --style chamber`. A solo
+  **Violin** joins the strings' sounds in the Sound tab. The other styles are unchanged.
+- **Return**, a ninth style from the brief "Homeward (Dawn Return)": Homeward's theme
+  and story at 66 bpm in E minor, with its instruments chosen: a soft electric piano
+  opens, violas carry the theme, a clarinet varies it answered by cellos, full strings
+  peak, and the solo piano brings it home to a long-held E minor chord with a ninth. Its
+  lift reaches G major (the relative major). Choosing it sets E minor as well as its
+  tempo. `kibble-481-cli compose --style return`. Homeward and the other styles are
+  unchanged.
+- The gallery calculator lists the sections, how long each is now and how long it would
+  be to fit the photos: the change shared among them in proportion, in whole 4-bar
+  phrases where they're made of them, the bars left over going to the last section. Each
+  proposal can be changed by hand (the total shows against what the photos need), or
+  left while you drag sections in the piano roll. **Set the sections to these** applies
+  them; before, lengthening an edited piece only held its last notes on to the new end.
+- Following the music's accents no longer holds fewer photos than the calculator counted:
+  with the photos known, the plan places all the score holds and the accents only move
+  where each change falls.
+
 ## 0.8.0 — 2026-11-17
 
 - **Homeward**, an eighth composer style: a slow, warm, quietly hopeful cinematic score

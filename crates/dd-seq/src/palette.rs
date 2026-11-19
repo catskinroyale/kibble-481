@@ -155,6 +155,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Cello", 42, -6.0),
             gm("Tremolo Strings", 44, 0.4),
             gm("Viola", 41, 1.0),
+            gm("Violin", 40, -4.6),
         ],
         Role::Lead => vec![
             synth("Smoky Lead", 0.0),
@@ -195,6 +196,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Fretless", 35, -5.5),
             gm("Upright Bass", 32, -2.0),
             gm("Contrabass", 43, -1.0),
+            gm("Finger Bass", 33, -2.0),
         ],
         Role::Bells => vec![
             synth("Night Bells", 0.0),
@@ -219,6 +221,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Kalimba", 108, -5.0),
             gm("Pizzicato Strings", 45, 0.8),
             font("Concert Harp (FreePats)", "FreePats-ConcertHarp.sf2", -10.1, true),
+            gm("Steel Guitar", 25, 9.6),
         ],
         Role::Keys => vec![
             synth("Neon Tine Piano", 0.0),
@@ -230,6 +233,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("FM Piano", 5, -2.0),
             font("FM Piano (FreePats)", "FreePats-FM-Piano1.sf2", -4.0, false),
             font("Upright Piano (FreePats)", "FreePats-UprightPianoKW.sf2", -4.0, false),
+            gm("Drawbar Organ", 16, -4.0),
         ],
         Role::Drone => vec![
             synth("Abyss Drone", 0.0),

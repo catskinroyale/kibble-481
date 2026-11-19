@@ -175,6 +175,8 @@ pub struct App {
     job: Option<Job>,
     /// The file or folder dialog open, if any (see `dialogs`).
     pub(crate) asking: Option<crate::dialogs::Asking>,
+    /// The calculator's proposed section lengths, while the user tries them.
+    pub(crate) fit: Option<crate::panels::FitPlan>,
     pub(crate) status: String,
     pub(crate) about: crate::about::About,
     update: Option<crate::update::UpdateStatus>,
@@ -252,6 +254,7 @@ impl App {
             rec_from: 0.0,
             job: None,
             asking: None,
+            fit: None,
             status: String::new(),
             about: Default::default(),
             update: None,
@@ -333,12 +336,19 @@ impl App {
                 ("overcity", dd_seq::compose::Style::Overcity),
                 ("derelict", dd_seq::compose::Style::Derelict),
                 ("homeward", dd_seq::compose::Style::Homeward),
+                ("return", dd_seq::compose::Style::Return),
+                ("chamber", dd_seq::compose::Style::Chamber),
+                ("orbit", dd_seq::compose::Style::Orbit),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
                 {
                     r.style = style;
+                    if let Some((k, m)) = style.key() {
+                        (r.root, r.mode) = (k, m);
+                    }
                     app.doc.project.bpm = style.tempo();
+                    app.doc.project.meter = style.meter_from(app.doc.project.meter);
                 }
             }
             if snap.wants("volume") {
@@ -666,7 +676,10 @@ impl App {
     /// sections as they are (New notes).
     pub(crate) fn new_piece(&mut self, new_sections: bool) {
         let style = self.doc.project.recipe.map(|r| r.style).unwrap_or_default();
-        let r = Recipe { style, ..Recipe::random(entropy()) };
+        let mut r = Recipe { style, ..Recipe::random(entropy()) };
+        if let Some((k, m)) = style.key() {
+            (r.root, r.mode) = (k, m);
+        }
         let p = &self.doc.project;
         let plan = new_sections.then(|| dd_seq::compose::random_plan(&r, p.bpm, p.meter, p.length_bars.max(2)));
         self.recompose_to(r, self.settings.keep_sounds, plan);
@@ -1345,7 +1358,9 @@ impl eframe::App for App {
         if let Some(s) = &mut self.snapshot {
             s.tick(&ctx);
         }
-        if self.playing() || self.job.is_some() || self.settings.show_mixer {
+        // (the mixer's meters ask for frames themselves while they move: an open mixer
+        // over silence lets the app idle)
+        if self.playing() || self.job.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
     }

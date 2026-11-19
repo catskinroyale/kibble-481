@@ -375,6 +375,116 @@ fingerprints, titles and sounds across 168 pieces). Mix: a natural hall, no ense
 the piano high-cut like felt, the sub low-passed and quiet; about -21 LUFS, LRA 11–12 LU,
 peaks under -2 dBFS.
 
+## D24 — Return (2026-11-18)
+
+A ninth style from the user's brief "Homeward (Dawn Return)": Homeward's form and theme
+with the instrumentation fixed: a soft electric piano for the Intro, violas for the
+Neon's theme, a clarinet for the Swell answered by cellos, full strings at the peak, the
+solo piano home; E minor at 66 bpm. Asked for as a style of its own after a first
+attempt changed Homeward's harmony and split one piece's tracks by hand; that change
+was reversed, so Homeward writes exactly as in 0.8.0 (identical fingerprints, sounds,
+levels and titles across 288 pieces of the eight earlier styles).
+
+It is written by `homeward.rs` with two extra tracks (`Tracks::ep`, `Tracks::counter`):
+the electric piano takes the Intro, and the cellos, apart from the theme's violas, take
+the countermelody, the build's pulse, the peak's low octave and the Fade's held notes
+(the violas join the peak in octaves). Its theme is Homeward's for the same seed, but the
+peak bar prefers the III chord, so the lift reaches the relative major where the note
+allows. Its plan shares 8:8:8:16:12 bars in proportion (`share_bars`), so the build and
+peak keep their sixteen and the Fade holds its last chord; under 20 bars it takes
+Homeward's. Its sounds are named, not drawn (its own stream, `return-strings`), and it
+always uses the concert hall. `Style::key` gives it E minor, set when it's chosen, on each
+new piece in it, and by the command line unless `--key` says otherwise; the other styles
+have none and keep their keys.
+
+Played with grace (2026-11-19, after "the piano and viola are a little plonky"): in Return
+only, the theme on the electric piano, the violas and the piano is phrased: velocity
+follows the theme's arc through each bar, short notes lighter, a gentle downbeat, the
+cadences sighing; the peak's first note and a cadence's last arrive a sixteenth of a
+beat late; notes are legato. The violas are bowed: each long note swells (CC11) and its
+vibrato (CC1) blooms as it's held. The pianos' block chords become the bass on the
+downbeat and the chord broken gently up and back in quavers, legato-pedalled (CC64
+lifted at each chord, down just after; up for the build's pulse), and the last chord
+rolled slowly. Homeward writes exactly as before (identical fingerprints and titles
+for every other style across 1,080 pieces); Return stays about -20 LUFS with peaks under
+-2.5 dBFS, its range a little wider.
+
+## D25 — Chamber (2026-11-18)
+
+A tenth style from the brief "a chamber orchestra score style with a sci-fi dark noir
+twist". A small orchestra of named sounds: a solo violin (a new Strings alternative,
+GM 40, trimmed -4.6 dB; left out of the other styles' choosing, `CHAMBER_SOUNDS`),
+violas, cellos, contrabass, pizzicato, tremolo strings, a clarinet (or cor anglais), a
+bassoon, a horn, a harp, a celesta and a grand piano. The twist sits under them, not in
+place of them: a glass drone (tonic and fifth, breathing with each section), and a dry
+sub that beats like a heart (two thumps a bar) and at the climax like an engine (quavers).
+
+Harmony is its own (`chamber.rs`), two bars a chord, eight-bar progressions that always
+turn on V7: i–♭VI–iv–V7, i–♭VImaj7–♭II–V7 (Neapolitan, preferred in Phrygian),
+i–♭vi–i–V7 (the uncanny chromatic mediant), imaj7–iv–♭VI–V7, i–III–iv–V7 and
+i–♭VII–♭VI–V7. Melody notes come from a chord scale: the mode's, with notes a
+semitone from the chord's giving way to them. The theme is a motif (a leap, then steps
+against it), its answer, the motif sequenced on the second chord, raised to a climax
+(sometimes inverted), a fall on the dominant and the leading tone (or the dominant's
+fifth) held; no bar leaps more than a sixth from the last.
+
+Sections: Intro the void (heartbeat, motif on the celesta, a far violin harmonic, low
+cellos); Neon the clarinet's theme over a ticking pizzicato ostinato; Swell the solo
+violin, violas in contrary motion, a bassoon line (a semitone into each new root), horn
+swells, celesta echoes, low piano octaves; Night shift a build (tremolo layering, the
+engine, low piano clusters with a minor ninth, the horn calling the motif) to the theme
+in violin, violas and cellos in octaves; Fade the clarinet then the cellos, thinning.
+The last section ends on a held i(maj7, 9) chord, the clarinet home on the tonic and the
+motif once more on the celesta. Default plan 4:8:8:16:10 shared to the length.
+
+Mix: a hall (or the Noir hall), no ensemble, orchestral seating (violin left, low
+strings right); about -19 LUFS, LRA about 15 LU, peaks around -2 dBFS. Checked: the
+other nine styles write identical fingerprints, titles, sounds and levels across 1,440
+pieces.
+
+## D26 — Orbit (2026-11-19)
+
+An eleventh style from a brief for a minimalist score: eerie, hypnotic and serious, a
+steady pulse in 15/8 felt as seven and eight, A minor with a relative-major ambiguity,
+soft felt piano, glockenspiel, a Hammond-style organ, bass guitar, clean acoustic guitar
+and tubular bells, built on one short repeating piano figure with layers entering one at
+a time, a peak with the bells, and the layers dropping away back to the piano. Nothing
+from the brief's references is copied: the figure, the patterns and the bell melody are
+written by the seed.
+
+- **A style can have a metre** (`Style::meter`, like `Style::key`): choosing Orbit sets
+  15/8 as well as 92 bpm and A minor, and choosing a style without one from a style's own
+  metre goes back to 4/4 (`Style::meter_from`). 15/8 is in the Metre list. The CLI writes
+  a style in its metre. Orbit works in any metre: its pulse is the quaver, and a bar is
+  felt as two groups (fifteen as seven and eight).
+- **The loop**: the figure is a quaver on every pulse for two bars, each group cut into
+  cells of two and three, each cell a small shape on the tonic triad plus one colour (the
+  ninth or the seventh), the second bar answering the first in its last group. It plays
+  unchanged from the first bar to the last (a test checks two-bar cycles match).
+  Under it the harmony moves two bars a chord: i, ♭VI, III, iv and ♭VII suspended
+  (no leading note), and ♭VII never goes to III, so the relative major is heard but
+  never arrived at. The other loops: the bass on each group, the glockenspiel's five-note
+  cell in dotted crotchets (five to a bar of fifteen, across the seven and eight), the
+  organ's chords voiced close to the last, the guitar's counter-line a fixed shape on the
+  current chord's notes.
+- **Accumulation, no jumps**: each layer's presence is a curve over its sections (bass,
+  then glockenspiel in the Neon; organ, then guitar in the Swell; all at the peak; out in
+  the same order through the Fade), written as expression (CC11) a step a quaver, so
+  layers fade in and out; velocities follow an intensity that rises section by section
+  and falls through the Fade. The tubular bells play only in the Night shift, a slow
+  arc on the chord's notes, a note a group (some held over), the loudest notes in the
+  piece. The last bar is the piano's figure gathered into a rolled A minor seventh (also
+  C major's sixth), held.
+- Sounds: GeneralUser GS (bundled) Grand Piano with its top cut at 2.6 kHz and a soft
+  touch for the felt piano, Glockenspiel, Tubular Bells, and three new alternatives
+  left out of the other styles' choosing (`ORBIT_SOUNDS`): Drawbar Organ (GM 16, Keys),
+  Finger Bass (GM 33, Bass) and Steel Guitar (GM 25, Pluck, trimmed +9.6 dB to match the
+  koto). A concert hall, dark reverb, a little tape drift and echo wow, no ensemble, no
+  drums or city. About -20 LUFS, LRA about 12 LU, peaks -2 to -4 dBFS; short-term
+  loudness climbs steadily from about -28 to -16 LUFS at the bells and falls away.
+  Checked: the other ten styles write identical fingerprints and titles across 1,200
+  pieces.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

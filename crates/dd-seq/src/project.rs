@@ -407,6 +407,48 @@ pub fn block_labels(blocks: &[Block]) -> Vec<String> {
         .collect()
 }
 
+/// Share `bars` among sections now `lens` long, in proportion to their lengths, keeping
+/// each at least a bar and summing to `bars` exactly (when there are no more sections
+/// than bars). Whole sums rarely divide evenly, so it keeps phrases where it can: when
+/// every section is a multiple of 4 (or 2) bars it hands out whole 4- (or 2-) bar
+/// phrases by largest remainder, and the bars over (fewer than a phrase) go to the last
+/// section, to hold the ending longer.
+pub fn share_bars(lens: &[u32], bars: u32) -> Vec<u32> {
+    let n = lens.len() as u32;
+    if n == 0 {
+        return Vec::new();
+    }
+    if bars <= n {
+        return (0..n).map(|i| u32::from(i < bars)).collect();
+    }
+    let lens: Vec<u32> = lens.iter().map(|l| (*l).max(1)).collect();
+    let total: u32 = lens.iter().sum();
+    let unit = [4u32, 2].into_iter().find(|u| lens.iter().all(|l| l % u == 0) && bars >= u * n).unwrap_or(1);
+    let units = bars / unit;
+    let quota: Vec<f64> = lens.iter().map(|l| *l as f64 * units as f64 / total as f64).collect();
+    let mut got: Vec<u32> = quota.iter().map(|q| (q.floor() as u32).max(1)).collect();
+    // the largest remainders (the longer section on a tie) get the units left; when the
+    // floor of one at a bar made too many, the smallest remainders give one back
+    let rest = |i: usize, got: &[u32]| quota[i] - got[i] as f64;
+    while got.iter().sum::<u32>() < units {
+        let i = (0..got.len())
+            .max_by(|&a, &b| rest(a, &got).total_cmp(&rest(b, &got)).then(lens[a].cmp(&lens[b])).then(b.cmp(&a)))
+            .unwrap_or(0);
+        got[i] += 1;
+    }
+    while got.iter().sum::<u32>() > units {
+        let Some(i) = (0..got.len()).filter(|&i| got[i] > 1).min_by(|&a, &b| rest(a, &got).total_cmp(&rest(b, &got))) else {
+            break;
+        };
+        got[i] -= 1;
+    }
+    let mut out: Vec<u32> = got.iter().map(|g| g * unit).collect();
+    if let Some(last) = out.last_mut() {
+        *last += bars - units * unit;
+    }
+    out
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Project {
@@ -702,7 +744,7 @@ impl Project {
     }
 
     /// Change the length, sharing the change among the sections in proportion to their
-    /// lengths (each keeps at least a bar).
+    /// lengths, as [`share_bars`] does (each keeps at least a bar).
     pub fn stretch_to(&mut self, bars: u32) {
         let blocks = self.arrangement();
         if blocks.is_empty() || bars < blocks.len() as u32 {
@@ -710,21 +752,7 @@ impl Project {
             return;
         }
         let lens: Vec<u32> = blocks.iter().map(|b| b.bars).collect();
-        let total: u32 = lens.iter().sum();
-        let mut fresh: Vec<u32> = lens.iter().map(|l| ((*l as u64 * bars as u64 / total.max(1) as u64) as u32).max(1)).collect();
-        // hand out what rounding left, to the longest first, or take it back from them
-        let mut order: Vec<usize> = (0..fresh.len()).collect();
-        order.sort_by_key(|i| std::cmp::Reverse(lens[*i]));
-        let mut k = 0;
-        while fresh.iter().sum::<u32>() != bars && k < 10_000 {
-            let i = order[k % order.len()];
-            if fresh.iter().sum::<u32>() < bars {
-                fresh[i] += 1;
-            } else if fresh[i] > 1 {
-                fresh[i] -= 1;
-            }
-            k += 1;
-        }
+        let fresh = share_bars(&lens, bars);
         let blocks: Vec<Block> = blocks.into_iter().zip(fresh).map(|(b, n)| Block { bars: n, ..b }).collect();
         let origin: Vec<Option<usize>> = (0..blocks.len()).map(Some).collect();
         self.rearrange(&blocks, &origin);
@@ -851,5 +879,33 @@ impl Project {
 
     pub fn from_json(s: &str) -> Result<Project, String> {
         serde_json::from_str(s).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod share_tests {
+    use super::share_bars;
+
+    #[test]
+    fn sections_share_a_new_length_in_proportion() {
+        // 17 phrases of 4 shared 8:16:8:16:8 (the first Intro-length one gets the odd one), the 2 bars over held at the end
+        assert_eq!(share_bars(&[8, 16, 8, 16, 8], 70), vec![12, 20, 8, 20, 8 + 2]);
+        assert_eq!(share_bars(&[8, 16, 8, 16, 8], 112), vec![16, 32, 16, 32, 16]);
+        assert_eq!(share_bars(&[4, 4], 3), vec![2, 1]);
+        assert_eq!(share_bars(&[3, 5], 1), vec![1, 0]);
+        assert!(share_bars(&[], 8).is_empty());
+        for lens in [vec![8, 16, 8, 16, 8], vec![3, 5, 7], vec![2, 6, 4, 2], vec![1, 40], vec![12, 12, 12]] {
+            for bars in 5..200 {
+                let s = share_bars(&lens, bars);
+                assert_eq!(s.iter().sum::<u32>(), bars, "{lens:?} → {bars}");
+                assert!(s.iter().all(|b| *b >= 1));
+                let total: u32 = lens.iter().sum();
+                // none strays from its share by more than a phrase and the bars over
+                for (l, b) in lens.iter().zip(&s) {
+                    let share = *l as f64 * bars as f64 / total as f64;
+                    assert!((*b as f64 - share).abs() < 8.0, "{lens:?} → {bars}: {s:?}");
+                }
+            }
+        }
     }
 }

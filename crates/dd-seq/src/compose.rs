@@ -96,6 +96,18 @@ pub enum Style {
     /// introduced on the piano, passed to the cellos, reharmonised for a woodwind or horn,
     /// built to one peak in full strings and brought home to a final cadence.
     Homeward,
+    /// Homeward with its instruments chosen (D24): the theme on a soft electric piano,
+    /// then violas, a clarinet answered by cellos, full strings at the peak and the solo
+    /// piano home to a long-held chord, its lift reaching the relative major.
+    Return,
+    /// A chamber orchestra with a dark sci-fi noir twist (D25): one theme passed from a
+    /// clarinet to a solo violin to the strings in octaves, over a glass drone and a sub
+    /// that beats like a heart, chromatic noir harmony, a minor-major ninth to end.
+    Chamber,
+    /// A hypnotic minimal score in 15/8 (D26): one looping two-bar piano figure, layers
+    /// arriving one at a time (bass guitar, glockenspiel, organ, acoustic guitar) to a peak
+    /// of tubular bells, then leaving one by one back to the piano.
+    Orbit,
 }
 
 /// The sounds added to the palette for Homeward: the other styles leave them out of
@@ -103,8 +115,19 @@ pub enum Style {
 pub(crate) const HOMEWARD_SOUNDS: [&str; 5] = ["Synth Strings (FreePats)", "Viola", "Clarinet", "French Horn", "Concert Harp (FreePats)"];
 
 impl Style {
-    pub const ALL: [Style; 8] =
-        [Style::Nocturne, Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict, Style::Homeward];
+    pub const ALL: [Style; 11] = [
+        Style::Nocturne,
+        Style::Pursuit,
+        Style::Blackout,
+        Style::Momento,
+        Style::Noir,
+        Style::Overcity,
+        Style::Derelict,
+        Style::Homeward,
+        Style::Return,
+        Style::Chamber,
+        Style::Orbit,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -116,6 +139,9 @@ impl Style {
             Style::Overcity => "Overcity",
             Style::Derelict => "Derelict",
             Style::Homeward => "Homeward",
+            Style::Return => "Return",
+            Style::Chamber => "Chamber",
+            Style::Orbit => "Orbit",
         }
     }
 
@@ -137,6 +163,15 @@ impl Style {
             Style::Homeward => {
                 "Slow, warm and quietly hopeful: one singable theme, on the piano, then the cellos, a woodwind or horn, full strings at a single peak, and home to a final cadence"
             }
+            Style::Return => {
+                "Reflective and quietly hopeful, at dawn: one singable theme on a soft electric piano, then violas, a clarinet answered by cellos, full strings at a single peak, and the solo piano home to a long-held chord"
+            }
+            Style::Orbit => {
+                "Hypnotic and quietly uneasy, in 15/8: one looping piano figure, then a bass guitar, glockenspiel, organ and acoustic guitar one at a time, tubular bells at the peak, and back to the piano alone"
+            }
+            Style::Chamber => {
+                "A chamber orchestra in a dark, sci-fi noir: a ticking pizzicato, the theme on a clarinet, then a solo violin, a horn and celesta, over a glass drone and a sub like a heartbeat; strings in octaves at the climax, a minor-major ninth to end"
+            }
         }
     }
 
@@ -151,6 +186,37 @@ impl Style {
             Style::Overcity => 60.0,
             Style::Derelict => 48.0,
             Style::Homeward => 69.0,
+            Style::Return => 66.0,
+            Style::Chamber => 62.0,
+            Style::Orbit => 92.0,
+        }
+    }
+
+    /// The key it is written for, if any, which choosing it (and each new piece in it)
+    /// sets: Return's E minor.
+    pub fn key(self) -> Option<(u8, Mode)> {
+        match self {
+            Style::Return => Some((4, Mode::Aeolian)),
+            Style::Orbit => Some((9, Mode::Aeolian)),
+            _ => None,
+        }
+    }
+
+    /// The metre it is written in, if any, which choosing it sets: Orbit's 15/8.
+    pub fn meter(self) -> Option<(u32, u32)> {
+        match self {
+            Style::Orbit => Some((15, 8)),
+            _ => None,
+        }
+    }
+
+    /// The metre a piece takes on changing to this style from one in `current`: its
+    /// own, or back to 4/4 from another style's own.
+    pub fn meter_from(self, current: (u32, u32)) -> (u32, u32) {
+        match self.meter() {
+            Some(m) => m,
+            None if Style::ALL.iter().any(|s| s.meter() == Some(current)) => (4, 4),
+            None => current,
         }
     }
 
@@ -165,7 +231,11 @@ impl Style {
             Style::Overcity => (8.0, 4),
             Style::Derelict => (14.0, 6),
             // (Homeward's harmony follows its theme, a chord a bar)
-            Style::Homeward => (3.5, 1),
+            Style::Homeward | Style::Return => (3.5, 1),
+            // (Chamber's moves two bars a chord)
+            Style::Chamber => (8.0, 2),
+            // (Orbit's moves two bars a chord under its loop)
+            Style::Orbit => (10.0, 2),
         }
     }
 }
@@ -345,7 +415,7 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         Style::Noir => *rng.pick(&NOIR),
         Style::Overcity => *rng.pick(&OVERCITY),
         Style::Derelict => *rng.pick(&DERELICT),
-        Style::Homeward => *rng.pick(&ROMANTIC),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => *rng.pick(&ROMANTIC),
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
@@ -415,7 +485,7 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 _ => vec![a, b, (a + 6) % 12],
             },
             // (Homeward harmonises its theme itself; these stand in for anything else)
-            Style::Homeward => vec![a, b, c],
+            Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => vec![a, b, c],
         };
         let prev = out.last().map(|c| c.voicing.clone());
         let voicing =
@@ -466,6 +536,15 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
     }
     if style == Style::Homeward {
         return crate::homeward::plan(bars);
+    }
+    if style == Style::Return {
+        return crate::homeward::return_plan(bars);
+    }
+    if style == Style::Chamber {
+        return crate::chamber::plan(bars);
+    }
+    if style == Style::Orbit {
+        return crate::orbit::plan(bars);
     }
     if style == Style::Overcity && bars >= cb * 5 {
         // a long breath first, the theme, its development, the great swell, and dissolving
@@ -547,7 +626,16 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
     // section or else the longest (its own stream, so the rest is as it was)
     let mut ir = Rng::stream(r.seed, "intro-form");
     if units >= 4
-        && ir.chance(if matches!(r.style, Style::Noir | Style::Overcity | Style::Derelict | Style::Homeward) { 1.0 } else { 0.35 })
+        && ir.chance(
+            if matches!(
+                r.style,
+                Style::Noir | Style::Overcity | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit
+            ) {
+                1.0
+            } else {
+                0.35
+            },
+        )
     {
         let len = if units >= 10 { 2 * cb } else { cb };
         let from = if plan[0].1 > len {
@@ -636,23 +724,47 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Long", "Quiet", "Last", "Distant", "Patient", "Winter", "Gentle", "Evening", "Northern", "Open"],
             ["Road", "Harbour", "Light", "Fields", "Lantern", "Return", "Shore", "Hearth", "Promise", "Horizon"],
         ),
+        Style::Return => (
+            ["Dawn", "First", "Early", "Pale", "Clear", "Rising", "Still", "Golden", "Morning", "Slow"],
+            ["Return", "Crossing", "Shoreline", "Light", "Homecoming", "Harbour", "Hills", "Window", "Tide", "Path"],
+        ),
+        Style::Chamber => (
+            ["Glass", "Cold", "Silent", "Synthetic", "Last", "Pale", "Hollow", "Velvet", "Iron", "Midnight"],
+            ["Quartet", "Requiem", "Chamber", "Elegy", "Signal", "Archive", "Serenade", "Inquest", "Sonata", "Memory"],
+        ),
+        Style::Orbit => (
+            ["Slow", "Turning", "Still", "Distant", "Glass", "Silent", "Endless", "Pale", "Hidden", "Quiet"],
+            ["Orbit", "Mechanism", "Pendulum", "Lighthouse", "Spiral", "Observatory", "Clockwork", "Tide", "Carousel", "Satellite"],
+        ),
     };
     p.title = format!("{} {}", names_rng.pick(&adjectives), names_rng.pick(&nouns));
+    // Chamber writes its own orchestra
+    if style == Style::Chamber {
+        crate::chamber::write(&mut p, r, &secs, density);
+        return finish(p, r);
+    }
+    // and Orbit its ensemble
+    if style == Style::Orbit {
+        crate::orbit::write(&mut p, r, &secs, density);
+        return finish(p, r);
+    }
 
     // ---------------------------------------------------------------- sounds
     // each part from its role's alternatives: the usual sound most often
     let mut snd = Rng::stream(r.seed, "sounds");
     let pad_role = if snd.chance(0.25) { Role::Strings } else { Role::Pad };
     // (Derelict's strings have a track of their own: its pad is the tape-worn synth)
-    let pad_role = if matches!(style, Style::Derelict | Style::Homeward) { Role::Pad } else { pad_role };
+    let pad_role = if matches!(style, Style::Derelict | Style::Homeward | Style::Return) { Role::Pad } else { pad_role };
     let mut pick = |role: Role, not: Option<&Source>| -> Alt {
         let alts: Vec<Alt> = alternatives(role)
             .into_iter()
             // a stab can't hold a chord
             .filter(|a| a.bundled && a.label != "Dark Stab" && not.is_none_or(|n| !same_sound(n, &a.source)))
             // (sounds added for Derelict, so the other styles choose as they always have)
-            .filter(|a| matches!(style, Style::Derelict | Style::Homeward) || !DERELICT_SOUNDS.contains(&a.label))
-            .filter(|a| style == Style::Homeward || !HOMEWARD_SOUNDS.contains(&a.label))
+            .filter(|a| matches!(style, Style::Derelict | Style::Homeward | Style::Return) || !DERELICT_SOUNDS.contains(&a.label))
+            .filter(|a| matches!(style, Style::Homeward | Style::Return) || !HOMEWARD_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::chamber::CHAMBER_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::orbit::ORBIT_SOUNDS.contains(&a.label))
             .collect();
         let w: Vec<f64> = match style {
             Style::Nocturne => (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect(),
@@ -662,7 +774,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 .iter()
                 .map(|a| match (prefers(style, role, a.label), style) {
                     (true, _) => 3.0,
-                    (false, Style::Derelict | Style::Homeward) => 0.0,
+                    (false, Style::Derelict | Style::Homeward | Style::Return) => 0.0,
                     _ => 0.4,
                 })
                 .collect(),
@@ -688,6 +800,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Derelict => [0.3, 2.0, 5.0],
         // intimate and natural: the hall, now and then the cathedral
         Style::Homeward => [6.0, 1.0, 0.0],
+        // the concert hall, always
+        Style::Return | Style::Chamber | Style::Orbit => [1.0, 0.0, 0.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -715,7 +829,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Noir => (-2.0, -5.0, -4.0, -2.0),
         Style::Overcity => (-2.0, -4.0, -2.0, -3.0),
         Style::Derelict => (-3.0, -3.0, 0.0, 0.0),
-        Style::Homeward => (-4.0, -3.0, 0.0, 0.0),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => (-4.0, -3.0, 0.0, 0.0),
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -742,11 +856,11 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ..s
         },
     );
-    let t_keys = matches!(style, Style::Momento | Style::Noir | Style::Homeward).then(|| {
+    let t_keys = matches!(style, Style::Momento | Style::Noir | Style::Homeward | Style::Return).then(|| {
         // from its own stream, so the other parts' sounds stay as they were
         let mut kr = Rng::stream(r.seed, "keys");
         let alts: Vec<Alt> = alternatives(Role::Keys).into_iter().filter(|a| a.bundled).collect();
-        let other = if style == Style::Homeward { 0.0 } else { 0.4 };
+        let other = if matches!(style, Style::Homeward | Style::Return) { 0.0 } else { 0.4 };
         let w: Vec<f64> = alts.iter().map(|a| if prefers(style, Role::Keys, a.label) { 3.0 } else { other }).collect();
         let alt = alts[kr.weighted(&w)].clone();
         add(Role::Keys, alt, Strip { reverb: 0.45, echo: 0.2, pan: -0.25, gain_db: 1.0, ..s })
@@ -768,7 +882,26 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     });
     // Homeward's strings: cellos (or violas) for the theme, a string section, and a
     // double bass (their own stream, so the other parts' sounds stay as they were)
-    let strings = (style == Style::Homeward).then(|| {
+    // (Return's are chosen: violas for the theme, and an electric piano and cellos of
+    // their own)
+    let mut extra = None;
+    let strings = matches!(style, Style::Homeward | Style::Return).then(|| {
+        if style == Style::Return {
+            let mut or = Rng::stream(r.seed, "return-strings");
+            let named = |role: Role, label: &str| alternatives(role).into_iter().find(|a| a.label == label).expect("bundled");
+            let section = {
+                let alts = [named(Role::Strings, "Slow Strings"), named(Role::Strings, "Strings")];
+                alts[or.weighted(&[3.0, 2.0])].clone()
+            };
+            let tc = add(Role::Strings, named(Role::Strings, "Viola"), Strip { reverb: 0.5, pan: -0.3, width: 1.2, gain_db: -1.0, ..s });
+            let ts = add(Role::Strings, section, Strip { reverb: 0.6, width: 1.6, gain_db: -3.0, ..s });
+            let tb = add(Role::Bass, named(Role::Bass, "Contrabass"), Strip { reverb: 0.35, pan: -0.1, gain_db: -2.0, ..s });
+            let ep = add(Role::Keys, named(Role::Keys, "Electric Piano"), Strip { reverb: 0.45, pan: -0.1, gain_db: 1.0, ..s });
+            let counter =
+                add(Role::Strings, named(Role::Strings, "Cello"), Strip { reverb: 0.5, pan: 0.25, width: 1.2, gain_db: -1.0, ..s });
+            extra = Some((ep, counter));
+            return (tc, ts, tb);
+        }
         let mut or = Rng::stream(r.seed, "homeward-strings");
         let mut take = |role: Role, liked: &[f64], labels: &[&str]| {
             let alts: Vec<Alt> = alternatives(role).into_iter().filter(|a| a.bundled).collect();
@@ -794,6 +927,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             pad: t_pad,
             lead: t_lead,
             harp: t_pluck,
+            ep: extra.map(|e| e.0),
+            counter: extra.map(|e| e.1),
         };
         crate::homeward::mix(&mut p, &tracks);
         crate::homeward::write(&mut p, &tracks, r, &secs, density);
@@ -1077,7 +1212,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             }
         }
         // (Derelict is written by `derelict`)
-        Style::Nocturne | Style::Derelict | Style::Homeward => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
@@ -1182,7 +1317,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         // few notes, held, a sigh now and then
         Style::Noir => vec![&[3.0, 1.0], &[4.0], &[2.0, 2.0], &[1.5, 0.5, 2.0], &[6.0, 2.0]],
         // (Overcity writes its own theme; these only keep the stream as it would be)
-        Style::Overcity | Style::Derelict | Style::Homeward => vec![&[4.0], &[6.0, 2.0]],
+        Style::Overcity | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => vec![&[4.0], &[6.0, 2.0]],
     };
     let phrase_beats = (phrase_bars * beats_per_bar) as f64;
     let rhythm_a: Vec<f64> = {
@@ -1594,7 +1729,14 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Momento | Style::Noir | Style::Derelict | Style::Homeward => {}
+        Style::Nocturne
+        | Style::Momento
+        | Style::Noir
+        | Style::Derelict
+        | Style::Homeward
+        | Style::Return
+        | Style::Chamber
+        | Style::Orbit => {}
     }
     if style == Style::Noir {
         // told in music alone: no rain, hum, neon or thunder
@@ -1638,7 +1780,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Derelict | Style::Homeward => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => {}
     }
     if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
@@ -2582,6 +2724,11 @@ fn prefers(style: Style, role: Role, label: &str) -> bool {
         (Style::Homeward, Role::Bass) => &["Pure Sub"],
         (Style::Homeward, Role::Pluck) => &["Concert Harp (FreePats)", "Harp"],
         (Style::Homeward, Role::Keys) => &["Grand Piano", "Electric Piano"],
+        (Style::Return, Role::Pad) => &["Synth Strings (FreePats)"],
+        (Style::Return, Role::Lead) => &["Clarinet"],
+        (Style::Return, Role::Bass) => &["Pure Sub"],
+        (Style::Return, Role::Pluck) => &["Concert Harp (FreePats)"],
+        (Style::Return, Role::Keys) => &["Grand Piano"],
         _ => &[],
     };
     liked.is_empty() || liked.contains(&label)
@@ -3095,7 +3242,9 @@ mod tests {
     #[test]
     fn every_style_fits_any_tempo_metre_and_length() {
         let f = fonts();
-        for style in [Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict, Style::Homeward] {
+        for style in
+            [Style::Pursuit, Style::Blackout, Style::Momento, Style::Noir, Style::Overcity, Style::Derelict, Style::Homeward, Style::Return]
+        {
             for seed in 0..15u64 {
                 let r = Recipe { style, ..Recipe::random(seed) };
                 for (bpm, meter, bars) in
@@ -3372,8 +3521,11 @@ mod tests {
             runs.insert(pluck.notes.iter().map(|n| (n.start - first, n.key)).collect::<Vec<_>>());
         }
         assert!(runs.len() >= 15, "only {} different glissandi in 16 seeds", runs.len());
-        // (Homeward, written after, shares its contrabass and pizzicato on purpose)
-        for style in Style::ALL.into_iter().filter(|s| !matches!(s, Style::Derelict | Style::Homeward)) {
+        // (Homeward and Chamber, written after, share its contrabass and pizzicato on purpose)
+        for style in Style::ALL
+            .into_iter()
+            .filter(|s| !matches!(s, Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit))
+        {
             for seed in 0..60 {
                 let p = compose(&Recipe { seed, style, ..Recipe::random(seed) }, style.tempo(), (4, 4), 32);
                 for t in &p.tracks {

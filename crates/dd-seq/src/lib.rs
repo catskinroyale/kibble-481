@@ -2,6 +2,7 @@
 //! engine that plays and mixes it live or offline, SoundFont instruments, recording,
 //! and MIDI and WAV files.
 
+mod chamber;
 pub mod city;
 pub mod compose;
 pub mod demo;
@@ -9,6 +10,7 @@ pub mod engine;
 pub mod fonts;
 mod homeward;
 pub mod midi_file;
+mod orbit;
 pub mod palette;
 pub mod project;
 pub mod record;
