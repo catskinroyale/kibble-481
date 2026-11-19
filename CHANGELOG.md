@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-11-19
+
+- **Orbit** keeps the brief's "no sudden changes" in any arrangement: each layer's level
+  can no longer move faster than a full fade in about four seconds, so sections in any
+  order (🎲 New piece, or your own) flow into each other, and the peak's last tubular
+  bell now rings on into the Fade instead of being cut off as it starts.
+
 ## 0.9.0 — 2026-11-19
 
 - **Orbit**, an eleventh style: a hypnotic minimalist score in 15/8 (seven and eight

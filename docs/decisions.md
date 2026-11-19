@@ -471,7 +471,10 @@ written by the seed.
   then glockenspiel in the Neon; organ, then guitar in the Swell; all at the peak; out in
   the same order through the Fade), written as expression (CC11) a step a quaver, so
   layers fade in and out; velocities follow an intensity that rises section by section
-  and falls through the Fade. The tubular bells play only in the Night shift, a slow
+  and falls through the Fade. Both are worked out a quaver at a time over the whole
+  piece first and slew-limited (a full fade takes about four seconds at least), so any
+  arrangement of sections flows without a jump (0.9.1; a test checks orders and random
+  plans). The bells are never faded, so their last note rings on past the peak. The tubular bells play only in the Night shift, a slow
   arc on the chord's notes, a note a group (some held over), the loudest notes in the
   piece. The last bar is the piano's figure gathered into a rolled A minor seventh (also
   C major's sixth), held.

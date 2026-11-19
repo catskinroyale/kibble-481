@@ -393,6 +393,35 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
     let [piano, bass, glock, organ, guitar, bells] = tr;
     let mut organ_prev: Vec<i32> = Vec::new();
     let mut bell_prev: Option<(usize, i32)> = None;
+    // every layer's presence and the intensity, a value a quaver over the whole piece,
+    // never moving faster than a full fade in about four seconds: so in any order of
+    // sections nothing jumps (the bells only play at the peak, but are never faded, so
+    // their last note rings on)
+    let nq = end.div_ceil(q) as usize;
+    let mut env = vec![[0.0f64; 6]; nq];
+    let mut force = vec![0.0f64; nq];
+    let mut prev: Option<([f64; 6], f64)> = None;
+    for (si, &(part, a, z)) in secs.iter().enumerate() {
+        let zz = if si + 1 == secs.len() { end } else { z };
+        let span = (zz - a).max(1) as f64;
+        for qi in (a / q) as usize..(zz.div_ceil(q) as usize).min(nq) {
+            let u = (qi as u32 * q).saturating_sub(a) as f64 / span;
+            let mut e = LAYERS.map(|l| if l == Layer::Bells { 1.0 } else { presence(l, part, u) });
+            let mut x = intensity(part, u);
+            if let Some((pe, px)) = prev {
+                for (v, p) in e.iter_mut().zip(pe) {
+                    *v = p + (*v - p).clamp(-0.08, 0.08);
+                }
+                x = px + (x - px).clamp(-0.03, 0.03);
+            }
+            (env[qi], force[qi]) = (e, x);
+            prev = Some((e, x));
+        }
+    }
+    let at = |t: u32| ((t / q) as usize).min(nq.saturating_sub(1));
+    let pres = |layer: Layer, t: u32| env[at(t)][LAYERS.iter().position(|l| *l == layer).unwrap_or(0)];
+    let inten = |t: u32| force[at(t)];
+    let vel = |base: f64, t: u32| base * (0.55 + 0.45 * inten(t));
 
     for (si, &(part, a, z)) in secs.iter().enumerate() {
         let nb = (z - a).div_ceil(bar);
@@ -409,7 +438,6 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
             Part::Fade => fade,
         };
         let u_at = |t: u32| (t.saturating_sub(a)) as f64 / span;
-        let vel = |base: f64, t: u32| base * (0.55 + 0.45 * intensity(part, u_at(t)));
         // the bells' melody: an arc over eight bars, on the chord's notes, repeated
         let slots_per_bar = gstarts.len() as u32;
         let phrase = (8 * slots_per_bar).max(1);
@@ -441,8 +469,7 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
             for (gi, &g) in gstarts.iter().enumerate() {
                 let t = t_bar + g * q;
                 let len = gstarts.get(gi + 1).map_or(n, |x| *x) - g;
-                let u = u_at(t);
-                if t < zz && presence(Layer::Bass, part, u) > 0.02 {
+                if t < zz && pres(Layer::Bass, t) > 0.02 {
                     let key = if gi > 0 && parity == 1 { broot + 7 } else { broot };
                     w.note(bass, t, len * q - q / 4, key, vel(78.0, t) + if gi == 0 { 6.0 } else { 0.0 });
                 }
@@ -451,12 +478,12 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
             for pos in (0..2 * n).step_by(3).filter(|p| p / n == parity) {
                 let t = t_bar + (pos % n) * q;
                 let i = (pos / 3) as usize % lp.glock.len();
-                if t < zz && lp.glock_rest != Some(i) && presence(Layer::Glock, part, u_at(t)) > 0.02 {
+                if t < zz && lp.glock_rest != Some(i) && pres(Layer::Glock, t) > 0.02 {
                     w.note(glock, t, 3 * q, low + lp.glock[i], vel(62.0, t) + if pos % n == 0 { 6.0 } else { 0.0 });
                 }
             }
             // the organ: the chord held two bars, voiced close to the last
-            if k % 2 == 0 && presence(Layer::Organ, part, u_at(t_bar + bar)) > 0.02 {
+            if k % 2 == 0 && pres(Layer::Organ, t_bar + bar) > 0.02 {
                 let mut v: Vec<i32> = pcs.iter().map(|&pc| pitch(pc, 61)).collect();
                 if !organ_prev.is_empty() {
                     v = pcs
@@ -483,7 +510,7 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
             let gl: Vec<i32> = (55..=76).filter(|p| pcs.contains(&(p - root).rem_euclid(12))).collect();
             for &(at, idx) in lp.guitar.iter().filter(|(at, _)| at / n == parity) {
                 let t = t_bar + (at % n) * q;
-                if t < zz && presence(Layer::Guitar, part, u_at(t)) > 0.02 && !gl.is_empty() {
+                if t < zz && pres(Layer::Guitar, t) > 0.02 && !gl.is_empty() {
                     w.note(guitar, t, 2 * q, gl[idx.min(gl.len() - 1)], vel(60.0, t));
                 }
             }
@@ -541,8 +568,7 @@ pub(crate) fn write(p: &mut Project, r: &Recipe, secs: &[(Part, u32, u32)], _den
             let mut last_v = -1.0;
             let mut t = a;
             while t < zz {
-                let u = u_at(t);
-                let v = (127.0 * presence(*layer, part, u) * (0.72 + 0.28 * intensity(part, u))).round();
+                let v = (127.0 * pres(*layer, t) * (0.72 + 0.28 * inten(t))).round();
                 if v != last_v {
                     w.cc(track, t, 11, v);
                     last_v = v;
@@ -633,6 +659,30 @@ mod tests {
             assert!(b[0].1 >= 4 * bar);
             assert_eq!(cycle(0), cycle(1), "seed {seed}");
             assert_eq!(cycle(0), cycle(5), "seed {seed}");
+        }
+    }
+
+    /// In any arrangement no layer jumps: each section starts where the last left off
+    /// and eases into its own levels.
+    #[test]
+    fn no_sudden_changes_in_any_order() {
+        use crate::compose::{compose_plan, random_plan};
+        let orders: [&[Part]; 3] = [
+            &[Part::Intro, Part::Neon, Part::NightShift, Part::Swell, Part::NightShift, Part::Fade],
+            &[Part::Swell, Part::Fade, Part::Neon, Part::NightShift, Part::Intro],
+            &[Part::NightShift, Part::Intro, Part::Fade, Part::Swell],
+        ];
+        let mut plans: Vec<Vec<(Part, u32)>> = orders.iter().map(|o| o.iter().map(|p| (*p, 8)).collect()).collect();
+        for seed in 0..12 {
+            let r = Recipe { style: Style::Orbit, ..Recipe::random(seed) };
+            plans.push(random_plan(&r, 92.0, (15, 8), 48));
+        }
+        for (i, plan) in plans.iter().enumerate() {
+            let p = compose_plan(&Recipe { style: Style::Orbit, ..Recipe::random(i as u64) }, 92.0, (15, 8), plan);
+            for t in &p.tracks {
+                let cc: Vec<i16> = t.ctrls.iter().filter(|c| c.kind == CtrlKind::Cc(11)).map(|c| c.value).collect();
+                assert!(cc.windows(2).all(|w| (w[1] - w[0]).abs() <= 16), "{plan:?} {}: {cc:?}", t.name);
+            }
         }
     }
 
