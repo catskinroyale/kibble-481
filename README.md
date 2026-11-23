@@ -331,7 +331,8 @@ Load any other `.sf2` from the Sound tab.
   (CC74, the synth's filter) or expression.
 - **Overview** of every track above the roll; **sections** on the strip above the ruler
   (drag a section's name before or after another to move it, notes and all; drag its end
-  to resize it, a bar at a time; hover for new notes, copy before or after, and delete),
+  to resize it, a bar at a time). In the **Edit** row above the names each section has its
+  buttons: **↻** new notes, copy before, copy after, and **×** delete;
   also ordered in the Score tab. **⏮ ⏭** in the transport (or **[** and **]**) jump to the
   start of this section or the one before, and to the next, and bring it into view. The
   **playhead** has a strip of its own above the sections: click there to move it, or drag

@@ -1163,13 +1163,19 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
                 // the great swell: everything open, the horns an octave wider
                 Part::NightShift => {
+                    // (an octave above a note the chord already has is played once)
+                    let above = |k: u8| !c.voicing.contains(&(k + 12));
                     for &k in &c.voicing {
                         push(&mut t[t_pad].notes, c.start, ring, k, 66);
-                        push(&mut t[t_pad].notes, c.start, ring, k + 12, 54);
+                        if above(k) {
+                            push(&mut t[t_pad].notes, c.start, ring, k + 12, 54);
+                        }
                     }
                     for &k in &c.voicing {
                         push(&mut t[t_brass].notes, c.start, ring, k, 112);
-                        push(&mut t[t_brass].notes, c.start, ring, k + 12, 96);
+                        if above(k) {
+                            push(&mut t[t_brass].notes, c.start, ring, k + 12, 96);
+                        }
                     }
                     push(&mut t[t_brass].notes, c.start, ring, c.voicing[0] - 12, 100);
                     swell(&mut t[t_brass].ctrls, c.start, ring, 30, 127, 0.7);
@@ -4038,5 +4044,23 @@ mod section_tests {
             }
         }
         assert_ne!(p.tracks[k].notes, before.tracks[k].notes);
+    }
+
+    /// Overcity's great swell doubles the chords an octave up, but never strikes one key
+    /// twice at once on a track (the copy would cut the note off, or double it).
+    #[test]
+    fn no_key_is_struck_twice_at_once() {
+        for style in [Style::Overcity, Style::Vigil] {
+            for seed in 0..20 {
+                let p = compose(&Recipe { style, ..Recipe::random(seed) }, style.tempo(), (4, 4), 48);
+                for t in &p.tracks {
+                    let mut at: Vec<(u32, u8)> = t.notes.iter().map(|n| (n.start, n.key)).collect();
+                    let n = at.len();
+                    at.sort_unstable();
+                    at.dedup();
+                    assert_eq!(at.len(), n, "{style:?} seed {seed} {}", t.name);
+                }
+            }
+        }
     }
 }

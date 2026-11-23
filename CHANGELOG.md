@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.1 — 2026-11-23
+
+- **Section buttons in their own row**: new notes, copy before, copy after and delete now
+  sit in an Edit row above the section names, always shown, so dragging a section to move
+  it no longer takes their clicks. From the top: playhead, Edit, Sections, Bars.
+- **Doubled notes fixed**: Overcity's and Vigil's Night shift wrote some brass and choir
+  notes twice at the same moment (an octave above a note the chord already held). The copy
+  cut the note off almost at once, and on a SoundFont doubled it. Those notes are now
+  written once, and playback treats any key struck twice at once on a track as one note,
+  so pieces saved before play correctly too.
+
 ## 0.10.0 — 2026-11-23
 
 - **Vigil**, a thirteenth style: Overcity watched over gently. Overcity's theme, chords,

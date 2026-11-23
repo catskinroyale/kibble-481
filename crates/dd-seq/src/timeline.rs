@@ -88,6 +88,16 @@ impl Timeline {
             let track = ti as u16;
             let mut notes = t.notes.clone();
             notes.sort_by_key(|n| (n.key, n.start));
+            // two copies of a key struck at once are one note, as long and loud as the
+            // longer and louder (else the first, cut to nothing, ends the second with it)
+            notes.dedup_by(|b, a| {
+                let same = a.key == b.key && a.start == b.start;
+                if same {
+                    a.len = a.len.max(b.len);
+                    a.vel = a.vel.max(b.vel);
+                }
+                same
+            });
             // a key can't sound twice on one track: end each note before the next on its key
             for i in 0..notes.len() {
                 if let Some(next) = notes.get(i + 1).copied()
@@ -190,6 +200,28 @@ mod tests {
         let offs = tl.events.iter().filter(|e| matches!(e.msg, Msg::Off(..))).count();
         assert_eq!(ons, offs);
         assert!((tl.music - 24.0 * 4.0 * 60.0 / 66.0).abs() < 1e-6);
+    }
+
+    /// A key written twice at the same moment sounds once, for the longer of the two,
+    /// rather than being cut off by its own copy.
+    #[test]
+    fn a_doubled_note_plays_once_and_whole() {
+        use crate::project::Note;
+        let mut p = rain_on_neon();
+        p.tracks.truncate(1);
+        p.tracks[0].ctrls.clear();
+        p.tracks[0].notes = vec![
+            Note { start: 0, len: 1920, key: 60, vel: 90 },
+            Note { start: 0, len: 3840, key: 60, vel: 70 },
+            Note { start: 0, len: 3840, key: 64, vel: 70 },
+        ];
+        let tl = Timeline::from_project(&p);
+        let of = |k: u8| tl.events.iter().filter(|e| matches!(e.msg, Msg::On(x, _) | Msg::Off(x) if x == k)).collect::<Vec<_>>();
+        let c = of(60);
+        assert_eq!(c.len(), 2, "{c:?}");
+        assert_eq!(c[0].msg, Msg::On(60, 90));
+        assert!((c[1].t - p.tick_secs(3840)).abs() < 1e-9);
+        assert_eq!(of(64).len(), 2);
     }
 
     #[test]

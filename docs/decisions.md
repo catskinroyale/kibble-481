@@ -587,6 +587,10 @@ transport control to skip to the next or previous section; sections reordered by
 - **The playhead's own strip** (16 px) above the Sections strip, with a larger handle:
   click or drag there to move or scrub it. Dragging on the sections had moved or resized
   them instead; scrubbing on the bar numbers still works.
+- **Section buttons in a row of their own** (Edit, 19 px) between the playhead strip and
+  the section names, shown for every section wide enough (a narrow one while the pointer
+  is over it). Drawn over the names, they lost their clicks to the drag that moves a
+  section. From the top: playhead, Edit, Sections, Bars.
 - **Skip by section**: ⏮ ⏭ in the transport, **[** and **]** on the keyboard; back goes
   to this section's start, or the one before when already there (or playing within a
   second of it); the roll scrolls to show it.

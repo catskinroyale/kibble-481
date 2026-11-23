@@ -25,6 +25,9 @@ const GUTTER: f32 = 58.0;
 const RULER_H: f32 = 40.0;
 /// The playhead's own strip, above the sections, to grab it by.
 const HEAD_H: f32 = 16.0;
+/// Each section's buttons (new notes, copies, delete), in a row of their own above its
+/// name, so dragging the name to move the section never takes their clicks.
+const TOOLS_H: f32 = 19.0;
 const LANE_H: f32 = 86.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -384,7 +387,8 @@ impl App {
         let row_h = (150.0 / n_tracks as f32).clamp(5.0, 16.0);
         let arr_h = row_h * n_tracks as f32 + 4.0;
         let head = Rect::from_min_max(full.min, pos2(full.right(), full.top() + HEAD_H));
-        let ruler = Rect::from_min_max(pos2(full.left(), head.bottom()), pos2(full.right(), head.bottom() + RULER_H));
+        let tools = Rect::from_min_max(pos2(full.left(), head.bottom()), pos2(full.right(), head.bottom() + TOOLS_H));
+        let ruler = Rect::from_min_max(pos2(full.left(), tools.bottom()), pos2(full.right(), tools.bottom() + RULER_H));
         let arr = Rect::from_min_max(pos2(full.left(), ruler.bottom()), pos2(full.right(), ruler.bottom() + arr_h));
         let lane = Rect::from_min_max(pos2(full.left(), full.bottom() - LANE_H), full.max);
         let roll = Rect::from_min_max(pos2(full.left(), arr.bottom() + 1.0), pos2(full.right(), lane.top() - 1.0));
@@ -465,7 +469,7 @@ impl App {
             top: roll.top(),
         };
         self.head_ui(ui, head, v, &t);
-        self.ruler_ui(ui, ruler, v, &t);
+        self.ruler_ui(ui, ruler, tools, v, &t);
         self.arrangement_ui(ui, arr, row_h, v, &t);
         self.notes_ui(ui, roll, v, &t);
         self.lane_ui(ui, lane, v, &t);
@@ -610,7 +614,7 @@ impl App {
         }
     }
 
-    fn ruler_ui(&mut self, ui: &mut egui::Ui, rect: Rect, v: View, t: &Tokens) {
+    fn ruler_ui(&mut self, ui: &mut egui::Ui, rect: Rect, tools: Rect, v: View, t: &Tokens) {
         let resp =
             ui.interact(Rect::from_min_max(pos2(v.left, rect.top()), rect.max), ui.scope_id().with("ruler"), Sense::click_and_drag());
         let p = &self.doc.project;
@@ -722,15 +726,24 @@ impl App {
                 );
             }
         }
-        // a hovered section's own buttons: new notes, copy before, copy after, delete
+        // each section's own buttons, in their row above it: new notes, copy before, copy
+        // after, delete (in a narrow section, shown while the pointer is over it)
         let can_regen = p.recipe.is_some() && p.plan().is_some();
         let can_delete = blocks.len() > 1;
         let pointer = ui.input(|i| i.pointer.hover_pos());
         let mut act = None;
+        let tp = ui.painter().with_clip_rect(tools);
+        tp.rect_filled(tools, 0.0, t.chrome);
+        tp.text(pos2(tools.left() + 8.0, tools.center().y), Align2::LEFT_CENTER, "Edit", t.font(10.0), t.text_dim);
+        tp.hline(tools.x_range(), tools.bottom() - 0.5, Stroke::new(1.0, t.divider));
+        let tools_grid = Rect::from_min_max(pos2(v.left, tools.top()), tools.max);
+        let bp = tp.with_clip_rect(tools_grid);
         for &(i, r) in &boxes {
-            let r = r.intersect(grid);
-            let hovered = dragging.is_none() && moving.is_none() && pointer.is_some_and(|pp| r.contains(pp));
-            if !hovered || r.width() < 4.0 * 17.0 + 14.0 {
+            bp.vline(r.left(), tools.top() + 3.0..=tools.bottom(), Stroke::new(1.0, t.accent.gamma_multiply(0.5)));
+            let r = Rect::from_min_max(pos2(r.left(), tools.top()), pos2(r.right(), tools.bottom())).intersect(tools_grid);
+            let wide = r.width() >= 4.0 * 17.0 + 10.0;
+            let over = pointer.is_some_and(|pp| r.contains(pp) || boxes.iter().any(|(k, b)| *k == i && b.contains(pp)));
+            if moving.is_some() || dragging.is_some() || r.width() < 4.0 * 17.0 || !(wide || over) {
                 continue;
             }
             let name = &labels[i];
@@ -740,13 +753,7 @@ impl App {
                 (SectionIcon::CopyAfter, true, format!("Copy this {name}, notes and all, after it")),
                 (SectionIcon::Delete, can_delete, format!("Take this {name} out, notes and all")),
             ];
-            let mut x = r.right() - 8.0 - 4.0 * 17.0;
-            // a backing so the buttons stand clear of the name
-            painter.rect_filled(
-                Rect::from_min_max(pos2(x - 3.0, r.top() + 1.0), pos2(r.right() - 7.0, r.bottom() - 1.0)),
-                3.0,
-                t.chrome.gamma_multiply(0.85),
-            );
+            let mut x = r.right() - 4.0 - 4.0 * 17.0;
             for (icon, enabled, help) in buttons {
                 let br = Rect::from_min_size(pos2(x, r.center().y - 7.5), vec2(15.0, 15.0));
                 let resp = ui.interact(
@@ -755,7 +762,7 @@ impl App {
                     if enabled { Sense::click() } else { Sense::hover() },
                 );
                 if resp.hovered() && enabled {
-                    painter.rect_filled(br, 3.0, t.hover);
+                    bp.rect_filled(br, 3.0, t.hover);
                 }
                 let c = if !enabled {
                     t.text_disabled
@@ -764,7 +771,7 @@ impl App {
                 } else {
                     t.text
                 };
-                paint_section_icon(&painter, br.shrink(2.5), icon, c);
+                paint_section_icon(&bp, br.shrink(2.5), icon, c);
                 let help = if enabled {
                     help
                 } else if icon == SectionIcon::Delete {
@@ -886,7 +893,7 @@ impl App {
         }
         .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
         let resp = resp.on_hover_text(
-            "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section to move it before or after another, or its end to change its length. Right-click a section to rename it, change its part, write new notes or duplicate it.",
+            "Click to move the playhead, drag the bar numbers to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section to move it before or after another, or its end to change its length; its buttons are in the row above. Right-click a section to rename it, change its part, write new notes or duplicate it.",
         );
         // stays open while its name is typed; closed when something is chosen
         egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
