@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2 — 2026-11-23
+
+- **Swells glide**: expression (CC11) and brightness (CC74) now glide from one written
+  point to the next instead of jumping. The composer writes each swell as a handful of
+  points, so on the horns the filter snapped open at the swell's peak (up to 20 dB in an
+  instant, heard as a sudden re-emphasis part way through a held chord) and the level rose
+  in 3-5 dB steps. Pieces saved before glide too; other controllers still switch at once.
+
 ## 0.10.1 — 2026-11-23
 
 - **Section buttons in their own row**: new notes, copy before, copy after and delete now

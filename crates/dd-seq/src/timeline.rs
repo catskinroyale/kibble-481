@@ -64,6 +64,13 @@ pub struct Timeline {
     pub levels: Vec<Vec<(f64, f32)>>,
 }
 
+/// The controllers that glide from one written point to the next rather than jumping:
+/// expression and brightness. (The composer's swells are a handful of points each; heard
+/// as steps, the filter snaps open at the peak and the level jumps by several dB.)
+const GLIDES: [u8; 2] = [11, 74];
+/// The finest a glide is played in, in seconds.
+const GLIDE_STEP: f64 = 0.02;
+
 /// Whether a note is worth restarting part way through: sustained sounds are; hits,
 /// thunder and risers would land at the wrong time, so they aren't.
 fn chases(source: &Source, key: u8) -> bool {
@@ -117,6 +124,22 @@ impl Timeline {
             }
             for c in &t.ctrls {
                 events.push(Event { t: p.tick_secs(c.tick), track, msg: Msg::of_ctrl(c.kind, c.value) });
+            }
+            for cc in GLIDES {
+                let mut points: Vec<(u32, i16)> =
+                    t.ctrls.iter().filter(|c| c.kind == CtrlKind::Cc(cc)).map(|c| (c.tick, c.value.clamp(0, 127))).collect();
+                points.sort_by_key(|c| c.0);
+                for w in points.windows(2) {
+                    let ((a, va), (b, vb)) = (w[0], w[1]);
+                    let (ta, tb) = (p.tick_secs(a), p.tick_secs(b));
+                    // a step at least a controller unit and GLIDE_STEP seconds apart
+                    let steps = (vb - va).unsigned_abs().min(((tb - ta) / GLIDE_STEP) as u16);
+                    for k in 1..steps {
+                        let x = k as f64 / steps as f64;
+                        let v = (va as f64 + (vb - va) as f64 * x).round() as u8;
+                        events.push(Event { t: ta + (tb - ta) * x, track, msg: Msg::Cc(cc, v) });
+                    }
+                }
             }
         }
         events.sort_by(|a, b| a.t.total_cmp(&b.t).then(a.msg.rank().cmp(&b.msg.rank())).then(a.track.cmp(&b.track)));
@@ -222,6 +245,26 @@ mod tests {
         assert_eq!(c[0].msg, Msg::On(60, 90));
         assert!((c[1].t - p.tick_secs(3840)).abs() < 1e-9);
         assert_eq!(of(64).len(), 2);
+    }
+
+    /// Expression glides between its points a unit at a time; the pedal still switches.
+    #[test]
+    fn expression_glides_between_points() {
+        use crate::project::Ctrl;
+        let mut p = rain_on_neon();
+        p.tracks.truncate(1);
+        p.tracks[0].notes.clear();
+        p.tracks[0].ctrls = vec![
+            Ctrl { tick: 0, kind: CtrlKind::Cc(11), value: 20 },
+            Ctrl { tick: 3840, kind: CtrlKind::Cc(11), value: 120 },
+            Ctrl { tick: 0, kind: CtrlKind::Cc(64), value: 0 },
+            Ctrl { tick: 3840, kind: CtrlKind::Cc(64), value: 127 },
+        ];
+        let tl = Timeline::from_project(&p);
+        let ex: Vec<(f64, u8)> = tl.events.iter().filter_map(|e| if let Msg::Cc(11, v) = e.msg { Some((e.t, v)) } else { None }).collect();
+        assert_eq!(ex.len(), 101);
+        assert!(ex.windows(2).all(|w| w[1].1 == w[0].1 + 1 && w[1].0 > w[0].0));
+        assert_eq!(tl.events.iter().filter(|e| matches!(e.msg, Msg::Cc(64, _))).count(), 2);
     }
 
     #[test]

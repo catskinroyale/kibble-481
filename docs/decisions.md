@@ -598,6 +598,13 @@ transport control to skip to the next or previous section; sections reordered by
   resizes it): a ghost follows the pointer, a line marks the gap; on release it goes
   through `apply_arrangement` like any reordering, so an untouched piece is written again
   in the new order and an edited one keeps every section's notes. A lead-in stays first.
+- **Doubled keys and stepped swells (0.10.1, then after)**: a key struck twice at once on a
+  track plays as one note (the timeline merges them; Overcity's Night shift no longer
+  writes them). Expression and brightness glide between their written points in
+  playback, a unit at a time at most every 20 ms, so the composer's few-point swells don't
+  snap the filter open or step the level: chosen in the timeline, not the composer, so
+  saved pieces and drawn curves are heard the same way and the fingerprints don't change.
+  Other controllers (pedal, bank, etc.) still switch at once.
 
 ## Open
 
