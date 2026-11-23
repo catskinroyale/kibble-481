@@ -76,7 +76,7 @@ fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are eleven **styles**, each playing the same kinds of section its own way, all
+There are thirteen **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -189,6 +189,29 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   15/8 as well as its tempo (15/8 is also in the Metre list). A concert hall with a
   little tape drift, no drums or city; about -20 LUFS with peaks under -2 dBFS. Its
   tracks: Piano, Bass, Glockenspiel, Organ, Guitar and Tubular Bells.
+- **Nebula** (96 bpm, minor): a 1970s analogue electronic ambient score, dreamy,
+  spacious and cosmic, made only of the built-in synthesiser. It opens on air:
+  filtered-noise wind and breath, bubbling water-drop blips, and a soft modular drone
+  under a slowly sweeping resonant filter. A gentle rolling sequencer rises out of it,
+  then a soft, round pulsing bass. Over them a simple, naive melody of long notes,
+  written by the seed, repeats every sixteen bars and grows a little each time round (a
+  passing note, a higher peak, tape-keyboard flutes doubling it an octave up).
+  String-machine chords swell and fade beneath it, four bars a chord, between a few warm
+  minor and major chords, with a vintage organ at the build. Whooshes, sparkling
+  arpeggios and echoing blips drift across the stereo field. It builds in density (the
+  sequencer filling out from quavers to semiquavers) and brightness (the filters
+  opening), then dissolves back into the wind and fades. A plate standing in for a spring
+  reverb, a long wobbling tape echo, tape drift and a little hiss; no drums. Always in a
+  minor key; about -19 LUFS with peaks under -4 dBFS. Its tracks: Wind, Blips, Drone,
+  Sequence, Bass, String Machine, Lead, Tape Flutes, Organ, Sparkle, Whoosh and Tape Hiss.
+- **Vigil** (60 bpm): Overcity watched over gently. The same vast city from above at
+  night, its theme, chords, form and one great swell written as Overcity writes them, on
+  other instruments: soft sampled **French horns** for the hollow fifths instead of the
+  synth brass; **two drones**, the first as Overcity holds it and a second, an octave and
+  more above, following the chords where the choir or strings held them (its root and
+  fifth, held on through the chords that keep them); and a **grand piano** rippling where
+  the glass did. A seed in Vigil plays the same notes as in Overcity. About -16 to -19
+  LUFS. Its tracks: Horns, Drone 1, Drone 2, Lead, Bass, Bells, Piano, City and Drums.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -307,13 +330,22 @@ Load any other `.sf2` from the Sound tab.
 - **Lane** under the roll: velocities, or draw the mod wheel, touch, pitch bend, brightness
   (CC74, the synth's filter) or expression.
 - **Overview** of every track above the roll; **sections** on the strip above the ruler
-  (drag a section's end to resize it, a bar at a time; hover for new notes, copy before or
-  after, and delete), ordered in the Score tab.
+  (drag a section's name before or after another to move it, notes and all; drag its end
+  to resize it, a bar at a time; hover for new notes, copy before or after, and delete),
+  also ordered in the Score tab. **⏮ ⏭** in the transport (or **[** and **]**) jump to the
+  start of this section or the one before, and to the next, and bring it into view. The
+  **playhead** has a strip of its own above the sections: click there to move it, or drag
+  its handle to scrub, without touching a section.
+- **Zoom**: the **− +** buttons beside the tracks' **+ Add** zoom the roll in and out
+  about the middle, and **[ ]** shows the whole piece; ⌘-scroll or pinch zoom about the pointer, ⌥-scroll
+  zooms the keys.
 - **Tracks**: click anywhere on a track to select it; double-click its name (or Rename in
   its right-click menu) to rename it. Drag a track by its ≡ grip to move it up or down
   the list; its **×** deletes it (⌘Z brings it back; the last track stays). **+ Add** adds a track of any role, with its sound
   and the notes the piece's style writes for that role (a second track of a role plays a
-  line of its own; a role the style doesn't write comes empty, to play into). New pieces
+  line of its own). A role the style doesn't write, or any role in a piece that wasn't
+  composed, still comes with notes: a part for the role written over the chords the piece
+  already has (read bar by bar from its notes), quieter in an Intro or Fade. New pieces
   write added tracks again for their roles.
 - Undo and redo (⌘Z, ⇧⌘Z) for everything.
 
@@ -355,8 +387,10 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   get the soundtrack, an `.fcpxml` timeline with every photo at its change, the changes as
   `.edl` markers, and a cue list. In Resolve: **File › Import › Timeline**, pick the
   `.fcpxml`, let it import the media. Each image is on screen for **exact seconds** (every
-  one the same, wherever the bar lines fall) or **on bar lines** (the nearest whole bars, 4
-  to 16 s, moved onto the music's accents if you like). Between them: a **crossfade**, a
+  one the same, wherever the bar lines fall), **on bar lines** (the nearest whole bars, 4
+  to 16 s, moved onto the music's accents if you like), or a set number of **bars per
+  image** (2, 4, 6, 8, 12, 16 or any; usually even, as phrases come in twos), whatever
+  the tempo. Between them: a **crossfade**, a
   **fade to black** and up again, or a **cut**, with the fade's length yours. The plan
   always follows the score as it stands, with no more images than photos (the rest goes to
   the outro). The **calculator** in Plan and export works out, before you change
@@ -366,7 +400,12 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   among them in proportion (whole 4-bar phrases where the sections are made of them, any
   bars over going to the last section); change any proposal there, or leave them and drag
   the sections' ends in the piano roll. **Set the sections to these** applies them: each
-  section whose length changes is written again at its new length. With the photos
+  section whose length changes is written again at its new length. The calculator weighs
+  the **tempo** as well: in bars per image the tempo sets how long each image is on screen
+  (the sections how many the score holds), so it offers the tempo that gives the time you
+  aim for, with a table of each bar count's time now, the tempo for your time and the
+  bars your photos would need; in seconds it offers, where one exists, the tempo at which
+  the sections as they are hold every photo, instead of changing them. With the photos
   counted, the plan places every one the score holds, following the music only in where
   each change falls.
 - **Import** any MIDI file as a project, or add its tracks to this one. Files from Ambient

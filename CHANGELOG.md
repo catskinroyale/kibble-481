@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.10.0 — 2026-11-23
+
+- **Vigil**, a thirteenth style: Overcity watched over gently. Overcity's theme, chords,
+  form and great swell on other instruments: soft sampled French horns for the brass, two
+  drones (the second following the chords where the choir or strings were), and a grand
+  piano for the rippling glass. `kibble-481-cli compose --style vigil`. Grand Piano is
+  also a Pluck sound in the Sound tab.
+- **Added tracks always have notes**: a role the style doesn't write, or any role in a
+  piece that wasn't composed, gets a part written over the piece's own chords.
+- **Gallery: bars per image.** Images can be a set number of bars each (2, 4, 8…). The
+  calculator now weighs the tempo as well as the sections: the tempo that gives the time
+  on screen you aim for, a table of bar counts, and, in seconds, a tempo at which the
+  sections as they are hold every photo. `resolve --bars-per-image <n>` on the command line.
+- **Piano roll**: zoom out, zoom in and whole-piece buttons beside the tracks' + Add; the
+  playhead's handle in a strip of its own above the sections, to click or drag; **⏮ ⏭** in the transport
+  (and **[** **]**) jump between sections; drag a section on the Sections strip to move
+  it before or after another, notes and all.
+
+- **Nebula**, a twelfth style: a 1970s analogue electronic ambient score, dreamy and
+  cosmic, synthesisers only. Wind, breath and water-drop blips over a drone with a
+  sweeping resonant filter; a rolling sequencer and a round pulsing bass; a simple melody
+  of long notes that repeats and grows over string-machine chords; whooshes, sparkles and
+  echoing blips across the stereo field; building in density and brightness, then
+  dissolving back into the wind. 96 bpm, always minor; `kibble-481-cli compose --style
+  nebula`. Eight new synth patches, also in the Sound tab: **Solar Wind** (Pad),
+  **Bubble Drops** and **Cosmic Sequence** (Pluck), **Round Pulse Bass** (Bass),
+  **Starlight Lead** and **Tape Flutes** (Lead), **String Machine** (Strings) and
+  **Modular Drone** (Drone). The other styles are unchanged.
+
 ## 0.9.1 — 2026-11-19
 
 - **Orbit** keeps the brief's "no sudden changes" in any arrangement: each layer's level

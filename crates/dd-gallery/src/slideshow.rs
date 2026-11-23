@@ -21,6 +21,42 @@ pub const MAX_HOLD: f64 = 16.0;
 /// The longest crossfade: half the longest time on screen.
 pub const MAX_FADE: f64 = MAX_HOLD / 2.0;
 
+/// The most bars an image may be given.
+pub const MAX_IMAGE_BARS: u32 = 64;
+/// The tempo range the app offers.
+pub const MIN_BPM: f64 = 30.0;
+pub const MAX_BPM: f64 = 220.0;
+
+/// The tempo (in the app's beats per minute, of the metre's lower note) at which
+/// `bars` bars last `secs` seconds; `None` outside the tempo range.
+pub fn tempo_for(meter: (u32, u32), bars: u32, secs: f64) -> Option<f64> {
+    let beats = (bars.max(1) * meter.0.max(1)) as f64;
+    let bpm = 60.0 * beats / secs.max(1e-6) * 4.0 / meter.1.max(1) as f64;
+    // to a tenth, as the tempo is shown
+    let bpm = (bpm * 10.0).round() / 10.0;
+    (MIN_BPM..=MAX_BPM).contains(&bpm).then_some(bpm)
+}
+
+/// The tempo nearest `bpm` at which a score of `score_bars` holds `photos` images at
+/// these settings exactly as the calculator counts them (whole tenths of a bpm), if
+/// one in the tempo range does. With images in whole bars the tempo changes nothing
+/// of the count, so there's none unless it fits already.
+pub fn tempo_to_fit(s: &Slideshow, meter: (u32, u32), bpm: f64, score_bars: u32, photos: u32) -> Option<f64> {
+    let fits = |b: f64| {
+        let grid = Grid::new(b, meter);
+        Calc::new(s, grid, score_bars as f64 * grid.bar(), photos).needed_bars == score_bars
+    };
+    if fits(bpm) {
+        return Some(bpm);
+    }
+    if s.by_bars {
+        return None;
+    }
+    let tenths = |b: f64| (b * 10.0).round() as i64;
+    let (lo, hi, at) = (tenths(MIN_BPM), tenths(MAX_BPM), tenths(bpm));
+    (1..=(hi - lo)).flat_map(|d| [at - d, at + d]).filter(|t| (lo..=hi).contains(t)).map(|t| t as f64 / 10.0).find(|b| fits(*b))
+}
+
 /// The shortest and longest exact time on screen.
 pub const EXACT_MIN: f64 = 1.0;
 pub const EXACT_MAX: f64 = 60.0;
@@ -83,6 +119,11 @@ pub struct Slideshow {
     /// Every image exactly `hold` seconds, on an even count, whether or not that
     /// falls on a bar line.
     pub exact: bool,
+    /// Every image exactly `image_bars` bars, whatever the tempo (which then sets how
+    /// long that is on screen; `hold` is the time aimed for). Before `exact`.
+    pub by_bars: bool,
+    /// Bars per image when `by_bars`: usually even, as chords and phrases come in twos.
+    pub image_bars: u32,
     /// How each image gives way to the next.
     pub transition: Transition,
     /// Crossfade between images, in seconds.
@@ -110,6 +151,8 @@ impl Default for Slideshow {
             images: 30,
             hold: 12.0,
             exact: false,
+            by_bars: false,
+            image_bars: 4,
             transition: Transition::Crossfade,
             fade: 6.0,
             intro_bars: 2,
@@ -170,7 +213,10 @@ impl Slot {
     /// The time on screen the settings ask for: exactly `hold` seconds, or the
     /// nearest whole bars.
     pub fn of(s: &Slideshow, grid: &Grid) -> Slot {
-        if s.exact {
+        if s.by_bars {
+            let count = s.image_bars.clamp(1, MAX_IMAGE_BARS);
+            Slot { count, unit: Unit::Bar, secs: count as f64 * grid.bar() }
+        } else if s.exact {
             let secs = (s.hold as f64).clamp(EXACT_MIN, EXACT_MAX);
             Slot { count: 1, unit: Unit::Second, secs }
         } else {
@@ -270,7 +316,7 @@ impl Plan {
     /// over the whole track is found in one pass (dynamic programming).
     /// Unchanged if the accents are of a different track.
     pub fn follow(self, s: &Slideshow, accents: &Accents) -> Plan {
-        if s.exact || self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
+        if s.exact || s.by_bars || self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
             return self;
         }
         let unit = self.slot.secs / self.slot.count as f64;
@@ -634,6 +680,40 @@ mod tests {
         assert_eq!(l.images, 25);
         assert!((l.end - (2.0 * grid.bar() + 200.0)).abs() < 1e-9);
         assert!((l.outro - (total - l.end)).abs() < 1e-9);
+    }
+
+    /// Images in whole bars: exactly that many bars each whatever the tempo, the
+    /// calculator's bars exact, and the tempo that gives a time on screen.
+    #[test]
+    fn images_in_whole_bars() {
+        for (bpm, meter) in [(60.0, (4, 4)), (66.0, (3, 4)), (92.0, (15, 8)), (120.0, (4, 4))] {
+            let grid = Grid::new(bpm, meter);
+            let s = Slideshow { by_bars: true, image_bars: 4, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
+            let p = Plan::for_track(&s, grid, 40.0 * grid.bar());
+            assert_eq!(p.images, 9, "{bpm} {meter:?}");
+            assert!(p.spans().all(|(a, b)| ((b - a) - 4.0 * grid.bar()).abs() < 1e-9));
+            let c = Calc::new(&s, grid, 40.0 * grid.bar(), 12);
+            assert_eq!(c.needed_bars, 2 + 12 * 4 + 2);
+            // no tempo fits 12 images of 4 bars into 40 bars, or 9 into 38; 9 fit 40 as it is
+            assert_eq!(tempo_to_fit(&s, meter, bpm, 40, 12), None);
+            assert_eq!(tempo_to_fit(&s, meter, bpm, 38, 9), None);
+            assert_eq!(tempo_to_fit(&s, meter, bpm, 40, 9), Some(bpm));
+        }
+        // 4 bars of 4/4 in 8 s: 120 bpm; of 6/8 in 8 s: 135 (in quavers)
+        assert_eq!(tempo_for((4, 4), 4, 8.0), Some(120.0));
+        assert_eq!(tempo_for((6, 8), 4, 8.0), Some(90.0));
+        assert_eq!(tempo_for((4, 4), 2, 1.0), None);
+    }
+
+    /// In seconds, a tempo can make the score hold the photos without new sections.
+    #[test]
+    fn a_tempo_that_fits_the_photos() {
+        let s = Slideshow { hold: 8.0, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
+        let bpm = tempo_to_fit(&s, (4, 4), 66.0, 40, 20).expect("a tempo");
+        let grid = Grid::new(bpm, (4, 4));
+        assert_eq!(Calc::new(&s, grid, 40.0 * grid.bar(), 20).needed_bars, 40);
+        // 2 + 2 bars and 160 s in 40 bars: 36 bars of about 4.4 s, near 54 bpm
+        assert!((bpm - 54.0).abs() < 1.0, "{bpm}");
     }
 
     #[test]

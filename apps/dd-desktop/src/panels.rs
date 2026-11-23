@@ -5,7 +5,9 @@ use dd_dsp::fx::{EchoTime, Interval, Space, Tuning};
 use dd_dsp::kit::fx;
 use dd_dsp::rain::RainKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
-use dd_gallery::slideshow::{Calc, EXACT_MIN, MAX_FADE, MAX_HOLD, MIN_HOLD, Transition, timecode};
+use dd_gallery::slideshow::{
+    Calc, EXACT_MIN, Grid, MAX_FADE, MAX_HOLD, MAX_IMAGE_BARS, MIN_HOLD, Transition, tempo_for, tempo_to_fit, timecode,
+};
 use dd_seq::city;
 use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
@@ -200,10 +202,12 @@ impl App {
                     }
                 })
                 .response
-                .on_hover_text("Add a track: its sound and the notes the piece's style writes for its part");
+                .on_hover_text("Add a track: its sound and the notes the piece's style writes for its part, or else a part written over the piece's chords");
                 if let Some(role) = add {
                     self.add_track(role);
                 }
+                ui.add_space(4.0);
+                self.zoom_buttons(ui);
             });
         });
         ui.add_space(4.0);
@@ -1045,9 +1049,7 @@ impl App {
                         let help = format!("{}. Choosing it sets {} bpm{key}{metre}.", s.help(), s.tempo());
                         if widgets::lamp_row(ui, s.label(), r.style == s, true).on_hover_text(help).clicked() && r.style != s {
                             r.style = s;
-                            if let Some((k, m)) = s.key() {
-                                (r.root, r.mode) = (k, m);
-                            }
+                            s.settle(r);
                             new_style = Some(s);
                         }
                     }
@@ -1159,20 +1161,26 @@ impl App {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     fx_strip(ui, &t, "Images", "How long each image is on screen, fades included", |ui| {
-                        if widgets::lamp_row(ui, "Exact seconds", g.exact, true)
+                        if widgets::lamp_row(ui, "Exact seconds", g.exact && !g.by_bars, true)
                             .on_hover_text("Every image exactly the same time on screen, on an even count, whether or not it lands on a bar line")
                             .clicked()
                         {
-                            g.exact = true;
+                            (g.exact, g.by_bars) = (true, false);
                         }
-                        if widgets::lamp_row(ui, "On bar lines", !g.exact, true)
+                        if widgets::lamp_row(ui, "On bar lines", !g.exact && !g.by_bars, true)
                             .on_hover_text("The nearest whole bars to the time asked, so each change lands on a bar line")
                             .clicked()
                         {
-                            g.exact = false;
+                            (g.exact, g.by_bars) = (false, false);
+                        }
+                        if widgets::lamp_row(ui, "Bars per image", g.by_bars, true)
+                            .on_hover_text("Every image the same whole number of bars (usually 2, 4 or 8, as phrases come in twos), whatever the tempo: the tempo sets how long that is on screen")
+                            .clicked()
+                        {
+                            g.by_bars = true;
                         }
                         strip_rule(ui, &t);
-                        if widgets::lamp_row(ui, "Follow accents", g.follow_music && !g.exact, !g.exact)
+                        if widgets::lamp_row(ui, "Follow accents", g.follow_music && !g.exact && !g.by_bars, !g.exact && !g.by_bars)
                             .on_hover_text("On bar lines only: move each change to a section, a phrase or a part coming in, so the times vary around the one asked")
                             .clicked()
                         {
@@ -1189,12 +1197,34 @@ impl App {
                 });
             });
             ui.add_space(6.0);
-            let (lo, hi) = if g.exact { (EXACT_MIN, 30.0) } else { (MIN_HOLD, MAX_HOLD) };
+            if g.by_bars {
+                widgets::inset(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Bars per image");
+                        for n in [2, 4, 6, 8, 12, 16] {
+                            ui.selectable_value(&mut g.image_bars, n, format!("{n}")).on_hover_text(format!("Each image {n} bars"));
+                        }
+                        ui.add(egui::DragValue::new(&mut g.image_bars).range(1..=MAX_IMAGE_BARS).speed(0.1).suffix(" bars"))
+                            .on_hover_text("Any number of bars: an even number keeps each change on a phrase");
+                    });
+                    if g.image_bars % 2 == 1 {
+                        ui.label(
+                            egui::RichText::new("An odd number of bars changes images in the middle of two-bar phrases")
+                                .font(t.font(10.5))
+                                .color(t.caution),
+                        );
+                    }
+                });
+                ui.add_space(4.0);
+            }
+            let (lo, hi) = if g.exact || g.by_bars { (EXACT_MIN, 30.0) } else { (MIN_HOLD, MAX_HOLD) };
             let mut hold = g.hold as f64;
             let spec = SliderSpec {
                 id: "hold",
-                label: "On screen",
-                help: if g.exact {
+                label: if g.by_bars { "Aim for" } else { "On screen" },
+                help: if g.by_bars {
+                    "The time on screen you'd like each image to have: the calculator offers the tempo that gives it"
+                } else if g.exact {
                     "Each image's time, fade included: exactly this, every one"
                 } else {
                     "Each image's time, fade included: the nearest whole bars"
@@ -1263,6 +1293,7 @@ impl App {
         let plan = self.doc.plan_for(n_photos as usize);
         let fade = if self.doc.gallery.transition.fades() { self.doc.gallery.fade as f64 } else { 0.0 };
         let mut set_bars = None;
+        let mut set_bpm: Option<f64> = None;
         let mut fit_to: Option<Vec<dd_seq::project::Block>> = None;
         widgets::section(ui, "plan", "Plan and export", true, |ui| {
             let p = &self.doc.project;
@@ -1282,14 +1313,16 @@ impl App {
                     }
                 });
             });
-            let each = if g.exact {
+            let each = if g.by_bars {
+                format!("{} bars, {:.1} s at {} bpm", g.image_bars, c.each, p.bpm)
+            } else if g.exact {
                 format!("{:.1} s exactly", c.each)
             } else {
                 let bars = c.each / grid.bar();
                 format!("{:.1} s ({} bar{})", c.each, fmt_bars(bars), if (bars - 1.0).abs() < 1e-6 { "" } else { "s" })
             };
             let lines = [
-                format!("Each image: {each}{}", if g.follow_music && !g.exact { ", varying with the music" } else { "" }),
+                format!("Each image: {each}{}", if g.follow_music && !g.exact && !g.by_bars { ", varying with the music" } else { "" }),
                 format!(
                     "This score: {score_bars} bars ({}) holds {} images, with {:.1} s over for the outro.",
                     timecode(p.music_secs()),
@@ -1329,6 +1362,111 @@ impl App {
                 std::cmp::Ordering::Equal => ("The score fits them exactly.".to_string(), t.accent),
             };
             widgets::note(ui, egui::RichText::new(msg).color(colour).text(), "");
+            // the tempo: with images in whole bars it sets their time on screen (the
+            // sections set how many the score holds); in seconds it can fit the photos
+            // into the sections as they are
+            if g.by_bars {
+                widgets::subtitle(
+                    ui,
+                    "Tempo",
+                    "In whole bars the tempo sets how long each image is on screen, and the sections how many images the score holds",
+                );
+                let aim = g.hold as f64;
+                if (c.each - aim).abs() < 0.05 {
+                    widgets::note(ui, format!("At {} bpm each image is the {aim:.1} s aimed for.", p.bpm), "");
+                } else {
+                    match tempo_for(p.meter, g.image_bars, aim) {
+                        Some(b) => {
+                            widgets::note(
+                                ui,
+                                format!(
+                                    "For {aim:.1} s on screen, set the tempo to {b} bpm: still {} bars an image, and the score still needs {} bars.",
+                                    g.image_bars, c.needed_bars
+                                ),
+                                "",
+                            );
+                            widgets::inset(ui, |ui| {
+                                if ui
+                                    .button(format!("Set the tempo to {b} bpm"))
+                                    .on_hover_text("An untouched piece is written again at the new tempo; an edited one keeps its notes")
+                                    .clicked()
+                                {
+                                    set_bpm = Some(b);
+                                }
+                            });
+                        }
+                        None => widgets::note(
+                            ui,
+                            egui::RichText::new(format!(
+                                "No tempo from 30 to 220 bpm makes {} bars last {aim:.1} s: try more or fewer bars per image.",
+                                g.image_bars
+                            ))
+                            .color(t.caution)
+                            .text(),
+                            "",
+                        ),
+                    }
+                }
+                widgets::inset(ui, |ui| {
+                    egui::Grid::new("bar-choices").num_columns(4).spacing([14.0, 3.0]).striped(true).show(ui, |ui| {
+                        let head = |ui: &mut egui::Ui, s: String| {
+                            ui.label(egui::RichText::new(s).font(t.font(11.0)).color(t.text_label));
+                        };
+                        head(ui, "Bars each".into());
+                        head(ui, format!("At {} bpm", p.bpm));
+                        head(ui, format!("For {aim:.1} s"));
+                        head(ui, format!("{n_photos} photos need"));
+                        ui.end_row();
+                        for n in [2u32, 4, 6, 8, 12, 16] {
+                            if ui
+                                .selectable_label(g.image_bars == n, format!("{n}"))
+                                .on_hover_text(format!("Each image {n} bars"))
+                                .clicked()
+                            {
+                                g.image_bars = n;
+                            }
+                            ui.label(format!("{:.1} s", n as f64 * grid.bar()));
+                            match tempo_for(p.meter, n, aim) {
+                                Some(b) => {
+                                    if ui.small_button(format!("{b} bpm")).on_hover_text(format!("{n} bars an image, at {b} bpm")).clicked()
+                                    {
+                                        g.image_bars = n;
+                                        set_bpm = Some(b);
+                                    }
+                                }
+                                None => {
+                                    ui.label(egui::RichText::new("out of range").color(t.text_dim));
+                                }
+                            }
+                            ui.label(format!("{} bars", g.intro_bars + n_photos * n + g.outro_bars.max(1)));
+                            ui.end_row();
+                        }
+                    });
+                });
+            } else if c.needed_bars != score_bars
+                && let Some(b) = tempo_to_fit(g, p.meter, p.bpm, score_bars, n_photos).filter(|b| (b - p.bpm).abs() > 0.05)
+            {
+                let at = Grid::new(b, p.meter);
+                let each = Calc::new(g, at, score_bars as f64 * at.bar(), n_photos).each;
+                widgets::subtitle(ui, "Tempo", "Change the tempo instead of the sections");
+                widgets::note(
+                    ui,
+                    format!(
+                        "Or keep the sections and set the tempo to {b} bpm: the score's {score_bars} bars then hold all {n_photos} photos, {each:.1} s each, in {}.",
+                        timecode(score_bars as f64 * at.bar())
+                    ),
+                    "",
+                );
+                widgets::inset(ui, |ui| {
+                    if ui
+                        .button(format!("Set the tempo to {b} bpm"))
+                        .on_hover_text("An untouched piece is written again at the new tempo; an edited one keeps its notes")
+                        .clicked()
+                    {
+                        set_bpm = Some(b);
+                    }
+                });
+            }
             if c.needed_bars != score_bars {
                 let blocks = p.arrangement();
                 if blocks.is_empty() {
@@ -1474,6 +1612,11 @@ impl App {
                 "",
             );
         });
+        if let Some(b) = set_bpm {
+            self.doc.project.bpm = b;
+            self.fit = None;
+            self.status = format!("The tempo is now {b} bpm, for the photos");
+        }
         if let Some(bars) = set_bars {
             self.doc.project.stretch_to(bars);
             self.status = format!("The score is now {bars} bars, to fit {n_photos} photos");
@@ -1498,6 +1641,12 @@ impl App {
             ui.add_space(6.0);
             let playing = self.playing();
             let recording = self.recording();
+            if widgets::icon_button(ui, Icon::SkipBack, false, "To the start of this section, or the one before ([)").clicked() {
+                self.skip_section(false);
+            }
+            if widgets::icon_button(ui, Icon::SkipForward, false, "To the start of the next section (])").clicked() {
+                self.skip_section(true);
+            }
             if widgets::icon_button(ui, Icon::Stop, false, "Stop (Enter); again goes to the start").clicked() {
                 self.stop();
             }

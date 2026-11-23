@@ -481,6 +481,10 @@ pub enum Icon {
     Loop,
     /// A speaker, for the volume.
     Speaker,
+    /// Back to the previous section: a bar and a triangle pointing left.
+    SkipBack,
+    /// On to the next section: a triangle pointing right and a bar.
+    SkipForward,
 }
 
 /// Paint `icon` in `rect`.
@@ -560,6 +564,14 @@ pub fn paint_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             p.add(egui::Shape::line(arc(10.0, 10.0, 6.0, 1.15 * PI, 1.95 * PI), stroke));
             line(&[(13.0, 2.5), (15.7, 4.6), (13.2, 7.0)]);
             line(&[(7.0, 17.5), (4.3, 15.4), (6.8, 13.0)]);
+        }
+        Icon::SkipBack => {
+            p.rect_filled(Rect::from_min_size(at(4.5, 5.0), vec2(2.0, 10.0) * s), 0.5, color);
+            p.add(egui::Shape::convex_polygon(vec![at(15.5, 5.0), at(15.5, 15.0), at(7.5, 10.0)], color, Stroke::NONE));
+        }
+        Icon::SkipForward => {
+            p.add(egui::Shape::convex_polygon(vec![at(4.5, 5.0), at(12.5, 10.0), at(4.5, 15.0)], color, Stroke::NONE));
+            p.rect_filled(Rect::from_min_size(at(13.5, 5.0), vec2(2.0, 10.0) * s), 0.5, color);
         }
         Icon::Speaker => {
             line(&[(3.0, 8.0), (6.0, 8.0), (10.0, 4.5), (10.0, 15.5), (6.0, 12.0), (3.0, 12.0), (3.0, 8.0)]);

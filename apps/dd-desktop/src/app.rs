@@ -339,14 +339,14 @@ impl App {
                 ("return", dd_seq::compose::Style::Return),
                 ("chamber", dd_seq::compose::Style::Chamber),
                 ("orbit", dd_seq::compose::Style::Orbit),
+                ("nebula", dd_seq::compose::Style::Nebula),
+                ("vigil", dd_seq::compose::Style::Vigil),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
                 {
                     r.style = style;
-                    if let Some((k, m)) = style.key() {
-                        (r.root, r.mode) = (k, m);
-                    }
+                    style.settle(r);
                     app.doc.project.bpm = style.tempo();
                     app.doc.project.meter = style.meter_from(app.doc.project.meter);
                 }
@@ -497,6 +497,31 @@ impl App {
     pub(crate) fn seek(&mut self, secs: f64) {
         self.play_from = secs.max(0.0);
         self.send(Cmd::Seek(secs.max(0.0)));
+    }
+
+    /// Move the playhead to the start of the next section, or back to the start of this
+    /// one (the one before, if it's just there, or playing within a second of it), and
+    /// show it in the roll.
+    pub(crate) fn skip_section(&mut self, forward: bool) {
+        let p = &self.doc.project;
+        let starts: Vec<u32> = p.block_ticks().iter().map(|(a, _)| *a).collect();
+        let labels = p.section_labels();
+        let now = p.secs_tick(self.position().max(0.0));
+        let grace = if self.playing() { p.secs_tick(1.0) } else { p.beat_ticks() / 8 };
+        let found =
+            if forward { starts.iter().position(|&s| s > now + p.beat_ticks() / 8) } else { starts.iter().rposition(|&s| s + grace < now) };
+        let (tick, what) = match found {
+            Some(i) => (starts[i], labels.get(i).cloned().unwrap_or_default()),
+            None if forward => {
+                self.status = "The last section".into();
+                return;
+            }
+            None => (0, "The start".into()),
+        };
+        let (secs, bar) = (p.tick_secs(tick), tick / p.bar_ticks().max(1) + 1);
+        self.seek(secs);
+        self.roll.reveal = Some(tick as f64);
+        self.status = format!("{what}, bar {bar}");
     }
 
     pub(crate) fn toggle_record(&mut self) {
@@ -677,9 +702,7 @@ impl App {
     pub(crate) fn new_piece(&mut self, new_sections: bool) {
         let style = self.doc.project.recipe.map(|r| r.style).unwrap_or_default();
         let mut r = Recipe { style, ..Recipe::random(entropy()) };
-        if let Some((k, m)) = style.key() {
-            (r.root, r.mode) = (k, m);
-        }
+        style.settle(&mut r);
         let p = &self.doc.project;
         let plan = new_sections.then(|| dd_seq::compose::random_plan(&r, p.bpm, p.meter, p.length_bars.max(2)));
         self.recompose_to(r, self.settings.keep_sounds, plan);
@@ -786,18 +809,19 @@ impl App {
         self.shape = Shape::of(&self.doc.project);
     }
 
-    /// Add a track of `role` with the notes the piece's style writes for it.
+    /// Add a track of `role` with the notes the piece's style writes for it (else a
+    /// part written over the piece's chords).
     pub(crate) fn add_track(&mut self, role: dd_seq::palette::Role) {
         let style = self.doc.project.recipe.map(|r| r.style);
-        let (i, notes) = dd_seq::compose::add_track(&mut self.doc.project, role, None);
+        let (i, by_style) = dd_seq::compose::add_track(&mut self.doc.project, role, None);
         self.sel = i;
         let name = self.doc.project.tracks[i].name.clone();
-        self.status = match (notes, style) {
+        self.status = match (by_style, style) {
             (true, Some(s)) => format!("Added the {name}, as {} writes it", s.label()),
             (false, Some(s)) => {
-                format!("Added the {name}: {} doesn't write a {} part, so it's empty to play into", s.label(), role.label())
+                format!("Added the {name}: {} doesn't write a {} part, so one is written over the piece's chords", s.label(), role.label())
             }
-            (_, None) => format!("Added the {name}: the piece wasn't composed, so it's empty to play into"),
+            (_, None) => format!("Added the {name}, written over the piece's chords"),
         };
         self.shape = Shape::of(&self.doc.project);
     }
@@ -1024,6 +1048,8 @@ impl App {
                 egui::Key::Space if pressed => self.toggle_play(),
                 egui::Key::R if pressed && modifiers.shift => self.toggle_record(),
                 egui::Key::Enter if pressed => self.stop(),
+                egui::Key::OpenBracket if pressed => self.skip_section(false),
+                egui::Key::CloseBracket if pressed => self.skip_section(true),
                 _ => {}
             }
             if !self.settings.qwerty || modifiers.shift {

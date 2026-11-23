@@ -6,8 +6,10 @@
 //! (hold ⌥ to copy it), drag its right end to resize it, double-click or right-click
 //! to delete it, shift-drag to select several. Delete removes the selection, ↑ ↓
 //! transpose it (with ⇧ by octaves), ← → nudge it, Q quantises it, ⌘D duplicates it,
-//! ⌘C ⌘V copy and paste at the playhead. Scroll to move, ⌘-scroll or pinch to zoom,
-//! ⌥-scroll to zoom the keys.
+//! ⌘C ⌘V copy and paste at the playhead. Scroll to move, ⌘-scroll, pinch or the − + buttons
+//! beside the tracks' + Add to zoom, ⌥-scroll to zoom the keys. The playhead has a strip
+//! of its own above the sections, to click or drag it by. On the ruler, drag a
+//! section's name to move it before or after the others, or its end to resize it.
 
 use std::collections::BTreeSet;
 
@@ -21,6 +23,8 @@ use crate::theme::Tokens;
 
 const GUTTER: f32 = 58.0;
 const RULER_H: f32 = 40.0;
+/// The playhead's own strip, above the sections, to grab it by.
+const HEAD_H: f32 = 16.0;
 const LANE_H: f32 = 86.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +71,12 @@ enum Drag {
     LoopSet {
         from_bar: u32,
     },
+    /// Section `index` being dragged to another place in the order; the arrangement
+    /// as it was.
+    SectionMove {
+        index: usize,
+        orig: Vec<Block>,
+    },
     /// The end of section `index` being dragged; the arrangement and the tracks' bar
     /// levels as they were.
     SectionEnd {
@@ -96,6 +106,10 @@ pub struct RollState {
     menu_bar: u32,
     /// The bar and value last set while drawing volumes, to fill the bars between.
     lane_last: Option<(u32, f32)>,
+    /// A tick to bring into view on the next frame (a section skipped to).
+    pub reveal: Option<f64>,
+    /// A zoom the buttons asked for: 0 out, 1 in, 2 the whole piece.
+    pub zoom: Option<u8>,
 }
 
 impl Default for RollState {
@@ -115,6 +129,8 @@ impl Default for RollState {
             pending_fit: true,
             menu_bar: 0,
             lane_last: None,
+            reveal: None,
+            zoom: None,
         }
     }
 }
@@ -271,6 +287,29 @@ fn paint_section_icon(p: &egui::Painter, r: Rect, icon: SectionIcon, c: Color32)
     }
 }
 
+/// Where section `index` of `blocks` goes when let go at `x`: the new order (old
+/// indices) and the x of the gap it goes into. `x_of(bar)` places a bar. An unnamed
+/// lead-in stays first.
+fn move_slot(blocks: &[Block], index: usize, x: f32, x_of: impl Fn(u32) -> f32) -> (Vec<usize>, f32) {
+    let mut starts = Vec::with_capacity(blocks.len());
+    let mut at = 0;
+    for b in blocks {
+        starts.push(at);
+        at += b.bars;
+    }
+    let others: Vec<usize> = (0..blocks.len()).filter(|&k| k != index).collect();
+    let lead_in = usize::from(blocks.first().is_some_and(|b| b.part.is_none() && b.name.is_empty()) && index != 0);
+    let slot =
+        others.iter().filter(|&&k| x_of(starts[k]) + (x_of(starts[k] + blocks[k].bars) - x_of(starts[k])) / 2.0 < x).count().max(lead_in);
+    let gap = match others.get(slot) {
+        Some(&k) => x_of(starts[k]),
+        None => others.last().map_or(x, |&k| x_of(starts[k] + blocks[k].bars)),
+    };
+    let mut order = others;
+    order.insert(slot, index);
+    (order, gap)
+}
+
 fn is_black(key: u8) -> bool {
     matches!(key % 12, 1 | 3 | 6 | 8 | 10)
 }
@@ -344,7 +383,8 @@ impl App {
         let n_tracks = self.doc.project.tracks.len();
         let row_h = (150.0 / n_tracks as f32).clamp(5.0, 16.0);
         let arr_h = row_h * n_tracks as f32 + 4.0;
-        let ruler = Rect::from_min_max(full.min, pos2(full.right(), full.top() + RULER_H));
+        let head = Rect::from_min_max(full.min, pos2(full.right(), full.top() + HEAD_H));
+        let ruler = Rect::from_min_max(pos2(full.left(), head.bottom()), pos2(full.right(), head.bottom() + RULER_H));
         let arr = Rect::from_min_max(pos2(full.left(), ruler.bottom()), pos2(full.right(), ruler.bottom() + arr_h));
         let lane = Rect::from_min_max(pos2(full.left(), full.bottom() - LANE_H), full.max);
         let roll = Rect::from_min_max(pos2(full.left(), arr.bottom() + 1.0), pos2(full.right(), lane.top() - 1.0));
@@ -407,6 +447,11 @@ impl App {
         let playing = self.playing();
         let play_tick = pos.max(0.0) / p.secs_per_tick();
         let width_ticks = ((roll.width() - GUTTER) / self.roll.ppt) as f64;
+        if let Some(tk) = self.roll.reveal.take()
+            && (tk < self.roll.x0 || tk > self.roll.x0 + width_ticks * 0.85)
+        {
+            self.roll.x0 = (tk - width_ticks * 0.1).max(-(PPQ as f64));
+        }
         if playing && self.roll.drag.is_none() && (play_tick > self.roll.x0 + width_ticks * 0.95 || play_tick < self.roll.x0) {
             self.roll.x0 = play_tick - width_ticks * 0.05;
         }
@@ -419,24 +464,85 @@ impl App {
             key_h: self.roll.key_h,
             top: roll.top(),
         };
+        self.head_ui(ui, head, v, &t);
         self.ruler_ui(ui, ruler, v, &t);
         self.arrangement_ui(ui, arr, row_h, v, &t);
         self.notes_ui(ui, roll, v, &t);
         self.lane_ui(ui, lane, v, &t);
+        self.do_zoom(grid_left, full.right());
 
         // the playhead across everything
         let x = v.x(play_tick);
         if x >= grid_left && x <= full.right() {
             let col = t.secondary;
-            ui.painter().vline(x, full.top()..=full.bottom(), Stroke::new(1.5, col));
+            ui.painter().vline(x, head.top() + 4.0..=full.bottom(), Stroke::new(1.5, col));
+            // the handle, in its own strip above the sections
             ui.painter().add(egui::Shape::convex_polygon(
-                vec![pos2(x - 5.0, full.top()), pos2(x + 5.0, full.top()), pos2(x, full.top() + 7.0)],
+                vec![pos2(x - 7.0, head.top() + 2.0), pos2(x + 7.0, head.top() + 2.0), pos2(x, head.bottom() - 2.0)],
                 col,
                 Stroke::NONE,
             ));
         }
         if playing {
             ui.ctx().request_repaint();
+        }
+    }
+
+    /// Zoom out, zoom in and show the whole piece: three small buttons, beside the
+    /// tracks' + Add, asking the roll to zoom about the middle of what it shows.
+    pub(crate) fn zoom_buttons(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+        let help =
+            ["Zoom the piano roll out (or ⌘-scroll, or pinch)", "Zoom the piano roll in (or ⌘-scroll, or pinch)", "Show the whole piece"];
+        // (laid out right to left: whole piece, in, out)
+        for k in [2usize, 1, 0] {
+            let (r, resp) = ui.allocate_exact_size(vec2(22.0, 20.0), Sense::click());
+            let resp = resp.on_hover_text(help[k]);
+            let painter = ui.painter();
+            if resp.hovered() {
+                painter.rect_filled(r, 3.0, t.hover);
+            }
+            let stroke = Stroke::new(1.6, if resp.hovered() { t.accent } else { t.text });
+            let m = r.center();
+            if k < 2 {
+                painter.line_segment([m - vec2(5.0, 0.0), m + vec2(5.0, 0.0)], stroke);
+                if k == 1 {
+                    painter.line_segment([m - vec2(0.0, 5.0), m + vec2(0.0, 5.0)], stroke);
+                }
+            } else {
+                // two brackets facing out: everything, edge to edge
+                for d in [-1.0f32, 1.0] {
+                    let x = m.x + d * 6.0;
+                    painter.add(egui::Shape::line(
+                        vec![pos2(x - d * 3.0, m.y - 5.0), pos2(x, m.y - 5.0), pos2(x, m.y + 5.0), pos2(x - d * 3.0, m.y + 5.0)],
+                        stroke,
+                    ));
+                }
+            }
+            if resp.clicked() {
+                self.roll.zoom = Some(k as u8);
+            }
+        }
+    }
+
+    /// Carry out a zoom asked for by the buttons, the roll's notes from `grid_left` to `right`.
+    fn do_zoom(&mut self, grid_left: f32, right: f32) {
+        let Some(k) = self.roll.zoom.take() else { return };
+        let centre = (grid_left + right) / 2.0;
+        let mut zoom = |factor: f32| {
+            let pivot = self.roll.x0 + ((centre - grid_left) / self.roll.ppt) as f64;
+            self.roll.ppt = (self.roll.ppt * factor).clamp(0.002, 2.0);
+            self.roll.x0 = pivot - ((centre - grid_left) / self.roll.ppt) as f64;
+        };
+        match k {
+            0 => zoom(1.0 / 1.5),
+            1 => zoom(1.5),
+            _ => {
+                // the whole piece, keeping the keys as they are
+                let end = self.doc.project.end_tick().max(1) as f64;
+                self.roll.x0 = 0.0;
+                self.roll.ppt = ((right - grid_left - 20.0) / end as f32).max(0.002);
+            }
         }
     }
 
@@ -480,6 +586,29 @@ impl App {
     }
 
     // ------------------------------------------------------------ ruler
+
+    /// The playhead's strip: click to put it there, drag it (or anywhere along the
+    /// strip) to scrub; nothing here touches the sections below.
+    fn head_ui(&mut self, ui: &mut egui::Ui, rect: Rect, v: View, t: &Tokens) {
+        let painter = ui.painter().with_clip_rect(rect);
+        painter.rect_filled(rect, 0.0, t.chrome);
+        painter.text(pos2(rect.left() + 8.0, rect.center().y), Align2::LEFT_CENTER, "Playhead", t.font(10.0), t.text_dim);
+        painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, t.divider));
+        let grid = Rect::from_min_max(pos2(v.left, rect.top()), rect.max);
+        let resp = ui
+            .interact(grid, ui.scope_id().with("playhead"), Sense::click_and_drag())
+            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+            .on_hover_text("The playhead: click to move it, drag to scrub");
+        let p = &self.doc.project;
+        if let Some(pp) = resp.interact_pointer_pos()
+            && (resp.dragged() || resp.clicked())
+        {
+            let tick = v.tick(pp.x).max(0.0).min(p.end_tick() as f64);
+            let tick = if resp.clicked() { snap(tick, p.beat_ticks()) } else { tick as u32 };
+            let secs = p.tick_secs(tick);
+            self.seek(secs);
+        }
+    }
 
     fn ruler_ui(&mut self, ui: &mut egui::Ui, rect: Rect, v: View, t: &Tokens) {
         let resp =
@@ -551,6 +680,48 @@ impl App {
         painter.text(pos2(rect.left() + 8.0, rect.bottom() - 11.0), Align2::LEFT_CENTER, "Bars", t.font(10.0), t.text_dim);
 
         let bar_at = |x: f32| (v.tick(x).max(0.0) / bar_t as f64) as u32;
+        // a section's name dragged before or after the others moves it, notes and all
+        let moving = match &self.roll.drag {
+            Some(Drag::SectionMove { index, .. }) => Some(*index),
+            _ => None,
+        };
+        let mut move_to = None;
+        if blocks.len() > 1 {
+            for &(i, r) in &boxes {
+                let h = ui
+                    .interact(r.intersect(grid), ui.scope_id().with(("section-move", i)), Sense::drag())
+                    .on_hover_cursor(if moving.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
+                if h.drag_started() {
+                    self.roll.drag = Some(Drag::SectionMove { index: i, orig: blocks.clone() });
+                }
+                if h.drag_stopped()
+                    && let Some(Drag::SectionMove { index, orig }) = self.roll.drag.take()
+                    && let Some(pp) = h.interact_pointer_pos()
+                {
+                    let (order, _) = move_slot(&orig, index, pp.x, |b| v.x((b * bar_t) as f64));
+                    if order.iter().enumerate().any(|(k, o)| *o != k) {
+                        move_to = Some((order, orig, index));
+                    }
+                }
+            }
+            // while dragging: the section under the pointer and where it would go
+            if let (Some(i), Some(pp)) = (moving, ui.input(|inp| inp.pointer.latest_pos()))
+                && let Some(&(_, r)) = boxes.iter().find(|(k, _)| *k == i)
+            {
+                let (_, x) = move_slot(&blocks, i, pp.x, |b| v.x((b * bar_t) as f64));
+                painter.vline(x, rect.top()..=rect.top() + 21.0, Stroke::new(3.0, t.secondary));
+                let o = ui.input(|inp| inp.pointer.press_origin()).map_or(0.0, |o| pp.x - o.x);
+                let ghost = r.translate(vec2(o, 0.0));
+                painter.rect_filled(ghost, 3.0, t.accent.gamma_multiply(0.55));
+                painter.with_clip_rect(ghost.intersect(rect)).text(
+                    pos2(ghost.left() + 5.0, rect.top() + 10.5),
+                    Align2::LEFT_CENTER,
+                    &labels[i],
+                    t.semibold(11.0),
+                    t.text,
+                );
+            }
+        }
         // a hovered section's own buttons: new notes, copy before, copy after, delete
         let can_regen = p.recipe.is_some() && p.plan().is_some();
         let can_delete = blocks.len() > 1;
@@ -558,7 +729,7 @@ impl App {
         let mut act = None;
         for &(i, r) in &boxes {
             let r = r.intersect(grid);
-            let hovered = dragging.is_none() && pointer.is_some_and(|pp| r.contains(pp));
+            let hovered = dragging.is_none() && moving.is_none() && pointer.is_some_and(|pp| r.contains(pp));
             if !hovered || r.width() < 4.0 * 17.0 + 14.0 {
                 continue;
             }
@@ -715,7 +886,7 @@ impl App {
         }
         .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
         let resp = resp.on_hover_text(
-            "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section's end to change its length. Right-click a section to rename it, change its part, write new notes or duplicate it.",
+            "Click to move the playhead, drag to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section to move it before or after another, or its end to change its length. Right-click a section to rename it, change its part, write new notes or duplicate it.",
         );
         // stays open while its name is typed; closed when something is chosen
         egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
@@ -738,6 +909,18 @@ impl App {
         if let Some(a) = act {
             egui::Popup::close_all(ui.ctx());
             self.section_action(a);
+        }
+        if let Some((order, orig, index)) = move_to {
+            let fresh: Vec<Block> = order.iter().map(|&k| orig[k].clone()).collect();
+            let to = order.iter().position(|&k| k == index).unwrap_or(0);
+            let moved = dd_seq::project::block_labels(&orig)[index].clone();
+            self.apply_arrangement(fresh, order.iter().map(|&k| Some(k)).collect());
+            let now = dd_seq::project::block_labels(&self.doc.project.arrangement());
+            self.status = match (to.checked_sub(1).and_then(|k| now.get(k)), now.get(to + 1)) {
+                (_, Some(next)) => format!("Moved {moved} before {next}"),
+                (Some(prev), None) => format!("Moved {moved} after {prev}"),
+                _ => format!("Moved {moved}"),
+            };
         }
     }
 
@@ -1411,5 +1594,28 @@ fn short(l: Lane) -> String {
         Lane::Ctrl(CtrlKind::Cc(74)) => "Bright".into(),
         Lane::Ctrl(CtrlKind::Cc(11)) => "Expr".into(),
         Lane::Ctrl(k) => k.label(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A dragged section goes into the gap nearest where it's let go; a lead-in stays first.
+    #[test]
+    fn moving_a_section() {
+        let blocks = vec![Block::new(Part::Intro, 2), Block::new(Part::Neon, 4), Block::new(Part::Swell, 4), Block::new(Part::Fade, 2)];
+        let x = |b: u32| b as f32 * 10.0;
+        // the Swell let go over the Intro's first half: first
+        assert_eq!(move_slot(&blocks, 2, 5.0, x), (vec![2, 0, 1, 3], 0.0));
+        // the Intro past the middle of the Neon: after it
+        assert_eq!(move_slot(&blocks, 0, 45.0, x).0, vec![1, 0, 2, 3]);
+        // past the end: last
+        assert_eq!(move_slot(&blocks, 0, 200.0, x), (vec![1, 2, 3, 0], 120.0));
+        // let go where it was: as it was
+        assert_eq!(move_slot(&blocks, 1, 40.0, x).0, vec![0, 1, 2, 3]);
+        let mut lead = blocks.clone();
+        lead.insert(0, Block { name: String::new(), part: None, bars: 1, seed: None });
+        assert_eq!(move_slot(&lead, 2, 0.0, x).0[0], 0);
     }
 }

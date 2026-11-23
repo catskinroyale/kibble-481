@@ -1866,6 +1866,299 @@ pub fn factory() -> Vec<Patch> {
             spread: 0.8,
             ..named("Sodium Drone", Category::Drone)
         },
+        // ------------------------------------------------------------------ cosmic (D27)
+        // filtered noise that gusts and whistles: the low-pass follows the key, a slow
+        // wandering LFO sweeps it, and a breathier band sits above
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    noise: 1.0,
+                    hpf: 120.0,
+                    lpf: 900.0,
+                    lpf_res: 0.72,
+                    filter_env: env(2.5, 5.0, 0.7, 5.0),
+                    env_amount: 1.2,
+                    key_track: 1.0,
+                    vel_to_filter: 0.6,
+                    amp_env: env(2.2, 4.0, 0.9, 5.0),
+                    pan: -0.55,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 0.0,
+                    noise: 1.0,
+                    hpf: 2500.0,
+                    lpf: 7000.0,
+                    lpf_res: 0.35,
+                    filter_env: env(3.0, 5.0, 0.7, 5.0),
+                    env_amount: -1.0,
+                    key_track: 0.6,
+                    amp_env: env(3.0, 4.0, 0.9, 5.5),
+                    pan: 0.55,
+                    level: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.11,
+            lfo_delay: 0.0,
+            lfo_to_filter: 1.4,
+            tremolo: 0.25,
+            wheel_vibrato: 0.0,
+            touch_vibrato: 0.0,
+            drift: 0.0,
+            spread: 1.0,
+            gain_db: -2.0,
+            ..named("Solar Wind", Category::Atmosphere)
+        },
+        // a resonant low-pass snapping shut on a soft pulse: a drop into water
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    pulse: 0.6,
+                    width: 0.5,
+                    sine: 0.6,
+                    lpf: 220.0,
+                    lpf_res: 0.86,
+                    filter_env: env(0.001, 0.09, 0.0, 0.08),
+                    env_amount: 4.2,
+                    key_track: 1.0,
+                    vel_to_filter: 0.8,
+                    amp_env: env(0.001, 0.22, 0.0, 0.18),
+                    vel_to_amp: 0.6,
+                    ..Layer::default()
+                },
+                Layer::off(),
+            ],
+            drift: 0.0,
+            wheel_vibrato: 0.0,
+            touch_vibrato: 0.0,
+            spread: 1.0,
+            ..named("Bubble Drops", Category::Pluck)
+        },
+        // a modular sequencer voice: saw and pulse through a resonant low-pass with a
+        // short envelope; brightness (CC74) sweeps it
+        Patch {
+            layers: [
+                Layer {
+                    pulse: 0.5,
+                    width: 0.4,
+                    lpf: 520.0,
+                    lpf_res: 0.58,
+                    filter_env: env(0.002, 0.32, 0.12, 0.3),
+                    env_amount: 2.6,
+                    key_track: 0.7,
+                    vel_to_filter: 1.0,
+                    amp_env: env(0.003, 0.5, 0.25, 0.35),
+                    vel_to_amp: 0.5,
+                    detune: -4.0,
+                    ..saw
+                },
+                Layer {
+                    saw: 0.0,
+                    pulse: 0.8,
+                    width: 0.25,
+                    pwm: 0.3,
+                    octave: 1,
+                    lpf: 900.0,
+                    lpf_res: 0.3,
+                    filter_env: env(0.002, 0.25, 0.1, 0.25),
+                    env_amount: 2.0,
+                    key_track: 0.7,
+                    amp_env: env(0.003, 0.35, 0.15, 0.3),
+                    detune: 5.0,
+                    level: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_rate: 0.9,
+            lfo_to_filter: 0.15,
+            lfo_delay: 0.0,
+            drift: 3.0,
+            spread: 0.5,
+            ..named("Cosmic Sequence", Category::Pluck)
+        },
+        // round and soft: a sine with a little filtered pulse, a gentle thump of envelope
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    sine: 1.0,
+                    lpf: 400.0,
+                    env_amount: 0.0,
+                    amp_env: env(0.012, 0.9, 0.55, 0.25),
+                    vel_to_amp: 0.4,
+                    drive: 0.1,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 0.0,
+                    pulse: 1.0,
+                    width: 0.45,
+                    lpf: 260.0,
+                    lpf_res: 0.25,
+                    filter_env: env(0.005, 0.25, 0.1, 0.2),
+                    env_amount: 1.4,
+                    amp_env: env(0.012, 0.7, 0.4, 0.25),
+                    level: 0.35,
+                    ..Layer::default()
+                },
+            ],
+            mono: true,
+            glide: 0.03,
+            drift: 2.0,
+            spread: 0.0,
+            ..named("Round Pulse Bass", Category::Bass)
+        },
+        // mellow and singing: a narrow pulse and a sine, softly filtered, gliding, the
+        // vibrato blooming late
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    pulse: 0.7,
+                    width: 0.3,
+                    pwm: 0.08,
+                    sine: 0.7,
+                    lpf: 1300.0,
+                    lpf_res: 0.18,
+                    filter_env: env(0.25, 1.5, 0.75, 1.2),
+                    env_amount: 0.8,
+                    key_track: 0.8,
+                    amp_env: env(0.12, 1.5, 0.9, 1.4),
+                    vel_to_amp: 0.4,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 0.0,
+                    sine: 1.0,
+                    octave: 1,
+                    lpf: 3000.0,
+                    env_amount: 0.0,
+                    amp_env: env(0.3, 1.5, 0.9, 1.5),
+                    detune: 4.0,
+                    level: 0.18,
+                    ..Layer::default()
+                },
+            ],
+            mono: true,
+            glide: 0.14,
+            vibrato: 11.0,
+            lfo_rate: 4.8,
+            lfo_delay: 0.7,
+            drift: 4.0,
+            spread: 0.0,
+            ..named("Starlight Lead", Category::Lead)
+        },
+        // a tape keyboard's flutes: breathy sines that waver as the tape does
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    sine: 1.0,
+                    pulse: 0.12,
+                    width: 0.5,
+                    noise: 0.05,
+                    lpf: 2600.0,
+                    lpf_res: 0.1,
+                    env_amount: 0.0,
+                    amp_env: env(0.09, 1.0, 0.92, 0.45),
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 0.0,
+                    noise: 1.0,
+                    hpf: 1800.0,
+                    lpf: 4500.0,
+                    lpf_res: 0.4,
+                    key_track: 1.0,
+                    env_amount: 0.0,
+                    amp_env: env(0.05, 0.3, 0.2, 0.3),
+                    level: 0.06,
+                    ..Layer::default()
+                },
+            ],
+            vibrato: 7.0,
+            lfo_rate: 5.6,
+            lfo_delay: 0.3,
+            tremolo: 0.05,
+            drift: 8.0,
+            spread: 0.5,
+            ..named("Tape Flutes", Category::Lead)
+        },
+        // a string machine: thin detuned saws, slow in and out (best through the ensemble)
+        Patch {
+            layers: [
+                Layer {
+                    hpf: 260.0,
+                    lpf: 2400.0,
+                    lpf_res: 0.08,
+                    env_amount: 0.0,
+                    amp_env: env(0.9, 2.0, 1.0, 2.2),
+                    detune: -8.0,
+                    pan: -0.6,
+                    vel_to_amp: 0.2,
+                    ..saw
+                },
+                Layer {
+                    octave: 1,
+                    hpf: 400.0,
+                    lpf: 3200.0,
+                    env_amount: 0.0,
+                    amp_env: env(1.1, 2.0, 1.0, 2.4),
+                    detune: 8.0,
+                    pan: 0.6,
+                    level: 0.45,
+                    vel_to_amp: 0.2,
+                    ..saw
+                },
+            ],
+            drift: 3.0,
+            spread: 0.9,
+            ..named("String Machine", Category::Strings)
+        },
+        // a modular drone: saws an octave down into a resonant low-pass that brightness
+        // (CC74) sweeps slowly
+        Patch {
+            layers: [
+                Layer {
+                    octave: -1,
+                    pulse: 0.5,
+                    width: 0.35,
+                    pwm: 0.3,
+                    lpf: 380.0,
+                    lpf_res: 0.7,
+                    env_amount: 0.0,
+                    key_track: 0.5,
+                    amp_env: env(3.0, 4.0, 1.0, 6.0),
+                    detune: -5.0,
+                    pan: -0.3,
+                    ..saw
+                },
+                Layer {
+                    lpf: 700.0,
+                    lpf_res: 0.5,
+                    env_amount: 0.0,
+                    key_track: 0.5,
+                    amp_env: env(4.0, 4.0, 1.0, 6.0),
+                    detune: 6.0,
+                    pan: 0.3,
+                    level: 0.45,
+                    ..saw
+                },
+            ],
+            lfo_shape: LfoShape::Triangle,
+            lfo_rate: 0.05,
+            lfo_to_filter: 0.7,
+            lfo_delay: 0.0,
+            drift: 5.0,
+            spread: 0.6,
+            gain_db: -3.0,
+            ..named("Modular Drone", Category::Drone)
+        },
         Patch::default(),
     ]
 }

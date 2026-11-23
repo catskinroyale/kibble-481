@@ -144,6 +144,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Metal Pad", 93, 4.7),
             gm("Space Voice", 91, 4.1),
             font("Synth Strings (FreePats)", "FreePats-SynthStrings1.sf2", -3.6, true),
+            synth("Solar Wind", 7.9),
         ],
         Role::Strings => vec![
             synth("Memory Strings", 0.0),
@@ -156,6 +157,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Tremolo Strings", 44, 0.4),
             gm("Viola", 41, 1.0),
             gm("Violin", 40, -4.6),
+            synth("String Machine", 2.5),
         ],
         Role::Lead => vec![
             synth("Smoky Lead", 0.0),
@@ -172,6 +174,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Bassoon", 70, -0.1),
             gm("Clarinet", 71, 0.4),
             gm("French Horn", 60, 1.3),
+            synth("Starlight Lead", 2.2),
+            synth("Tape Flutes", 1.2),
         ],
         Role::Answer => vec![
             font("Tenor Sax (FreePats)", SAX_FONT, -6.0, true),
@@ -197,6 +201,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Upright Bass", 32, -2.0),
             gm("Contrabass", 43, -1.0),
             gm("Finger Bass", 33, -2.0),
+            synth("Round Pulse Bass", 6.1),
         ],
         Role::Bells => vec![
             synth("Night Bells", 0.0),
@@ -222,6 +227,9 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Pizzicato Strings", 45, 0.8),
             font("Concert Harp (FreePats)", "FreePats-ConcertHarp.sf2", -10.1, true),
             gm("Steel Guitar", 25, 9.6),
+            synth("Bubble Drops", 0.7),
+            synth("Cosmic Sequence", 5.0),
+            gm("Grand Piano", 0, -4.3),
         ],
         Role::Keys => vec![
             synth("Neon Tine Piano", 0.0),
@@ -243,6 +251,7 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             synth("Sodium Drone", -3.0),
             gm("Bowed Glass", 92, 3.0),
             gm("Goblin", 101, -1.3),
+            synth("Modular Drone", 5.5),
         ],
         Role::City => vec![Alt { label: "City FX", source: Source::Kit(KitKind::CityFx), trim_db: 0.0, bundled: true }],
         Role::Drums => vec![

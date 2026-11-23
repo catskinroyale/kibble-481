@@ -488,6 +488,113 @@ written by the seed.
   Checked: the other ten styles write identical fingerprints and titles across 1,200
   pieces.
 
+## D27 — Nebula (2026-11-19)
+
+A twelfth style from a brief for a 1970s analogue electronic ambient score: dreamy,
+spacious and cosmic, about 90-100 bpm in 4/4, vintage analogue synthesisers only (a
+modular synth, string-machine pads, a vintage organ, a tape keyboard), opening on
+filtered-noise wind and breath, water-like blips and a sweeping resonant filter over a
+drone; a rolling sequencer and a soft round bass; a simple, naive melody in long notes,
+repeating and evolving; string-machine pads swelling between a few warm minor and major
+chords; whooshes, sparkling arpeggios and echoing blips across the stereo field;
+building in density and brightness, then dissolving back into the wind. No drums. No
+named instrument, piece or artist is imitated: the patches and the melody are our own.
+
+- **Synth only.** Eight new factory patches (`patch.rs`, D27 section), each also a
+  palette alternative trimmed to its role (and left out of the other styles' choosing,
+  `NEBULA_SOUNDS`): Solar Wind (noise through a key-tracked resonant low-pass swept by
+  a slow LFO, a breathier band above), Bubble Drops (a resonant low-pass snapping shut
+  on a soft pulse), Cosmic Sequence (saw and pulse, resonant, short filter envelope),
+  Round Pulse Bass, Starlight Lead (narrow pulse and sine, gliding, late vibrato), Tape
+  Flutes (breathy sines with tape wow), String Machine (thin detuned saws through the
+  ensemble) and Modular Drone (resonant, swept). With Velour Organ, Glass Chimes and
+  Hover Sweep from the factory. The only sample is the tape hiss (the City FX kit's,
+  held faint, as in Derelict).
+- **Filters move with brightness (CC74)**: the drone sweeps on a sixteen-bar sine, the
+  sequencer on eight, both opening as the piece builds; the whooshes sweep up and down;
+  the lead and strings brighten with the build.
+- **Harmony** four bars a chord, sixteen-bar progressions from i, ♭VI(maj7), III, iv
+  and ♭VII; the final four bars return to i. Always natural minor (`Style::mode`,
+  applied with the key by `Style::settle` wherever a style is chosen or a piece drawn).
+- **Melody**: four four-bar segments A B A' C, one to a chord; long notes (rhythms in
+  sixteenths of a segment, the shortest a beat, mean at least three beats), A' the same
+  rhythm and steps as A from a note of its own chord, long notes resting on the chord.
+  Each time round it evolves: from the second, the longest notes of B and C lean a step
+  up on their last beat; from the third, B's peak is a step higher; at the build the tape
+  flutes double it an octave up.
+- **Build**: per-layer presence and intensity curves by part, a quaver at a time over the
+  piece and slew-limited (as Orbit's, 0.9.1), the expression itself never stepping more
+  than 8 a quaver, so any arrangement flows; the sequencer plays quavers, fills seeded
+  semiquavers past half intensity and all of them near the peak; sparkles every four bars,
+  every two at the build; blips more often in the air.
+- Mix: a plate for the spring reverb, a long dotted-crotchet ping-pong tape echo (0.55
+  feedback, wow 0.25), tape drift 0.2, the ensemble on strings, flutes and organ; about
+  -19 LUFS, LRA about 9-10 LU, peaks around -4 dBFS; short-term loudness climbing from
+  about -26 to -15 LUFS and dissolving to about -34. Checked: the older styles write
+  identical fingerprints and titles across 1,200 pieces.
+
+## D28 — Vigil, filled tracks, bars per image, section moves (2026-11-23)
+
+Asked for: a score based on Overcity with a gentle brass instrument, the strings swapped
+for a drone (two drone tracks in all) and the pluck replaced by a grand piano; images set
+to a number of bars on the gallery timeline, the calculator considering a tempo change as
+well as changing sections; added tracks always populated; zoom on the piano roll; a
+transport control to skip to the next or previous section; sections reordered by dragging.
+
+- **Vigil is Overcity re-voiced, not a new composer** (`vigil.rs`): `compose_plan` writes
+  the piece as Overcity and `adapt` changes the instruments, so a seed plays the same
+  theme and form in both, and every Overcity fix reaches Vigil. `Style::base` maps it to
+  Overcity for the plan and chord length. Its own stream (`vigil`) picks only the second
+  drone, so the Overcity draws are untouched.
+- **Gentle brass: sampled French Horns** (GM 60), played at 85% velocity with the
+  swells' expression at 90%, no ensemble or echo (which doubled sampled brass in
+  Derelict), a 3.5 kHz high cut; the fader 5 dB up from the trim, as the sampled horns
+  under Overcity's swells measured 10 dB under the synth brass. Stem about -28 LUFS,
+  against Overcity's brass at -25.
+- **The second drone follows the chords**: each chord's lowest note and its fifth (else
+  its next note) moved together into the octave from D3, held on through chords that keep
+  them. One of Glass Drone, Choir Drone, Ozone Drone or Bowed Glass, never the first
+  drone's sound, each with its own fader measured in that register (the drones' trims are
+  measured two octaves lower, and differ by up to 10 dB up there). Stem about -26 LUFS,
+  where Overcity's pad was about -20.
+- **Grand Piano as a Pluck** (trim -4.3 dB, level-matched), left out of every other
+  style's choosing (`VIGIL_SOUNDS`), so their pieces are unchanged; struck 10 velocity
+  harder and 8 dB up, as the soft glass velocities are far quieter on a sampled piano.
+- Measured over five seeds at 48 bars: -16 to -19.6 LUFS, peaks under -0.4 dBFS (Overcity
+  -15 to -18); the master left as Overcity's. The ten older styles write identical
+  fingerprints and titles across 1,200 pieces.
+- **Added tracks always have notes** (`fill.rs`): when neither the style nor its next 15
+  seeds write a role (or the piece wasn't composed), a part is written over the piece's
+  own harmony, read bar by bar by matching triads to the notes sounding (the low notes
+  weighted, staying on the last chord on a tie), and the key's tonic minor where nothing
+  plays. Each role in its own way: held voicings (pad, strings, horn swells), roots
+  (bass), the commonest root held a section at a time (drone), a rolled chord a half bar
+  (keys), sparse chord tones (bells), an arpeggio (pluck), two-bar phrases on chord tones
+  (lead, the answer in the gaps), a soft kit groove, and rain for the city; quieter in an
+  Intro or Fade. "New notes for one track" on such a track writes it the same way.
+- **Bars per image** (`Slideshow::by_bars`, `image_bars`, default 4): every image the same
+  whole number of bars, whatever the tempo; following accents is off in it. The tempo
+  then only sets the time on screen and the sections only the count, so the calculator
+  offers both: `tempo_for` (the tempo at which N bars last the time aimed for; 30-220
+  bpm), a table of 2-16 bars, and the existing section shares. In seconds and on bar
+  lines, `tempo_to_fit` searches tenths of a bpm outward from the current tempo for one at
+  which the score's bars hold every photo, offered beside the section shares. A tempo
+  change follows the app's rules: an untouched piece is written again, an edited one
+  keeps its notes.
+- **Roll zoom buttons** (− + and whole piece) beside the tracks' + Add, zooming about the
+  middle; ⌘-scroll and pinch stay. Not over the roll (where they hid notes and a missed
+  click added one), and not ⌘= and ⌘−, which egui uses to scale the window.
+- **The playhead's own strip** (16 px) above the Sections strip, with a larger handle:
+  click or drag there to move or scrub it. Dragging on the sections had moved or resized
+  them instead; scrubbing on the bar numbers still works.
+- **Skip by section**: ⏮ ⏭ in the transport, **[** and **]** on the keyboard; back goes
+  to this section's start, or the one before when already there (or playing within a
+  second of it); the roll scrolls to show it.
+- **Section moves by dragging** a section's body on the Sections strip (its end still
+  resizes it): a ghost follows the pointer, a line marks the gap; on release it goes
+  through `apply_arrangement` like any reordering, so an untouched piece is written again
+  in the new order and an edited one keeps every section's notes. A lead-in stays first.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

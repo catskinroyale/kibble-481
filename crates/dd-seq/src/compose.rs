@@ -108,6 +108,14 @@ pub enum Style {
     /// arriving one at a time (bass guitar, glockenspiel, organ, acoustic guitar) to a peak
     /// of tubular bells, then leaving one by one back to the piano.
     Orbit,
+    /// A 1970s analogue electronic ambient score (D27): wind and water-drop blips, a
+    /// rolling sequencer and round bass, a naive melody of long notes over string-machine
+    /// chords, sparkles and whooshes across the stereo field, building and dissolving.
+    Nebula,
+    /// Overcity watched over gently (D28): its theme and form, the horns soft and
+    /// sampled, two drones where the choir and strings were, and a grand piano for the
+    /// rippling glass.
+    Vigil,
 }
 
 /// The sounds added to the palette for Homeward: the other styles leave them out of
@@ -115,7 +123,7 @@ pub enum Style {
 pub(crate) const HOMEWARD_SOUNDS: [&str; 5] = ["Synth Strings (FreePats)", "Viola", "Clarinet", "French Horn", "Concert Harp (FreePats)"];
 
 impl Style {
-    pub const ALL: [Style; 11] = [
+    pub const ALL: [Style; 13] = [
         Style::Nocturne,
         Style::Pursuit,
         Style::Blackout,
@@ -127,6 +135,8 @@ impl Style {
         Style::Return,
         Style::Chamber,
         Style::Orbit,
+        Style::Nebula,
+        Style::Vigil,
     ];
 
     pub fn label(self) -> &'static str {
@@ -142,6 +152,8 @@ impl Style {
             Style::Return => "Return",
             Style::Chamber => "Chamber",
             Style::Orbit => "Orbit",
+            Style::Nebula => "Nebula",
+            Style::Vigil => "Vigil",
         }
     }
 
@@ -166,8 +178,14 @@ impl Style {
             Style::Return => {
                 "Reflective and quietly hopeful, at dawn: one singable theme on a soft electric piano, then violas, a clarinet answered by cellos, full strings at a single peak, and the solo piano home to a long-held chord"
             }
+            Style::Nebula => {
+                "Dreamy and cosmic, 1970s analogue synthesisers only: wind and water-drop blips, a rolling sequencer and round bass, a simple melody of long notes over string-machine chords, sparkles and whooshes, building and dissolving back into the air"
+            }
             Style::Orbit => {
                 "Hypnotic and quietly uneasy, in 15/8: one looping piano figure, then a bass guitar, glockenspiel, organ and acoustic guitar one at a time, tubular bells at the peak, and back to the piano alone"
+            }
+            Style::Vigil => {
+                "Overcity, gentler: the vast city from above at night, its theme on soft French horns over two slow drones, a grand piano rippling where the glass was, one great swell"
             }
             Style::Chamber => {
                 "A chamber orchestra in a dark, sci-fi noir: a ticking pizzicato, the theme on a clarinet, then a solo violin, a horn and celesta, over a glass drone and a sub like a heartbeat; strings in octaves at the climax, a minor-major ninth to end"
@@ -189,6 +207,8 @@ impl Style {
             Style::Return => 66.0,
             Style::Chamber => 62.0,
             Style::Orbit => 92.0,
+            Style::Nebula => 96.0,
+            Style::Vigil => 60.0,
         }
     }
 
@@ -199,6 +219,24 @@ impl Style {
             Style::Return => Some((4, Mode::Aeolian)),
             Style::Orbit => Some((9, Mode::Aeolian)),
             _ => None,
+        }
+    }
+
+    /// The mode it is always written in, if any: its key's, or Nebula's natural minor.
+    pub fn mode(self) -> Option<Mode> {
+        match self {
+            Style::Nebula => Some(Mode::Aeolian),
+            _ => self.key().map(|k| k.1),
+        }
+    }
+
+    /// Set a recipe to the key and mode this style is written in, where it has them.
+    pub fn settle(self, r: &mut Recipe) {
+        if let Some((k, _)) = self.key() {
+            r.root = k;
+        }
+        if let Some(m) = self.mode() {
+            r.mode = m;
         }
     }
 
@@ -220,6 +258,14 @@ impl Style {
         }
     }
 
+    /// The style whose writing it shares: Overcity's, for Vigil; else itself.
+    pub fn base(self) -> Style {
+        match self {
+            Style::Vigil => Style::Overcity,
+            s => s,
+        }
+    }
+
     /// About how long a chord lasts, in seconds, and the most bars it may take.
     fn chord_secs(self) -> (f64, u32) {
         match self {
@@ -228,7 +274,7 @@ impl Style {
             Style::Blackout => (10.0, 6),
             Style::Momento => (5.5, 4),
             Style::Noir => (7.5, 4),
-            Style::Overcity => (8.0, 4),
+            Style::Overcity | Style::Vigil => (8.0, 4),
             Style::Derelict => (14.0, 6),
             // (Homeward's harmony follows its theme, a chord a bar)
             Style::Homeward | Style::Return => (3.5, 1),
@@ -236,6 +282,8 @@ impl Style {
             Style::Chamber => (8.0, 2),
             // (Orbit's moves two bars a chord under its loop)
             Style::Orbit => (10.0, 2),
+            // (Nebula's moves four bars a chord)
+            Style::Nebula => (10.0, 4),
         }
     }
 }
@@ -413,9 +461,9 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         Style::Blackout => *rng.pick(&DARK),
         Style::Momento => *rng.pick(&ROMANTIC),
         Style::Noir => *rng.pick(&NOIR),
-        Style::Overcity => *rng.pick(&OVERCITY),
+        Style::Overcity | Style::Vigil => *rng.pick(&OVERCITY),
         Style::Derelict => *rng.pick(&DERELICT),
-        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => *rng.pick(&ROMANTIC),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => *rng.pick(&ROMANTIC),
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
@@ -471,7 +519,7 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 _ => vec![a, b, pc(deg + 3), pc(deg + 6)],
             },
             // hollow: the triad, a sus2 or a sus4 (a moment of hope, unresolved)
-            Style::Overcity => match (last, rng.weighted(&[4.0, 1.5, 1.0])) {
+            Style::Overcity | Style::Vigil => match (last, rng.weighted(&[4.0, 1.5, 1.0])) {
                 (true, _) | (_, 0) => vec![a, c, b],
                 (_, 1) => vec![a, c, pc(deg + 1)],
                 _ => vec![a, c, pc(deg + 3)],
@@ -485,7 +533,7 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 _ => vec![a, b, (a + 6) % 12],
             },
             // (Homeward harmonises its theme itself; these stand in for anything else)
-            Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => vec![a, b, c],
+            Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => vec![a, b, c],
         };
         let prev = out.last().map(|c| c.voicing.clone());
         let voicing =
@@ -512,6 +560,7 @@ fn chord_bars(style: Style, bar_secs: f64, bars: u32) -> u32 {
 /// a sixth, a half and five sixths, on chord changes (short pieces drop the later ones).
 /// Noir opens with an Intro of a chord or two first, where there's room.
 pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+    let style = style.base();
     const PARTS: [Part; 4] = [Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
@@ -545,6 +594,9 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
     }
     if style == Style::Orbit {
         return crate::orbit::plan(bars);
+    }
+    if style == Style::Nebula {
+        return crate::nebula::plan(bars);
     }
     if style == Style::Overcity && bars >= cb * 5 {
         // a long breath first, the theme, its development, the great swell, and dissolving
@@ -629,7 +681,15 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
         && ir.chance(
             if matches!(
                 r.style,
-                Style::Noir | Style::Overcity | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit
+                Style::Noir
+                    | Style::Overcity
+                    | Style::Derelict
+                    | Style::Homeward
+                    | Style::Return
+                    | Style::Chamber
+                    | Style::Orbit
+                    | Style::Nebula
+                    | Style::Vigil
             ) {
                 1.0
             } else {
@@ -661,6 +721,12 @@ pub fn compose(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Project {
 /// number of bars; the piece is as long as they are.
 pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)]) -> Project {
     let plan: Vec<(Part, u32)> = if plan.is_empty() { vec![(Part::Neon, 2)] } else { plan.to_vec() };
+    // Vigil is Overcity written for other instruments
+    if r.style == Style::Vigil {
+        let mut p = compose_plan(&Recipe { style: Style::Overcity, ..*r }, bpm, meter, &plan);
+        crate::vigil::adapt(&mut p, r);
+        return p;
+    }
     let total: u32 = plan.iter().map(|(_, b)| (*b).max(1)).sum();
     let mut p = Project { bpm, meter, length_bars: total.max(2), ..Project::default() };
     let bars = p.length_bars;
@@ -712,7 +778,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Wet", "Lonely", "Last", "Empty", "Paper", "Late", "Flickering", "Sodium", "Quiet", "Cold"],
             ["Crossing", "Lanterns", "Umbrella", "Platform", "Alley", "Reflections", "Taxi", "Train", "Window", "Street"],
         ),
-        Style::Overcity => (
+        Style::Overcity | Style::Vigil => (
             ["High", "Vast", "Cold", "Drowned", "Sleepless", "Silent", "Upper", "Endless", "Sodium", "Last"],
             ["Spires", "Towers", "Arcology", "Canopy", "Ascent", "Zenith", "Vigil", "Heights", "Firmament", "Tiers"],
         ),
@@ -732,6 +798,10 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Glass", "Cold", "Silent", "Synthetic", "Last", "Pale", "Hollow", "Velvet", "Iron", "Midnight"],
             ["Quartet", "Requiem", "Chamber", "Elegy", "Signal", "Archive", "Serenade", "Inquest", "Sonata", "Memory"],
         ),
+        Style::Nebula => (
+            ["Solar", "Drifting", "Distant", "Silver", "Floating", "Blue", "Quiet", "Endless", "Northern", "Crystal"],
+            ["Nebula", "Equinox", "Aurora", "Horizon", "Tides", "Lagoon", "Starfield", "Daybreak", "Atmosphere", "Comet"],
+        ),
         Style::Orbit => (
             ["Slow", "Turning", "Still", "Distant", "Glass", "Silent", "Endless", "Pale", "Hidden", "Quiet"],
             ["Orbit", "Mechanism", "Pendulum", "Lighthouse", "Spiral", "Observatory", "Clockwork", "Tide", "Carousel", "Satellite"],
@@ -746,6 +816,13 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     // and Orbit its ensemble
     if style == Style::Orbit {
         crate::orbit::write(&mut p, r, &secs, density);
+        return finish(p, r);
+    }
+    // and Nebula its synthesisers
+    // (always in the natural minor its chords are written in)
+    if style == Style::Nebula {
+        let r = &Recipe { mode: Mode::Aeolian, ..*r };
+        crate::nebula::write(&mut p, r, &secs, density);
         return finish(p, r);
     }
 
@@ -765,6 +842,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             .filter(|a| matches!(style, Style::Homeward | Style::Return) || !HOMEWARD_SOUNDS.contains(&a.label))
             .filter(|a| !crate::chamber::CHAMBER_SOUNDS.contains(&a.label))
             .filter(|a| !crate::orbit::ORBIT_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::nebula::NEBULA_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::vigil::VIGIL_SOUNDS.contains(&a.label))
             .collect();
         let w: Vec<f64> = match style {
             Style::Nocturne => (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect(),
@@ -796,12 +875,12 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Blackout => [2.0, 3.0, 4.0],
         Style::Momento => [5.0, 4.0, 0.5],
         Style::Noir => [5.0, 3.0, 1.0],
-        Style::Overcity => [1.0, 5.0, 3.0],
+        Style::Overcity | Style::Vigil => [1.0, 5.0, 3.0],
         Style::Derelict => [0.3, 2.0, 5.0],
         // intimate and natural: the hall, now and then the cathedral
         Style::Homeward => [6.0, 1.0, 0.0],
         // the concert hall, always
-        Style::Return | Style::Chamber | Style::Orbit => [1.0, 0.0, 0.0],
+        Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => [1.0, 0.0, 0.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -827,9 +906,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Blackout => (-3.0, 0.0, 4.0, 0.0),
         Style::Momento => (-1.0, -4.0, -5.0, -3.0),
         Style::Noir => (-2.0, -5.0, -4.0, -2.0),
-        Style::Overcity => (-2.0, -4.0, -2.0, -3.0),
+        Style::Overcity | Style::Vigil => (-2.0, -4.0, -2.0, -3.0),
         Style::Derelict => (-3.0, -3.0, 0.0, 0.0),
-        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => (-4.0, -3.0, 0.0, 0.0),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => (-4.0, -3.0, 0.0, 0.0),
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -1192,7 +1271,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
         Style::Momento => swaying_bass(&mut t[t_bass].notes, &chords, &secs, beat, bar, beats_per_bar, end),
         Style::Noir => walking_bass(&mut t[t_bass].notes, &chords, &secs, &mut brng, beat, bar, beats_per_bar, end),
-        Style::Overcity => {
+        Style::Overcity | Style::Vigil => {
             // a slow heartbeat, felt more than heard: the root low, twice a bar, from the
             // development through the great swell and on into the first half of the fade
             for (part, a, z) in &secs {
@@ -1212,7 +1291,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             }
         }
         // (Derelict is written by `derelict`)
-        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
@@ -1317,7 +1396,16 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         // few notes, held, a sigh now and then
         Style::Noir => vec![&[3.0, 1.0], &[4.0], &[2.0, 2.0], &[1.5, 0.5, 2.0], &[6.0, 2.0]],
         // (Overcity writes its own theme; these only keep the stream as it would be)
-        Style::Overcity | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => vec![&[4.0], &[6.0, 2.0]],
+        Style::Overcity
+        | Style::Vigil
+        | Style::Derelict
+        | Style::Homeward
+        | Style::Return
+        | Style::Chamber
+        | Style::Orbit
+        | Style::Nebula => {
+            vec![&[4.0], &[6.0, 2.0]]
+        }
     };
     let phrase_beats = (phrase_bars * beats_per_bar) as f64;
     let rhythm_a: Vec<f64> = {
@@ -1704,7 +1792,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Overcity => {
+        Style::Overcity | Style::Vigil => {
             // the city far below: a soft wash of rain, its rumble, distant thunder at the
             // edges of the form, and a deep gong-like boom on the great swell
             let pc = r.root % 12;
@@ -1736,7 +1824,8 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Homeward
         | Style::Return
         | Style::Chamber
-        | Style::Orbit => {}
+        | Style::Orbit
+        | Style::Nebula => {}
     }
     if style == Style::Noir {
         // told in music alone: no rain, hum, neon or thunder
@@ -1770,7 +1859,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         }
         Style::Momento => soft_groove(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
         Style::Noir => brushes(&mut t[t_drums].notes, &secs, &mut dr, beat, bar, beats_per_bar, density, end),
-        Style::Overcity => {
+        Style::Overcity | Style::Vigil => {
             // only the largest moments: a slow, soft, deep hit every other bar of the great swell
             for (a, z) in of(Part::NightShift) {
                 let mut b = a;
@@ -1780,7 +1869,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit => {}
+        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => {}
     }
     if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
@@ -3050,7 +3139,7 @@ pub fn regenerate_track_section(p: &mut Project, i: usize, track: usize, seed: u
     let (Some(r), Some(plan)) = (p.recipe, p.plan()) else { return false };
     let (Some(&(a, b)), Some(t)) = (p.block_ticks().get(i), p.tracks.get(track)) else { return false };
     let src = if t.added {
-        t.role.and_then(|role| role_track(p, role, seed))
+        t.role.and_then(|role| role_track(p, role, seed).or_else(|| Some(filled_track(p, role, seed, track))))
     } else {
         let fresh = compose_plan(&Recipe { seed, ..r }, p.bpm, p.meter, &plan);
         fresh.tracks.iter().find(|f| f.name == t.name).cloned().or_else(|| t.role.and_then(|role| role_track(p, role, seed)))
@@ -3090,8 +3179,9 @@ fn added_seed(p: &Project, name: &str, role: Role, seed: u64) -> u64 {
 /// Add a track of `role` with the notes and sound the piece's style writes for it (a
 /// second track of a role it has already is written with a seed of its own, so it
 /// plays something else). A role the style doesn't write, or a piece that wasn't
-/// composed, gets the role's usual sound and no notes. Returns the new track's index
-/// and whether it has notes. A piece that was untouched stays so. It is called `name`,
+/// composed, gets the role's usual sound and a part written over the piece's chords
+/// (`fill.rs`), so a new track always has notes. Returns the new track's index and
+/// whether the style wrote it. A piece that was untouched stays so. It is called `name`,
 /// else after its role (numbered if the piece has one already).
 pub fn add_track(p: &mut Project, role: Role, name: Option<&str>) -> (usize, bool) {
     let untouched = p.untouched();
@@ -3103,15 +3193,9 @@ pub fn add_track(p: &mut Project, role: Role, name: Option<&str>) -> (usize, boo
     }
     let index = p.tracks.len();
     let seed = added_seed(p, &name, role, p.recipe.map_or(0, |r| r.seed));
-    let mut t = match role_track(p, role, seed) {
-        Some(t) => t,
-        None => {
-            let alt = alternatives(role).into_iter().find(|a| a.bundled).unwrap_or_else(|| alternatives(role).remove(0));
-            let mut t = Track::new(role.label(), alt.source.clone(), index);
-            crate::palette::apply(&mut t, role, &alt);
-            t
-        }
-    };
+    let written = role_track(p, role, seed);
+    let by_style = written.is_some();
+    let mut t = written.unwrap_or_else(|| filled_track(p, role, seed, index));
     let bars = p.length_bars.max(p.bars());
     let end = bars * p.bar_ticks();
     t.notes.retain(|n| n.start < end);
@@ -3123,12 +3207,21 @@ pub fn add_track(p: &mut Project, role: Role, name: Option<&str>) -> (usize, boo
     t.color = crate::project::NEON[index % crate::project::NEON.len()];
     t.levels.clear();
     t.added = true;
-    let has_notes = !t.notes.is_empty();
     p.tracks.push(t);
     if untouched {
         p.composed = fingerprint(p);
     }
-    (index, has_notes)
+    (index, by_style)
+}
+
+/// A track of `role` in its usual sound, playing a part written over the piece's
+/// harmony as it stands (for a role the style doesn't write, or a piece not composed).
+fn filled_track(p: &Project, role: Role, seed: u64, index: usize) -> Track {
+    let alt = alternatives(role).into_iter().find(|a| a.bundled).unwrap_or_else(|| alternatives(role).remove(0));
+    let mut t = Track::new(role.label(), alt.source.clone(), index);
+    crate::palette::apply(&mut t, role, &alt);
+    (t.notes, t.ctrls) = crate::fill::write(p, role, seed);
+    t
 }
 
 /// Give a freshly composed piece the tracks added to the one it replaces, each
@@ -3524,7 +3617,7 @@ mod tests {
         // (Homeward and Chamber, written after, share its contrabass and pizzicato on purpose)
         for style in Style::ALL
             .into_iter()
-            .filter(|s| !matches!(s, Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit))
+            .filter(|s| !matches!(s, Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula))
         {
             for seed in 0..60 {
                 let p = compose(&Recipe { seed, style, ..Recipe::random(seed) }, style.tempo(), (4, 4), 32);
@@ -3901,7 +3994,7 @@ mod section_tests {
     }
 
     /// A new track plays what the style writes for its role; a second of a role plays
-    /// something of its own; a role the style doesn't write comes empty. Adding to an
+    /// something of its own; a role the style doesn't write is written over its chords. Adding to an
     /// untouched piece leaves it untouched, and a new piece writes added tracks again.
     #[test]
     fn added_tracks_are_written_by_the_style() {
@@ -3912,8 +4005,9 @@ mod section_tests {
         assert!(notes && p.tracks[i].added && p.tracks[i].name == "Pad 2");
         assert_ne!(p.tracks[i].notes, pad.notes);
         assert!(p.untouched());
-        let (j, notes) = add_track(&mut p, Role::Drums, None);
-        assert!(!notes && p.tracks[j].notes.is_empty());
+        // (Derelict writes no drums: a part is written over its chords instead)
+        let (j, by_style) = add_track(&mut p, Role::Drums, None);
+        assert!(!by_style && !p.tracks[j].notes.is_empty());
         // Keys: Derelict writes none, Nocturne does
         let mut q = compose(&Recipe { style: Style::Nocturne, ..r }, 70.0, (4, 4), 32);
         let had = q.tracks.iter().any(|t| t.role == Some(Role::Bells));

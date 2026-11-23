@@ -7,9 +7,11 @@ pub mod city;
 pub mod compose;
 pub mod demo;
 pub mod engine;
+mod fill;
 pub mod fonts;
 mod homeward;
 pub mod midi_file;
+mod nebula;
 mod orbit;
 pub mod palette;
 pub mod project;
@@ -17,6 +19,7 @@ pub mod record;
 pub mod render;
 pub mod rng;
 pub mod timeline;
+mod vigil;
 
 #[cfg(test)]
 mod tests;

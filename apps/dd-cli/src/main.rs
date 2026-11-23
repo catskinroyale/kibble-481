@@ -12,14 +12,14 @@ use dd_seq::fonts::{FontBank, soundfont_dir};
 const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 
   kibble-481-cli demo <out.kibble>                 write the hand-written scene, Rain on Neon
-  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento|noir|overcity|derelict|homeward|return|chamber|orbit] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
+  kibble-481-cli compose <out.kibble> [--style nocturne|pursuit|blackout|momento|noir|overcity|derelict|homeward|return|chamber|orbit|nebula|vigil] [--seed <n>] [--bpm <n>] [--bars <n>] [--key <0-11>]
                                                compose a new piece (a random seed if none given)
   kibble-481-cli render <in.kibble|.mid> <out.wav> [--stem <track>]
                                                render the mix (24-bit, 48 kHz), or one track
   kibble-481-cli midi <in.kibble> <out.mid>        export a standard MIDI file
   kibble-481-cli import <in.mid> <out.kibble>      turn any MIDI file into a project
   kibble-481-cli resolve <in.kibble> <out-dir> [--photos <dir>] [--by-date] [--fps <n>]
-                     [--hold <secs>] [--fade <secs>] [--fit-track] [--stems]
+                     [--hold <secs>] [--bars-per-image <n>] [--fade <secs>] [--fit-track] [--stems]
                                                soundtrack, FCPXML timeline, EDL markers and cues
   kibble-481-cli patches                           list the synth's factory patches
   kibble-481-cli fonts                             list the loaded SoundFonts and their presets
@@ -66,11 +66,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             if let Some(n) = flag(&args, "--style") {
                 r.style = *dd_seq::compose::Style::ALL.iter().find(|s| s.label().eq_ignore_ascii_case(&n)).ok_or(
-                    "--style takes nocturne, pursuit, blackout, momento, noir, overcity, derelict, homeward, return, chamber or orbit",
+                    "--style takes nocturne, pursuit, blackout, momento, noir, overcity, derelict, homeward, return, chamber, orbit, nebula or vigil",
                 )?;
-                if let Some((k, m)) = r.style.key() {
-                    (r.root, r.mode) = (k, m);
-                }
+                r.style.settle(&mut r);
             }
             if let Some(n) = flag(&args, "--key") {
                 r.root = n.parse::<u8>().map_err(|_| "--key takes 0 (C) to 11 (B)")? % 12;
@@ -134,6 +132,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             if let Some(n) = flag(&args, "--hold") {
                 g.hold = n.parse().map_err(|_| "--hold takes seconds")?;
+            }
+            if let Some(n) = flag(&args, "--bars-per-image") {
+                g.image_bars = n.parse().map_err(|_| "--bars-per-image takes a whole number of bars")?;
+                g.by_bars = true;
             }
             if let Some(n) = flag(&args, "--fade") {
                 g.fade = n.parse().map_err(|_| "--fade takes seconds")?;

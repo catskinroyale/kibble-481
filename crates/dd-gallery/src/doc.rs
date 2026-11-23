@@ -59,7 +59,7 @@ pub fn plan(p: &Project, g: &Slideshow, photos: Option<usize>) -> Plan {
     // (older documents may ask to size the track; the calculator does that now)
     let g = Slideshow { fit: Fit::ImagesToTrack, ..g.clone() };
     let plan = Plan::for_track(&g, grid, p.music_secs());
-    let follow = g.follow_music && !g.exact;
+    let follow = g.follow_music && !g.exact && !g.by_bars;
     match photos {
         // the score holds them all: as many images as photos, the accents only moving
         // where each change falls (else following the music could hold fewer than the
