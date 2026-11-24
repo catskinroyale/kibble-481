@@ -75,12 +75,12 @@ impl Chord {
 }
 
 /// Every pitch of these pitch classes from `lo` to `hi`.
-fn ladder(pcs: &[i32], lo: i32, hi: i32) -> Vec<i32> {
+pub(crate) fn ladder(pcs: &[i32], lo: i32, hi: i32) -> Vec<i32> {
     (lo..=hi).filter(|p| pcs.contains(&p.rem_euclid(12))).collect()
 }
 
 /// The pitch of these pitch classes nearest `p` (the lower on a tie).
-fn snap(p: i32, pcs: &[i32]) -> i32 {
+pub(crate) fn snap(p: i32, pcs: &[i32]) -> i32 {
     ladder(pcs, p - 12, p + 12).into_iter().min_by_key(|&x| ((x - p).abs(), x)).unwrap_or(p)
 }
 
@@ -229,9 +229,44 @@ const LAYERS: [Layer; 12] = [
 ];
 
 /// 0 to 1 as `u` goes from `a` to `b`, eased.
-fn ramp(u: f64, a: f64, b: f64) -> f64 {
+pub(crate) fn ramp(u: f64, a: f64, b: f64) -> f64 {
     let x = ((u - a) / (b - a)).clamp(0.0, 1.0);
     x * x * (3.0 - 2.0 * x)
+}
+
+/// Every layer's presence and the intensity, a value a quaver (`q` ticks) over the piece,
+/// from `presence(layer, part, u)` and `intensity(part, u)` with `u` how far through
+/// its section; never moving faster than a full fade in about four seconds (a layer by
+/// 0.06 a quaver, the intensity by 0.03), so in any order of sections nothing jumps.
+pub(crate) fn envelopes<const N: usize>(
+    secs: &[(Part, u32, u32)],
+    end: u32,
+    q: u32,
+    presence: impl Fn(usize, Part, f64) -> f64,
+    intensity: impl Fn(Part, f64) -> f64,
+) -> (Vec<[f64; N]>, Vec<f64>) {
+    let nq = end.div_ceil(q) as usize;
+    let mut env = vec![[0.0f64; N]; nq];
+    let mut force = vec![0.0f64; nq];
+    let mut prev: Option<([f64; N], f64)> = None;
+    for (si, &(part, a, z)) in secs.iter().enumerate() {
+        let zz = if si + 1 == secs.len() { end } else { z };
+        let span = (zz - a).max(1) as f64;
+        for qi in (a / q) as usize..(zz.div_ceil(q) as usize).min(nq) {
+            let u = (qi as u32 * q).saturating_sub(a) as f64 / span;
+            let mut e: [f64; N] = std::array::from_fn(|l| presence(l, part, u));
+            let mut x = intensity(part, u);
+            if let Some((pe, px)) = prev {
+                for (v, p) in e.iter_mut().zip(pe) {
+                    *v = p + (*v - p).clamp(-0.06, 0.06);
+                }
+                x = px + (x - px).clamp(-0.03, 0.03);
+            }
+            (env[qi], force[qi]) = (e, x);
+            prev = Some((e, x));
+        }
+    }
+    (env, force)
 }
 
 /// How present a layer is `u` of the way through a section of this part: the air first,
@@ -293,23 +328,23 @@ fn intensity(part: Part, u: f64) -> f64 {
     }
 }
 
-struct Writer {
-    notes: Vec<Vec<Note>>,
-    ctrls: Vec<Vec<Ctrl>>,
-    end: u32,
-    touch: Rng,
+pub(crate) struct Writer {
+    pub(crate) notes: Vec<Vec<Note>>,
+    pub(crate) ctrls: Vec<Vec<Ctrl>>,
+    pub(crate) end: u32,
+    pub(crate) touch: Rng,
 }
 
 impl Writer {
-    fn note(&mut self, track: usize, start: u32, len: u32, key: i32, vel: f64) {
+    pub(crate) fn note(&mut self, track: usize, start: u32, len: u32, key: i32, vel: f64) {
         if start >= self.end || len == 0 {
             return;
         }
         let vel = (vel + self.touch.range(-3, 3) as f64).round().clamp(1.0, 127.0) as u8;
-        self.notes[track].push(Note { start, len: len.min(self.end - start), key: key.clamp(12, 120) as u8, vel });
+        self.notes[track].push(Note { start, len: len.min(self.end - start), key: key.clamp(0, 127) as u8, vel });
     }
 
-    fn cc(&mut self, track: usize, tick: u32, cc: u8, v: f64) {
+    pub(crate) fn cc(&mut self, track: usize, tick: u32, cc: u8, v: f64) {
         if tick < self.end {
             self.ctrls[track].push(Ctrl { tick, kind: CtrlKind::Cc(cc), value: v.round().clamp(0.0, 127.0) as i16 });
         }

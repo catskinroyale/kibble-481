@@ -341,6 +341,8 @@ impl App {
                 ("orbit", dd_seq::compose::Style::Orbit),
                 ("nebula", dd_seq::compose::Style::Nebula),
                 ("vigil", dd_seq::compose::Style::Vigil),
+                ("cinder", dd_seq::compose::Style::Cinder),
+                ("filmstrip", dd_seq::compose::Style::Filmstrip),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe

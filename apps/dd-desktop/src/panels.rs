@@ -692,12 +692,22 @@ impl App {
                     });
                     // ---- ensemble and tuning
                     let mut noir = false;
-                    fx_strip(ui, &t, "Ensemble", "A string-machine chorus, and the tuning", |ui| {
+                    fx_strip(ui, &t, "Ensemble", "A string-machine chorus, worn tape, and the tuning", |ui| {
                         widgets::unit_dial(
                             ui,
                             "Ensemble",
                             "A string-machine chorus on the tracks that ask for it (E on the mixer). Straight up is off; turn right for lush",
                             &mut fx.ensemble,
+                            0.0,
+                            10.0,
+                            widgets::DialLayout::Under,
+                            |v| format!("{:.0}%", v * 100.0),
+                        );
+                        widgets::unit_dial(
+                            ui,
+                            "Tape",
+                            "Worn tape over the whole mix: the pitch wows and flutters, loud moments saturate, the top end dulls. Straight up is off",
+                            &mut fx.tape,
                             0.0,
                             10.0,
                             widgets::DialLayout::Under,

@@ -116,6 +116,14 @@ pub enum Style {
     /// sampled, two drones where the choir and strings were, and a grand piano for the
     /// rippling glass.
     Vigil,
+    /// Dark ambient electronica after the end of the world (D29): tape hiss, a far-off
+    /// radio and a long drone, wide detuned pads, a sparse half-time broken beat over a
+    /// deep sub, hollow synth stabs, distant voices and a melody of a few long notes.
+    Cinder,
+    /// Nostalgic downtempo electronica through a worn video tape (D29): birdsong and a
+    /// playground, a music box, a lazy swung beat, electric piano and tape strings, a
+    /// wobbling analogue lead, glockenspiel and children's voices, warm and a little eerie.
+    Filmstrip,
 }
 
 /// The sounds added to the palette for Homeward: the other styles leave them out of
@@ -123,7 +131,7 @@ pub enum Style {
 pub(crate) const HOMEWARD_SOUNDS: [&str; 5] = ["Synth Strings (FreePats)", "Viola", "Clarinet", "French Horn", "Concert Harp (FreePats)"];
 
 impl Style {
-    pub const ALL: [Style; 13] = [
+    pub const ALL: [Style; 15] = [
         Style::Nocturne,
         Style::Pursuit,
         Style::Blackout,
@@ -137,6 +145,8 @@ impl Style {
         Style::Orbit,
         Style::Nebula,
         Style::Vigil,
+        Style::Cinder,
+        Style::Filmstrip,
     ];
 
     pub fn label(self) -> &'static str {
@@ -154,6 +164,8 @@ impl Style {
             Style::Orbit => "Orbit",
             Style::Nebula => "Nebula",
             Style::Vigil => "Vigil",
+            Style::Cinder => "Cinder",
+            Style::Filmstrip => "Filmstrip",
         }
     }
 
@@ -187,6 +199,12 @@ impl Style {
             Style::Vigil => {
                 "Overcity, gentler: the vast city from above at night, its theme on soft French horns over two slow drones, a grand piano rippling where the glass was, one great swell"
             }
+            Style::Cinder => {
+                "Desolate and cinematic, after the end of the world, ominous but quiet: tape hiss, a far-off radio and a long drone, wide detuned pads, a sparse half-time beat with a muffled snare over a deep sub, hollow synth stabs, distant voices, a few long notes of melody and a lot of empty space, all on worn tape"
+            }
+            Style::Filmstrip => {
+                "Warm, hazy and bittersweet, an old children's film on a worn video tape: birdsong and a playground, a music box, a lazy swung beat, electric piano and tape strings, a wobbling analogue lead, glockenspiel and children's voices singing a chant, innocent and a little eerie"
+            }
             Style::Chamber => {
                 "A chamber orchestra in a dark, sci-fi noir: a ticking pizzicato, the theme on a clarinet, then a solo violin, a horn and celesta, over a glass drone and a sub like a heartbeat; strings in octaves at the climax, a minor-major ninth to end"
             }
@@ -209,6 +227,8 @@ impl Style {
             Style::Orbit => 92.0,
             Style::Nebula => 96.0,
             Style::Vigil => 60.0,
+            Style::Cinder => 80.0,
+            Style::Filmstrip => 90.0,
         }
     }
 
@@ -225,7 +245,8 @@ impl Style {
     /// The mode it is always written in, if any: its key's, or Nebula's natural minor.
     pub fn mode(self) -> Option<Mode> {
         match self {
-            Style::Nebula => Some(Mode::Aeolian),
+            Style::Nebula | Style::Cinder => Some(Mode::Aeolian),
+            Style::Filmstrip => Some(Mode::Dorian),
             _ => self.key().map(|k| k.1),
         }
     }
@@ -284,6 +305,9 @@ impl Style {
             Style::Orbit => (10.0, 2),
             // (Nebula's moves four bars a chord)
             Style::Nebula => (10.0, 4),
+            // (Cinder's four bars a chord; Filmstrip's two)
+            Style::Cinder => (12.0, 4),
+            Style::Filmstrip => (5.0, 2),
         }
     }
 }
@@ -463,7 +487,9 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         Style::Noir => *rng.pick(&NOIR),
         Style::Overcity | Style::Vigil => *rng.pick(&OVERCITY),
         Style::Derelict => *rng.pick(&DERELICT),
-        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => *rng.pick(&ROMANTIC),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula | Style::Cinder | Style::Filmstrip => {
+            *rng.pick(&ROMANTIC)
+        }
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
@@ -533,7 +559,9 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
                 _ => vec![a, b, (a + 6) % 12],
             },
             // (Homeward harmonises its theme itself; these stand in for anything else)
-            Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => vec![a, b, c],
+            Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula | Style::Cinder | Style::Filmstrip => {
+                vec![a, b, c]
+            }
         };
         let prev = out.last().map(|c| c.voicing.clone());
         let voicing =
@@ -597,6 +625,12 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
     }
     if style == Style::Nebula {
         return crate::nebula::plan(bars);
+    }
+    if style == Style::Cinder {
+        return crate::cinder::plan(bars);
+    }
+    if style == Style::Filmstrip {
+        return crate::filmstrip::plan(bars);
     }
     if style == Style::Overcity && bars >= cb * 5 {
         // a long breath first, the theme, its development, the great swell, and dissolving
@@ -689,6 +723,8 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
                     | Style::Chamber
                     | Style::Orbit
                     | Style::Nebula
+                    | Style::Cinder
+                    | Style::Filmstrip
                     | Style::Vigil
             ) {
                 1.0
@@ -802,6 +838,14 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Solar", "Drifting", "Distant", "Silver", "Floating", "Blue", "Quiet", "Endless", "Northern", "Crystal"],
             ["Nebula", "Equinox", "Aurora", "Horizon", "Tides", "Lagoon", "Starfield", "Daybreak", "Atmosphere", "Comet"],
         ),
+        Style::Cinder => (
+            ["Ashen", "Burnt", "Silent", "Last", "Grey", "Empty", "Fallen", "Dead", "Distant", "Cold"],
+            ["Cinder", "Wasteland", "Transmission", "Embers", "Ruins", "Static", "Signal", "Horizon", "Dust", "Bunker"],
+        ),
+        Style::Filmstrip => (
+            ["Summer", "Faded", "Little", "Golden", "Lost", "Sunday", "Painted", "Rainy", "Last", "Hidden"],
+            ["Filmstrip", "Playground", "Afternoon", "Recess", "Kites", "Garden", "Lessons", "Swings", "Field Trip", "Treehouse"],
+        ),
         Style::Orbit => (
             ["Slow", "Turning", "Still", "Distant", "Glass", "Silent", "Endless", "Pale", "Hidden", "Quiet"],
             ["Orbit", "Mechanism", "Pendulum", "Lighthouse", "Spiral", "Observatory", "Clockwork", "Tide", "Carousel", "Satellite"],
@@ -825,6 +869,17 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         crate::nebula::write(&mut p, r, &secs, density);
         return finish(p, r);
     }
+    // and Cinder and Filmstrip theirs (in natural minor, and in Dorian)
+    if style == Style::Cinder {
+        let r = &Recipe { mode: Mode::Aeolian, ..*r };
+        crate::cinder::write(&mut p, r, &secs, density);
+        return finish(p, r);
+    }
+    if style == Style::Filmstrip {
+        let r = &Recipe { mode: Mode::Dorian, ..*r };
+        crate::filmstrip::write(&mut p, r, &secs, density);
+        return finish(p, r);
+    }
 
     // ---------------------------------------------------------------- sounds
     // each part from its role's alternatives: the usual sound most often
@@ -843,6 +898,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             .filter(|a| !crate::chamber::CHAMBER_SOUNDS.contains(&a.label))
             .filter(|a| !crate::orbit::ORBIT_SOUNDS.contains(&a.label))
             .filter(|a| !crate::nebula::NEBULA_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::cinder::CINDER_SOUNDS.contains(&a.label) && !crate::filmstrip::FILMSTRIP_SOUNDS.contains(&a.label))
             .filter(|a| !crate::vigil::VIGIL_SOUNDS.contains(&a.label))
             .collect();
         let w: Vec<f64> = match style {
@@ -880,7 +936,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         // intimate and natural: the hall, now and then the cathedral
         Style::Homeward => [6.0, 1.0, 0.0],
         // the concert hall, always
-        Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => [1.0, 0.0, 0.0],
+        Style::Return | Style::Chamber | Style::Orbit | Style::Nebula | Style::Cinder | Style::Filmstrip => [1.0, 0.0, 0.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -908,7 +964,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         Style::Noir => (-2.0, -5.0, -4.0, -2.0),
         Style::Overcity | Style::Vigil => (-2.0, -4.0, -2.0, -3.0),
         Style::Derelict => (-3.0, -3.0, 0.0, 0.0),
-        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => (-4.0, -3.0, 0.0, 0.0),
+        Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula | Style::Cinder | Style::Filmstrip => {
+            (-4.0, -3.0, 0.0, 0.0)
+        }
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -1297,7 +1355,15 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             }
         }
         // (Derelict is written by `derelict`)
-        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => {}
+        Style::Nocturne
+        | Style::Derelict
+        | Style::Homeward
+        | Style::Return
+        | Style::Chamber
+        | Style::Orbit
+        | Style::Nebula
+        | Style::Cinder
+        | Style::Filmstrip => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
@@ -1409,7 +1475,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Return
         | Style::Chamber
         | Style::Orbit
-        | Style::Nebula => {
+        | Style::Nebula
+        | Style::Cinder
+        | Style::Filmstrip => {
             vec![&[4.0], &[6.0, 2.0]]
         }
     };
@@ -1831,7 +1899,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Return
         | Style::Chamber
         | Style::Orbit
-        | Style::Nebula => {}
+        | Style::Nebula
+        | Style::Cinder
+        | Style::Filmstrip => {}
     }
     if style == Style::Noir {
         // told in music alone: no rain, hum, neon or thunder
@@ -1875,7 +1945,15 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
                 }
             }
         }
-        Style::Nocturne | Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula => {}
+        Style::Nocturne
+        | Style::Derelict
+        | Style::Homeward
+        | Style::Return
+        | Style::Chamber
+        | Style::Orbit
+        | Style::Nebula
+        | Style::Cinder
+        | Style::Filmstrip => {}
     }
     if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
@@ -3621,10 +3699,19 @@ mod tests {
         }
         assert!(runs.len() >= 15, "only {} different glissandi in 16 seeds", runs.len());
         // (Homeward and Chamber, written after, share its contrabass and pizzicato on purpose)
-        for style in Style::ALL
-            .into_iter()
-            .filter(|s| !matches!(s, Style::Derelict | Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula))
-        {
+        for style in Style::ALL.into_iter().filter(|s| {
+            !matches!(
+                s,
+                Style::Derelict
+                    | Style::Homeward
+                    | Style::Return
+                    | Style::Chamber
+                    | Style::Orbit
+                    | Style::Nebula
+                    | Style::Cinder
+                    | Style::Filmstrip
+            )
+        }) {
             for seed in 0..60 {
                 let p = compose(&Recipe { seed, style, ..Recipe::random(seed) }, style.tempo(), (4, 4), 32);
                 for t in &p.tracks {

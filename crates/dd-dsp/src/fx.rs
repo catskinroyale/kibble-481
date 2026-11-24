@@ -118,6 +118,8 @@ pub struct Fx {
     pub echo: Echo,
     /// A string-machine ensemble chorus over everything but the bass: 0 = off.
     pub ensemble: f32,
+    /// Worn tape over the whole mix: wow and flutter, saturation, a dulled top: 0 = off.
+    pub tape: f32,
 }
 
 /// The shimmer feedback's pitch.
@@ -228,6 +230,7 @@ impl Default for Fx {
             freeze: false,
             echo: Echo::default(),
             ensemble: 0.0,
+            tape: 0.0,
         }
     }
 }

@@ -2159,6 +2159,160 @@ pub fn factory() -> Vec<Patch> {
             gain_db: -3.0,
             ..named("Modular Drone", Category::Drone)
         },
+        // a wide analogue pad: two saws pulled well apart, slow to come and go, a dark
+        // low-pass breathing very slowly
+        Patch {
+            layers: [
+                Layer {
+                    lpf: 700.0,
+                    lpf_res: 0.15,
+                    filter_env: env(3.0, 4.0, 0.8, 5.0),
+                    env_amount: 0.8,
+                    key_track: 0.3,
+                    amp_env: env(2.5, 3.0, 1.0, 5.0),
+                    detune: -14.0,
+                    pan: -0.8,
+                    vel_to_amp: 0.3,
+                    ..saw
+                },
+                Layer {
+                    lpf: 800.0,
+                    lpf_res: 0.15,
+                    filter_env: env(3.5, 4.0, 0.8, 5.0),
+                    env_amount: 0.8,
+                    key_track: 0.3,
+                    amp_env: env(3.0, 3.0, 1.0, 5.5),
+                    detune: 14.0,
+                    pan: 0.8,
+                    level: 0.85,
+                    vel_to_amp: 0.3,
+                    ..saw
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.07,
+            lfo_delay: 0.0,
+            lfo_to_filter: 0.5,
+            drift: 7.0,
+            spread: 1.0,
+            ..named("Ashen Pad", Category::Pad)
+        },
+        // a hollow stab: a square's odd harmonics, a brassy blat of the filter, gone in a
+        // second or two, a saw an octave down for weight
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    pulse: 1.0,
+                    width: 0.5,
+                    lpf: 260.0,
+                    lpf_res: 0.3,
+                    filter_env: env(0.035, 0.6, 0.25, 0.9),
+                    env_amount: 3.4,
+                    vel_to_filter: 1.2,
+                    amp_env: env(0.02, 1.3, 0.25, 1.4),
+                    detune: -6.0,
+                    drive: 0.2,
+                    vel_to_amp: 0.5,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: -1,
+                    lpf: 220.0,
+                    lpf_res: 0.2,
+                    filter_env: env(0.04, 0.5, 0.2, 0.9),
+                    env_amount: 2.6,
+                    amp_env: env(0.02, 1.1, 0.2, 1.3),
+                    detune: 6.0,
+                    level: 0.45,
+                    vel_to_amp: 0.5,
+                    ..saw
+                },
+            ],
+            drift: 5.0,
+            spread: 0.5,
+            ..named("Hollow Stab", Category::Brass)
+        },
+        // a wobbly analogue lead: a saw and a pulse a little apart, the pitch drifting and
+        // swaying slowly like a stretched tape
+        Patch {
+            layers: [
+                Layer {
+                    lpf: 1400.0,
+                    lpf_res: 0.15,
+                    filter_env: env(0.05, 0.8, 0.6, 0.6),
+                    env_amount: 0.9,
+                    key_track: 0.6,
+                    amp_env: env(0.03, 1.2, 0.85, 0.5),
+                    detune: -9.0,
+                    vel_to_amp: 0.4,
+                    ..saw
+                },
+                Layer {
+                    saw: 0.0,
+                    pulse: 1.0,
+                    width: 0.35,
+                    lpf: 1600.0,
+                    env_amount: 0.6,
+                    filter_env: env(0.05, 0.8, 0.6, 0.6),
+                    key_track: 0.6,
+                    amp_env: env(0.04, 1.2, 0.85, 0.5),
+                    detune: 9.0,
+                    level: 0.6,
+                    vel_to_amp: 0.4,
+                    ..Layer::default()
+                },
+            ],
+            mono: true,
+            glide: 0.09,
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.9,
+            lfo_delay: 0.0,
+            vibrato: 13.0,
+            drift: 16.0,
+            spread: 0.0,
+            ..named("Wobble Lead", Category::Lead)
+        },
+        // a tape keyboard's strings: each key a strip of tape that runs out after about
+        // nine seconds, so held chords fade; wavering as the tape does
+        Patch {
+            layers: [
+                Layer {
+                    hpf: 280.0,
+                    lpf: 2600.0,
+                    lpf_res: 0.1,
+                    env_amount: 0.0,
+                    amp_env: env(0.12, 9.0, 0.0, 0.5),
+                    detune: -5.0,
+                    pan: -0.4,
+                    vel_to_amp: 0.35,
+                    ..saw
+                },
+                Layer {
+                    saw: 0.0,
+                    pulse: 0.8,
+                    width: 0.3,
+                    sine: 0.4,
+                    octave: 1,
+                    hpf: 500.0,
+                    lpf: 3000.0,
+                    env_amount: 0.0,
+                    amp_env: env(0.15, 9.0, 0.0, 0.5),
+                    detune: 6.0,
+                    pan: 0.4,
+                    level: 0.35,
+                    vel_to_amp: 0.35,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.6,
+            lfo_delay: 0.0,
+            vibrato: 5.0,
+            drift: 7.0,
+            spread: 0.7,
+            ..named("Tape Strings", Category::Strings)
+        },
         Patch::default(),
     ]
 }

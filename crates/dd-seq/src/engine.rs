@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use dd_dsp::Instrument;
-use dd_dsp::effects::{CutFilter, EchoFx, Ensemble, soft_clip};
+use dd_dsp::effects::{CutFilter, EchoFx, Ensemble, Tape, soft_clip};
 use dd_dsp::fx::Fx;
 use dd_dsp::patch::Patch;
 use dd_dsp::reverb::Reverb;
@@ -243,6 +243,7 @@ pub struct Engine {
     reverb: Reverb,
     echo: EchoFx,
     ensemble: Ensemble,
+    tape: Tape,
     duck_env: f32,
     buf: [Vec<f32>; 6],
     shared: Arc<Shared>,
@@ -279,6 +280,7 @@ impl Engine {
             reverb: Reverb::new(sr, &fx),
             echo: EchoFx::new(sr),
             ensemble: Ensemble::new(sr),
+            tape: Tape::new(sr),
             duck_env: 0.0,
             buf: Default::default(),
             shared,
@@ -371,6 +373,7 @@ impl Engine {
                 self.reverb.clear();
                 self.echo.clear();
                 self.ensemble.clear();
+                self.tape.clear();
             }
             Cmd::Volume(v) => self.volume = v,
         }
@@ -381,6 +384,7 @@ impl Engine {
             self.reverb.set(&m.fx);
             self.echo.set(&m.fx.echo, m.bpm);
             self.ensemble.target = m.fx.ensemble.clamp(0.0, 1.0);
+            self.tape.target = m.fx.tape.clamp(0.0, 1.0);
         } else if m.bpm != self.mix.bpm {
             self.echo.set_tempo(m.bpm);
         }
@@ -606,6 +610,7 @@ impl Engine {
         let duck = self.mix.fx.duck.clamp(0.0, 1.0);
         let (att, rel) = ((-1.0 / (0.01 * self.sr)).exp(), (-1.0 / (0.4 * self.sr)).exp());
         let (mut pl, mut pr) = (0.0f32, 0.0f32);
+        let tape_on = self.tape.active();
         for k in 0..n {
             let (el, er) = self.echo.process(echo_l[k], echo_r[k]);
             let to_rev = self.echo.to_reverb;
@@ -615,8 +620,12 @@ impl Engine {
             self.duck_env = level + (self.duck_env - level) * c;
             let d = 1.0 / (1.0 + duck * 10.0 * self.duck_env);
             let g = m0 + (m1 - m0) * (k + 1) as f32 * inv;
-            left[k] = soft_clip((left[k] + wl * d + el) * g);
-            right[k] = soft_clip((right[k] + wr * d + er) * g);
+            let (mut ml, mut mr) = (left[k] + wl * d + el, right[k] + wr * d + er);
+            if tape_on {
+                (ml, mr) = self.tape.process(ml, mr);
+            }
+            left[k] = soft_clip(ml * g);
+            right[k] = soft_clip(mr * g);
             pl = pl.max(left[k].abs());
             pr = pr.max(right[k].abs());
         }

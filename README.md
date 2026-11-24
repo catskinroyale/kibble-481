@@ -76,7 +76,7 @@ fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are thirteen **styles**, each playing the same kinds of section its own way, all
+There are fifteen **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -212,6 +212,34 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   fifth, held on through the chords that keep them); and a **grand piano** rippling where
   the glass did. A seed in Vigil plays the same notes as in Overcity. About -16 to -19
   LUFS. Its tracks: Horns, Drone 1, Drone 2, Lead, Bass, Bells, Piano, City and Drums.
+- **Cinder** (80 bpm, minor): dark ambient electronica after the end of the world,
+  desolate and cinematic, ominous but quiet. Out of tape hiss and a far-off radio
+  between stations (static that fades and sputters, a whistle drifting through it) a
+  long drone rises, and distant voices drift in and out, thinned, far back in the reverb,
+  sinking in pitch like a slowing tape. Wide, detuned analogue pad chords (the new
+  **Ashen Pad**) move four bars a chord. A sparse half-time broken beat enters: a dull
+  kick placed differently every four bars, a dry, muffled snare on the third beat, with a
+  deep sub-bass under the kick; then hollow, brass-like stabs (the new **Hollow Stab**, a
+  square's odd harmonics) echoing into the dark, and a minimal melody of a few long notes
+  that plays and then rests for as long again, leaving a lot of empty space. It builds a
+  little, never loud, and falls back to the drone and the static. A dark cathedral, a
+  slow wobbling echo and worn **tape** over the whole mix. About -17.5 LUFS. Its tracks:
+  Tape Hiss, Radio, Drone, Pad, Sub, Drums, Stabs, Voices and Lead.
+- **Filmstrip** (90 bpm, Dorian): nostalgic downtempo electronica, warm and hazy, like
+  an old children's educational film heard through a worn video tape: bittersweet,
+  innocent and a little eerie. It opens on the room, birdsong, a playground across the
+  field, a record's crackle and tape hiss, with a music box playing the tune alone over
+  tape-keyboard strings (the new **Tape Strings**: each key a strip of tape that runs out
+  after about nine seconds). A lazy, swung broken beat drops in, soft and dusty (a room
+  kit with its top cut, the snare laid back, never ahead of the beat), with a round
+  finger bass on the kick and a soft electric piano comping. A detuned analogue lead (the
+  new **Wobble Lead**, its pitch drifting and swaying) takes the tune; glockenspiel and
+  music-box accents chime around it, and children's voices sing a playground chant, high,
+  filtered and warped in pitch. Then the beat leaves, the music box has the tune again,
+  the playground comes back, and the tape winds down. Two bars a chord in Dorian (a minor
+  key with a bright, major sixth: its IV chord is major); a small warm plate and heavily
+  worn tape. About -16.5 LUFS. Its tracks: Field Recording, Vinyl & Tape, Drums, Bass,
+  Electric Piano, Tape Strings, Lead, Music Box, Glockenspiel and Children's Voices.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -285,7 +313,8 @@ hum and a buzzing neon sign that loop for as long as you hold the key, thunder, 
 metal, sub booms, braams, risers, reversed cymbals, glass grains, drones and timpani; a
 derelict ship's hull groaning and pipes clanging (both tuned), steam hissing, metal
 scraping, and throbbing engines, a life-support pump, ticking and tape hiss that loop for
-as long as you hold them; and a
+as long as you hold them; a far-off radio's static, a record's crackle, birdsong and a
+playground across the field, looping too; and a
 drum kit of dull and heartbeat kicks, a gated snare far off, taiko, tabla and a ticking
 clock.
 
@@ -364,7 +393,9 @@ some presets answer the brightness controller, so the filter isn't left to it. T
 saved with the project but, having no standard MIDI message, aren't in an exported MIDI
 file for other programs. Shared effects (from Ambient MIDI Generator): eight reverb spaces including
 **Noir** (a vast, dark 1980s digital hall), Shimmer and Black Hole; a tempo-synced tape
-echo; a string-machine ensemble; A = 440/432/415 Hz. The Effects tab is three small strips like
+echo; a string-machine ensemble; worn **tape** over the whole mix (wow and flutter,
+saturation above a knee, a dulled top; off unless a style or you turn it up); A =
+440/432/415 Hz. The Effects tab is three small strips like
 the mixer's, Reverb, Echo and Ensemble: each choice (the reverb space, echo time, shimmer
 interval, tuning, and Freeze and Ping-pong) is a neon lamp and its name, lit when chosen;
 click one to choose it. Under them are the settings as small dials, two to a row, as on

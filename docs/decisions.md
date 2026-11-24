@@ -606,6 +606,71 @@ transport control to skip to the next or previous section; sections reordered by
   saved pieces and drawn curves are heard the same way and the fingerprints don't change.
   Other controllers (pedal, bank, etc.) still switch at once.
 
+## D29 — Cinder and Filmstrip, worn tape, four new field sounds (2026-11-24)
+
+Two styles from two briefs. **Cinder**: dark ambient electronica, post-apocalyptic,
+desolate and cinematic, about 80 bpm; a sparse half-time broken beat with a dry, muffled
+snare and deep sub-bass; wide detuned analogue pads, hollow brass-like synth stabs, long
+minor drones; worn tape (saturation, wow and flutter, hiss); distant processed voices and
+faint radio static; minimal melody, lots of empty space, slow-evolving, ominous but
+quiet. **Filmstrip**: nostalgic downtempo electronica, warm and hazy, a 1970s children's
+educational film heard through a worn video tape; a lazy, swung hip-hop-influenced beat
+about 90 bpm with soft dusty drums; detuned analogue melodies with wobbly, drifting pitch;
+mellotron-style pads, glockenspiel and music-box accents, soft electric piano;
+children's voices, filtered and pitch-warped; tape degradation, vinyl crackle, field
+recordings of playgrounds and birdsong; bittersweet, innocent, slightly eerie. No named
+film, programme, artist or instrument maker is imitated or named: the patches, sounds,
+tunes and titles are our own.
+
+- **Worn tape** (`effects.rs` `Tape`, `Fx::tape`, the Effects tab's Tape dial beside
+  Ensemble): over the whole mix, before the master gain: one transport for both sides,
+  so the pitch wows (0.43 Hz), flutters (6.3 Hz) and drags (a random wander) together,
+  about ±12, ±1.5 and ±6 cents at full; saturation untouched below a knee that falls to
+  0.55 of full scale, rounded above it, never past full scale (a first try normalised
+  `tanh`, which raised quiet signals by 8 dB: rejected); the top dulled from 20 kHz to
+  7 kHz. It fades in from the dry signal, and 0 (the default, so every saved piece and
+  every other style) bypasses it entirely. Cinder uses 0.45, Filmstrip 0.7. (`Fx::drift`
+  and `Fx::detune`, inherited from midigen, are still stored and still do nothing.)
+- **Field sounds** in the City FX kit (`kit.rs`, synthesised, looping seamlessly): Radio
+  Static (122: band-limited static whose reception fades and sputters, interference
+  crackles, a heterodyne whistle drifting), Vinyl Crackle (123: ticks, pops, faint hiss,
+  a warp's thump once a turn at 33 rpm), Birdsong (124: five birds of four kinds of song,
+  near and far) and Playground (125: a murmur of children at play from formant-filtered
+  noise, and calls and laughs sung on a sawtooth through children's vowel formants, all
+  muffled by distance). They restart on a seek, as rain does (and now tape hiss too).
+- **New patches**, each a palette alternative trimmed to its role and left out of the
+  other styles' choosing (`CINDER_SOUNDS`, `FILMSTRIP_SOUNDS`): Ashen Pad (two saws ±14
+  cents apart, panned wide, slow), Hollow Stab (a square with a brassy filter blat and a
+  saw an octave down, gone in a second or two), Wobble Lead (a saw and pulse ±9 cents,
+  16 cents of drift and a 0.9 Hz sway, gliding), Tape Strings (each key's tape runs out
+  after about nine seconds, wavering). And from the GM font, Voice Oohs (Pad).
+- **Cinder** (`cinder.rs`): natural minor, four bars a chord from i, ♭III, iv, v, ♭VI,
+  ♭VII (no leading note). Layers fade in and out by section as Nebula's do (the shared
+  `nebula::envelopes`, at most 0.06 a quaver). The beat: the dull kick on the downbeat
+  and a broken pattern held four bars; the big snare on the bar's middle beat, its top
+  cut to 2.2 kHz and nearly dry; ticks only as it fills; the sub (Pure Sub) under each
+  kick. Stabs: root, fifth and octave, on a new chord (and again two bars on at the
+  fullest). Voices: the GM choir thinned to 350 Hz-2.4 kHz, deep in reverb and echo,
+  bending down about a third of a semitone through each. Melody (Glass Lead): three or
+  four long notes over five of eight bars, rising and sighing onto the next chord, played
+  every other phrase only.
+- **Filmstrip** (`filmstrip.rs`): Dorian, two bars a chord from i9, IV9 (the mode's
+  major sixth), ♭IIImaj7, ♭VIImaj7, v7, ii7 and the half-diminished vi. The beat (GM Room
+  kit, top cut to 4.5 kHz): semiquaver offbeats swung 24% of a semiquaver late, the
+  snare laid back 18 ticks on two and four, everything else up to 14 ticks late, never
+  early (a jitter either side put a kick into the section before). The tune: A B A C over
+  four chords, on the music box at the start and the end, the lead between (resting every
+  third time round in the Swell), the glockenspiel doubling its long notes at the
+  fullest. The children's chant is the playground's sol-mi-la-sol-mi, set on the tonic's
+  seventh, fifth and octave so it sits in the mode; the voices sway ±900 in bend and now
+  and then sink. At the end the music box, strings and piano bend down two semitones
+  over the last bar: the tape winding down.
+- **Titles** avoid well-known titles and names (a first list made "Secret Garden",
+  "Paper Kites" and "Last Shelter" possible: changed).
+- **Level**: Cinder about -17.5 LUFS, Filmstrip about -16.5, peaks about -0.5 to
+  -1 dBFS. The other thirteen styles' notes are unchanged (fingerprints of 1,560 pieces
+  identical to 0.10.2's).
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

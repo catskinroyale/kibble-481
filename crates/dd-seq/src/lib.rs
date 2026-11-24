@@ -3,11 +3,13 @@
 //! and MIDI and WAV files.
 
 mod chamber;
+mod cinder;
 pub mod city;
 pub mod compose;
 pub mod demo;
 pub mod engine;
 mod fill;
+mod filmstrip;
 pub mod fonts;
 mod homeward;
 pub mod midi_file;

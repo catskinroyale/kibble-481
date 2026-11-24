@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0 — 2026-11-24
+
+- **Cinder**, a fourteenth style: dark ambient electronica after the end of the world,
+  80 bpm. Tape hiss and a far-off radio, a long drone, distant voices, wide detuned pads,
+  a sparse half-time broken beat with a muffled snare over a deep sub, hollow synth
+  stabs, and a few long notes of melody with a lot of empty space.
+- **Filmstrip**, a fifteenth: nostalgic downtempo electronica through a worn video tape,
+  90 bpm in Dorian. Birdsong and a playground, a music box, a lazy swung beat, electric
+  piano and tape strings, a wobbling analogue lead, glockenspiel, and children's voices
+  singing a chant; the tape winds down at the end.
+- **Tape**: a new effect (Effects tab, beside Ensemble) puts the whole mix on worn tape:
+  wow and flutter, saturation and a dulled top. Off unless turned up.
+- **New sounds**: Ashen Pad, Hollow Stab, Wobble Lead and Tape Strings (synth), Voice
+  Oohs (GM), and in the city kit Radio Static, Vinyl Crackle, Birdsong and Playground.
+  Tape hiss now restarts when you seek into it.
+
 ## 0.10.2 — 2026-11-23
 
 - **Swells glide**: expression (CC11) and brightness (CC74) now glide from one written

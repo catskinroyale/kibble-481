@@ -77,7 +77,7 @@ fn chases(source: &Source, key: u8) -> bool {
     match source {
         Source::Kit(KitKind::Drums) => false,
         Source::Kit(KitKind::CityFx) => {
-            matches!(key, fx::HUM | fx::NEON)
+            matches!(key, fx::HUM | fx::NEON | fx::TAPE_HISS | fx::RADIO | fx::CRACKLE | fx::BIRDS | fx::PLAYGROUND)
                 || dd_dsp::rain::RainKind::of_key(key).is_some()
                 || (fx::DRONE..fx::DRONE + 12).contains(&key)
                 || (fx::ANALOG_DRONE..fx::ANALOG_DRONE + 12).contains(&key)

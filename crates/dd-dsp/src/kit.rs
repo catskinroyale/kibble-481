@@ -83,6 +83,16 @@ pub mod fx {
     pub const ENGINE: u8 = 120;
     /// A life-support pump breathing in and out with a clank, for as long as it's held.
     pub const PUMP: u8 = 121;
+    /// A radio far off between stations: static that fades and sputters, a whistle
+    /// drifting through it, for as long as it's held.
+    pub const RADIO: u8 = 122;
+    /// A worn record's surface: crackle and pops over a faint hiss, for as long as it's held.
+    pub const CRACKLE: u8 = 123;
+    /// Birdsong in the trees: chirps, warbles and calls near and far, for as long as it's held.
+    pub const BIRDS: u8 = 124;
+    /// A playground across the field: children calling, laughing and chattering, far
+    /// off, for as long as it's held.
+    pub const PLAYGROUND: u8 = 125;
 }
 
 /// The drum kit's General MIDI program: the Orchestra kit's place, so a General
@@ -182,6 +192,10 @@ pub fn effects(sr: f64) -> Vec<Sound> {
         one(fx::SCRAPE, "Metal Scrape", 0.4, scrape(sr)),
         looping(fx::ENGINE, "Engine Throb", 0.7, engine(sr), (2.0, 3.0)),
         looping(fx::PUMP, "Life Support", 0.45, pump(sr), (0.5, 1.5)),
+        looping(fx::RADIO, "Radio Static", 0.3, radio(sr), (2.0, 3.0)),
+        looping(fx::CRACKLE, "Vinyl Crackle", 0.35, crackle(sr), (0.5, 1.5)),
+        looping(fx::BIRDS, "Birdsong", 0.4, birds(sr), (3.0, 4.0)),
+        looping(fx::PLAYGROUND, "Playground", 0.4, playground(sr), (3.0, 4.0)),
     ]
 }
 
@@ -1157,6 +1171,239 @@ fn scrape(sr: f64) -> Vec<f64> {
     out
 }
 
+/// Add `sound` into a loop of `out` at `at`, wrapping round its end, so the loop
+/// repeats seamlessly whatever falls across it.
+fn lay(out: &mut [f64], at: usize, sound: &[f64], gain: f64) {
+    let n = out.len();
+    for (j, v) in sound.iter().enumerate() {
+        out[(at + j) % n] += gain * v;
+    }
+}
+
+/// A loop of `n` samples, with the guard samples past its end for interpolation.
+fn guarded(mut out: Vec<f64>) -> (Vec<f64>, (usize, usize)) {
+    let n = out.len();
+    let guard: Vec<f64> = out[..8].to_vec();
+    out.extend(guard);
+    (out, (0, n))
+}
+
+/// A radio far off between stations: band-limited static whose reception fades and
+/// sputters, crackles of interference, and a heterodyne whistle drifting slowly
+/// through it.
+fn radio(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let mut noise = Noise::new(61);
+    let (mut hp, mut lp, mut crack) = (Svf::default(), Svf::default(), Svf::default());
+    let mut whistle = Osc::default();
+    let mut pop = 0.0f64;
+    let secs = 8.0;
+    crossfaded(sr, secs, 1.5, |t| {
+        let n = noise.next();
+        let band = lp.run(hp.run(n, 350.0, 0.7, sr).high, 2800.0, 0.9, sr).low;
+        // reception: two slow fades out of step, and a sputter now and then
+        let fade = 0.55 + 0.25 * (TAU * 0.13 * t).sin() + 0.2 * (TAU * 0.31 * t + 1.0).sin();
+        let sputter = 1.0 - 0.7 * (TAU * 11.0 * t).sin().max(0.0) * (TAU * 0.21 * t).sin().max(0.0);
+        if noise.unit() < 9.0 / sr {
+            pop = 0.5 + noise.unit();
+        }
+        pop *= 1.0 - 1.0 / (0.002 * sr);
+        let crackle = crack.run(n, 1800.0, 2.0, sr).band * pop * 3.0;
+        let hz = 1100.0 + 500.0 * (TAU * 0.07 * t).sin() + 30.0 * (TAU * 3.0 * t).sin();
+        let tone = 0.05 * whistle.next(hz, sr) * (0.5 + 0.5 * (TAU * 0.09 * t).sin());
+        band * fade * sputter + crackle + tone
+    })
+}
+
+/// A worn record's surface: tiny ticks, now and then a louder pop, a faint hiss and the
+/// thump of a warp once a turn (33 rpm: a turn in 1.8 s, four in the loop).
+fn crackle(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 7.2;
+    let n = len(sr, secs);
+    let mut noise = Noise::new(62);
+    let (mut hp, mut lp) = (Svf::default(), Svf::default());
+    let mut out: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / sr;
+            let hiss = lp.run(hp.run(noise.next(), 3000.0, 0.7, sr).high, 9000.0, 0.7, sr).low * 0.04;
+            let warp = 0.05 * (TAU * t / 1.8).sin().powi(8) * (TAU * 30.0 * t).sin();
+            hiss + warp
+        })
+        .collect();
+    // the hiss's start and end don't meet: fade it across the seam
+    let x = len(sr, 0.3);
+    for k in 0..x {
+        let w = k as f64 / x as f64;
+        out[k] *= w;
+        out[n - 1 - k] *= w;
+    }
+    let click = |noise: &mut Noise, hz: f64, decay: f64| -> Vec<f64> {
+        let mut bp = Svf::default();
+        (0..len(sr, decay * 6.0))
+            .map(|j| {
+                let t = j as f64 / sr;
+                bp.run(noise.next(), hz, 1.2, sr).band * (-t / decay).exp()
+            })
+            .collect()
+    };
+    for _ in 0..(secs * 38.0) as usize {
+        let at = (noise.unit() * n as f64) as usize;
+        let hz = 2500.0 + 6000.0 * noise.unit();
+        let c = click(&mut noise, hz, 0.0004);
+        lay(&mut out, at, &c, 0.3 + 0.7 * noise.unit().powi(3));
+    }
+    for _ in 0..(secs * 1.5) as usize {
+        let at = (noise.unit() * n as f64) as usize;
+        let hz = 1200.0 + 1500.0 * noise.unit();
+        let c = click(&mut noise, hz, 0.0015);
+        lay(&mut out, at, &c, 2.0 + noise.unit());
+    }
+    guarded(out)
+}
+
+/// One bird's song, made at `hz`: kind 0 a run of falling chirps, 1 a warble, 2 a
+/// two-note call, 3 a quick rising trill.
+fn bird(sr: f64, kind: u32, hz: f64, noise: &mut Noise) -> Vec<f64> {
+    let mut osc = Osc::default();
+    let mut out = Vec::new();
+    let mut tone = |out: &mut Vec<f64>, secs: f64, f0: f64, f1: f64, wobble: f64| {
+        let m = len(sr, secs);
+        for j in 0..m {
+            let x = j as f64 / m as f64;
+            let env = (x * std::f64::consts::PI).sin().powf(0.6);
+            let f = f0 + (f1 - f0) * x + wobble * (TAU * 28.0 * j as f64 / sr).sin();
+            out.push(osc.next(f, sr) * env);
+        }
+    };
+    let gap = |out: &mut Vec<f64>, secs: f64| out.extend(std::iter::repeat_n(0.0, len(sr, secs)));
+    match kind {
+        0 => {
+            for _ in 0..3 + (noise.unit() * 4.0) as usize {
+                tone(&mut out, 0.045 + 0.03 * noise.unit(), hz * 1.25, hz * 0.8, 0.0);
+                gap(&mut out, 0.06 + 0.05 * noise.unit());
+            }
+        }
+        1 => tone(&mut out, 0.35 + 0.3 * noise.unit(), hz, hz * 1.1, hz * 0.08),
+        2 => {
+            tone(&mut out, 0.16, hz * 1.2, hz * 1.15, 0.0);
+            gap(&mut out, 0.05);
+            tone(&mut out, 0.22, hz * 0.95, hz * 0.85, 0.0);
+        }
+        _ => {
+            for k in 0..8 {
+                tone(&mut out, 0.025, hz * (0.9 + 0.04 * k as f64), hz * (1.0 + 0.04 * k as f64), 0.0);
+                gap(&mut out, 0.018);
+            }
+        }
+    }
+    out
+}
+
+/// Birdsong in the trees: a handful of birds singing near and far, out of step, over a
+/// soft breath of air.
+fn birds(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 12.0;
+    let mut noise = Noise::new(63);
+    let mut air = Svf::default();
+    let (mut out, _) = crossfaded(sr, secs, 1.0, |_| 0.0);
+    out.truncate(len(sr, secs));
+    let n = out.len();
+    let mut breath = crossfaded(sr, secs, 1.0, |_| air.run(noise.next(), 600.0, 0.6, sr).low * 0.05).0;
+    breath.truncate(n);
+    for (o, b) in out.iter_mut().zip(&breath) {
+        *o += b;
+    }
+    // each bird its own voice, singing a few times in the loop
+    for b in 0..5u32 {
+        let kind = b % 4;
+        let hz = 2600.0 + 2400.0 * noise.unit();
+        let near = 0.25 + 0.75 * noise.unit().powi(2);
+        let times = 2 + (noise.unit() * 3.0) as usize;
+        for _ in 0..times {
+            let at = (noise.unit() * n as f64) as usize;
+            let song = bird(sr, kind, hz * (0.97 + 0.06 * noise.unit()), &mut noise);
+            lay(&mut out, at, &song, near);
+        }
+    }
+    guarded(out)
+}
+
+/// A child's voice far off: a few syllables, each a vowel (its formants) sung on a
+/// glide, quick and bright.
+fn call(sr: f64, noise: &mut Noise) -> Vec<f64> {
+    // a child's vowels: "ah", "oh", "eh", "ee", "oo" (formants in Hz)
+    const VOWELS: [[f64; 3]; 5] =
+        [[1000.0, 1700.0, 3200.0], [650.0, 1050.0, 3000.0], [650.0, 2400.0, 3300.0], [420.0, 3000.0, 3700.0], [450.0, 1000.0, 2900.0]];
+    let laugh = noise.unit() < 0.3;
+    let syllables = if laugh { 4 + (noise.unit() * 3.0) as usize } else { 1 + (noise.unit() * 3.0) as usize };
+    let f0 = 290.0 + 160.0 * noise.unit();
+    let mut saw = Saw::default();
+    let mut f: [Svf; 3] = Default::default();
+    let mut out = Vec::new();
+    for k in 0..syllables {
+        let v = if laugh { VOWELS[0] } else { VOWELS[(noise.unit() * 5.0) as usize % 5] };
+        let secs = if laugh { 0.11 } else { 0.18 + 0.3 * noise.unit() };
+        // a call rises and falls; a laugh falls a little each time
+        let (p0, p1) = if laugh {
+            (f0 * (1.25 - 0.05 * k as f64), f0 * (1.15 - 0.05 * k as f64))
+        } else {
+            (f0 * (0.9 + 0.3 * noise.unit()), f0 * (0.8 + 0.5 * noise.unit()))
+        };
+        let m = len(sr, secs);
+        for j in 0..m {
+            let x = j as f64 / m as f64;
+            let env = (x * std::f64::consts::PI).sin().powf(0.5);
+            let src = saw.next(p0 + (p1 - p0) * x, sr) + 0.15 * noise.next();
+            let y: f64 = f.iter_mut().zip(v).zip([1.0, 0.6, 0.3]).map(|((s, hz), g)| s.run(src, hz, 6.0, sr).band * g).sum();
+            out.push(y * env);
+        }
+        let rest = if laugh { 0.05 } else { 0.04 + 0.1 * noise.unit() };
+        out.extend(std::iter::repeat_n(0.0, len(sr, rest)));
+    }
+    out
+}
+
+/// A playground across the field: a murmur of children at play, and now and then one
+/// calling or laughing out over it, all muffled by the distance.
+fn playground(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 10.0;
+    let mut noise = Noise::new(64);
+    let mut bands: [Svf; 3] = Default::default();
+    // the murmur: voices too many and far to make out, chattering at the rate of speech
+    let mut syll = [0.0f64; 3];
+    let mut murmur = crossfaded(sr, secs, 1.5, |t| {
+        let n = noise.next();
+        let mut y = 0.0;
+        for (k, (b, hz)) in bands.iter_mut().zip([700.0, 1300.0, 2600.0]).enumerate() {
+            if noise.unit() < 5.0 / sr {
+                syll[k] = 0.4 + 0.6 * noise.unit();
+            }
+            syll[k] *= 1.0 - 1.0 / (0.08 * sr);
+            y += b.run(n, hz * (1.0 + 0.1 * (TAU * (0.3 + 0.1 * k as f64) * t).sin()), 3.0, sr).band * (0.2 + syll[k]);
+        }
+        y * 0.5
+    })
+    .0;
+    let n = len(sr, secs);
+    murmur.truncate(n);
+    let mut out = murmur;
+    for _ in 0..9 {
+        let at = (noise.unit() * n as f64) as usize;
+        let c = call(sr, &mut noise);
+        lay(&mut out, at, &c, 0.25 + 0.6 * noise.unit());
+    }
+    // the distance: the top end gone, a little smear
+    let mut lp = Svf::default();
+    let mut lp2 = Svf::default();
+    // (run it twice round so the filters have settled where the loop starts)
+    for _ in 0..2 {
+        for v in &out {
+            let _ = lp2.run(lp.run(*v, 2600.0, 0.7, sr).low, 2600.0, 0.7, sr);
+        }
+    }
+    let filtered: Vec<f64> = out.iter().map(|v| lp2.run(lp.run(*v, 2600.0, 0.7, sr).low, 2600.0, 0.7, sr).low).collect();
+    guarded(filtered)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1194,7 +1441,7 @@ mod tests {
             assert_eq!((s.keys, s.root), ((base, base + 11), base + 6), "{name}");
             assert_eq!(base % 12, 0, "{name}");
         }
-        for name in ["Ticking", "Tape Hiss", "Engine Throb", "Life Support"] {
+        for name in ["Ticking", "Tape Hiss", "Engine Throb", "Life Support", "Radio Static", "Vinyl Crackle", "Birdsong", "Playground"] {
             let s = fx.iter().find(|s| s.name == name).unwrap();
             let (a, b) = s.looped.unwrap();
             assert_eq!(s.data[b..b + 8], s.data[a..a + 8], "{name}");

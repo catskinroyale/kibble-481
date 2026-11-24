@@ -354,3 +354,153 @@ mod cut_tests {
         assert!(level(100.0, LOW_CUT_OFF, 2000.0) > 0.99);
     }
 }
+
+/// Worn tape over the whole mix: the pitch wowing slowly and fluttering quickly as the
+/// transport wavers (and wandering now and then as it drags), the loud moments saturated
+/// softly, and the top end dulled. One transport, so both sides waver together.
+pub struct Tape {
+    sr: f32,
+    lines: [Vec<f32>; 2],
+    idx: usize,
+    wow: f32,
+    flutter: f32,
+    /// The drag: a slow random wander, and where it is heading.
+    drag: f32,
+    drag_to: f32,
+    drag_step: u32,
+    seed: u64,
+    lp: [f32; 2],
+    /// The amount, gliding to `target`.
+    pub amount: f32,
+    pub target: f32,
+}
+
+/// The tape's delay around which it wavers, in seconds.
+const TAPE_BASE_SECS: f32 = 0.006;
+
+impl Tape {
+    pub fn new(sr: f32) -> Self {
+        let len = (sr * 0.02) as usize;
+        Tape {
+            sr,
+            lines: [vec![0.0; len], vec![0.0; len]],
+            idx: 0,
+            wow: 0.0,
+            flutter: 0.0,
+            drag: 0.0,
+            drag_to: 0.0,
+            drag_step: 0,
+            seed: 0x7A9E_0000_0001,
+            lp: [0.0; 2],
+            amount: 0.0,
+            target: 0.0,
+        }
+    }
+
+    /// Off, and not on its way in or out.
+    pub fn active(&self) -> bool {
+        self.target > 0.0 || self.amount > 1e-4
+    }
+
+    pub fn clear(&mut self) {
+        for l in self.lines.iter_mut() {
+            l.fill(0.0);
+        }
+        self.lp = [0.0; 2];
+        self.amount = self.target;
+    }
+
+    fn rand(&mut self) -> f32 {
+        // splitmix64: the same wander every time
+        self.seed = self.seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.seed;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0
+    }
+
+    #[inline]
+    fn read(&self, side: usize, d: f32) -> f32 {
+        let line = &self.lines[side];
+        let n = line.len();
+        let pos = self.idx as f32 + n as f32 - d;
+        let i = pos as usize;
+        let f = pos - i as f32;
+        let a = line[i % n];
+        let b = line[(i + 1) % n];
+        a + (b - a) * f
+    }
+
+    #[inline]
+    pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
+        self.amount += (self.target - self.amount) * 0.0005;
+        let a = self.amount;
+        let n = self.lines[0].len();
+        self.lines[0][self.idx] = l;
+        self.lines[1][self.idx] = r;
+        self.wow = (self.wow + 0.43 / self.sr).fract();
+        self.flutter = (self.flutter + 6.3 / self.sr).fract();
+        // a new place for the drag to wander to every 0.7 s or so
+        if self.drag_step == 0 {
+            self.drag_to = self.rand();
+            self.drag_step = (self.sr * 0.7) as u32;
+        }
+        self.drag_step -= 1;
+        self.drag += (self.drag_to - self.drag) * (1.0 / (self.sr * 0.5));
+        let ms = self.sr * 0.001;
+        // (about ±12 cents of wow at full, ±1.5 of flutter, ±6 of drag)
+        let d = TAPE_BASE_SECS * self.sr + a * ms * (2.9 * (self.wow * TAU).sin() + 0.05 * (self.flutter * TAU).sin() + 1.4 * self.drag);
+        let d = d.clamp(1.0, n as f32 - 2.0);
+        let (wet_l, wet_r) = (self.read(0, d), self.read(1, d));
+        self.idx = (self.idx + 1) % n;
+        // the top dulled: from 20 kHz untouched to 7 kHz at full
+        let hz = 20000.0 * (7000.0f32 / 20000.0).powf(a);
+        let c = (-TAU * hz / self.sr).exp();
+        // saturation: untouched below a knee that falls as it's driven (to 0.55 at
+        // full), rounded off above it, never past full scale
+        let knee = 1.0 - 0.45 * a;
+        let sat = |x: f32| {
+            let m = x.abs();
+            if m <= knee { x } else { x.signum() * (knee + (1.0 - knee) * ((m - knee) / (1.0 - knee)).tanh()) }
+        };
+        let mut out = [0.0f32; 2];
+        for (s, (o, x)) in out.iter_mut().zip([wet_l, wet_r]).enumerate() {
+            self.lp[s] = c * self.lp[s] + (1.0 - c) * x;
+            *o = sat(self.lp[s]);
+        }
+        // fade from the dry signal to the tape's, so turning it on doesn't jump
+        let mix = (a * 8.0).min(1.0);
+        (l + (out[0] - l) * mix, r + (out[1] - r) * mix)
+    }
+}
+
+#[cfg(test)]
+mod tape_tests {
+    use super::*;
+
+    /// Off, it passes the signal untouched; on, a steady tone comes out wavering in
+    /// pitch, a little dulled and saturated, never louder than it went in.
+    #[test]
+    fn tape_wavers_and_stays_in_bounds() {
+        let sr = 48_000.0;
+        let tone = |i: usize| 0.9 * (TAU * 440.0 * i as f32 / sr).sin();
+        let mut off = Tape::new(sr);
+        for i in 0..4800 {
+            let (a, b) = off.process(tone(i), tone(i));
+            assert_eq!((a, b), (tone(i), tone(i)));
+        }
+        assert!(!off.active());
+        let mut t = Tape::new(sr);
+        t.target = 1.0;
+        t.amount = 1.0;
+        let n = 48_000 * 4;
+        let out: Vec<f32> = (0..n).map(|i| t.process(tone(i), tone(i)).0).collect();
+        assert!(out.iter().all(|v| v.is_finite() && v.abs() <= 0.95));
+        // the period between upward zero crossings wanders
+        let ups: Vec<usize> = (1..n).filter(|&i| out[i - 1] < 0.0 && out[i] >= 0.0).collect();
+        let periods: Vec<f32> = ups.windows(2).map(|w| (w[1] - w[0]) as f32).collect();
+        let (lo, hi) = periods.iter().fold((f32::MAX, 0.0f32), |(a, b), p| (a.min(*p), b.max(*p)));
+        assert!(hi - lo >= 1.0, "{lo}..{hi}");
+        assert!(hi / lo < 1.05, "{lo}..{hi}");
+    }
+}
