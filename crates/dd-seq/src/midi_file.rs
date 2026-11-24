@@ -132,7 +132,12 @@ pub fn to_bytes(p: &Project) -> std::io::Result<Vec<u8>> {
 
         // (tick, rank, message): offs, then controllers, then ons at the same tick
         let mut abs: Vec<(u32, u8, MidiMessage)> = Vec::new();
-        for n in &t.notes {
+        // the notes as heard, its density and complexity applied (the embedded project
+        // keeps them as written)
+        let played = crate::shape::played(p, t);
+        let ti = p.tracks.iter().position(|x| std::ptr::eq(x, t)).unwrap_or(0);
+        let through = crate::pachinko::passed(p, ti, &played);
+        for n in played.iter().zip(&through).filter(|(_, pass)| **pass).map(|(n, _)| n) {
             abs.push((n.start, 2, MidiMessage::NoteOn { key: u7::new(n.key.min(127)), vel: u7::new(n.vel.clamp(1, 127)) }));
             abs.push((n.end(), 0, MidiMessage::NoteOff { key: u7::new(n.key.min(127)), vel: u7::new(0) }));
         }

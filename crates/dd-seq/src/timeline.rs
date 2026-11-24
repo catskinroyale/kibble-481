@@ -93,7 +93,8 @@ impl Timeline {
         let mut spans = Vec::new();
         for (ti, t) in p.tracks.iter().enumerate() {
             let track = ti as u16;
-            let mut notes = t.notes.clone();
+            // as its density and complexity have it
+            let mut notes = crate::shape::played(p, t).into_owned();
             notes.sort_by_key(|n| (n.key, n.start));
             // two copies of a key struck at once are one note, as long and loud as the
             // longer and louder (else the first, cut to nothing, ends the second with it)
@@ -182,9 +183,10 @@ impl Timeline {
     }
 
     /// What to send to pick up the music at `t`: each track's controllers as they
-    /// stand, then the sustained notes sounding across it.
-    pub fn chase(&self, t: f64) -> Vec<(u16, Msg)> {
-        let mut out: Vec<(u16, Msg)> = Vec::new();
+    /// stand, then the sustained notes sounding across it; each with when it was sent
+    /// (a note, when it began).
+    pub fn chase(&self, t: f64) -> Vec<(u16, Msg, f64)> {
+        let mut out: Vec<(u16, Msg, f64)> = Vec::new();
         let mut seen: Vec<(u16, u8)> = Vec::new();
         // the latest of each controller before t, newest first
         for e in self.events[..self.index_after(t)].iter().rev() {
@@ -196,13 +198,13 @@ impl Timeline {
             };
             if !seen.contains(&(e.track, id)) {
                 seen.push((e.track, id));
-                out.push((e.track, e.msg));
+                out.push((e.track, e.msg, e.t));
             }
         }
         out.reverse();
         for s in &self.spans {
             if s.start < t && s.end - t > 0.15 {
-                out.push((s.track, Msg::On(s.key, s.vel)));
+                out.push((s.track, Msg::On(s.key, s.vel), s.start));
             }
         }
         out
@@ -274,7 +276,7 @@ mod tests {
         let city = p.tracks.iter().position(|t| t.name == "City").unwrap() as u16;
         let at = p.bar_secs() * 11.0 + 0.1 + p.bar_secs() * 0.75;
         let c = tl.chase(at);
-        assert!(c.contains(&(city, Msg::On(fx::RAIN, 100))));
-        assert!(!c.iter().any(|(t, m)| *t == city && matches!(m, Msg::On(fx::THUNDER, _))));
+        assert!(c.iter().any(|&(t, m, _)| t == city && m == Msg::On(fx::RAIN, 100)));
+        assert!(!c.iter().any(|(t, m, _)| *t == city && matches!(m, Msg::On(fx::THUNDER, _))));
     }
 }

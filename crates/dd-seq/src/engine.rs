@@ -17,6 +17,7 @@ use dd_dsp::fx::Fx;
 use dd_dsp::patch::Patch;
 use dd_dsp::reverb::Reverb;
 
+use crate::pachinko::{Balls, Pachinko, Route, UNITS};
 use crate::project::{Project, Strip, db_gain};
 use crate::timeline::{Msg, Timeline};
 
@@ -112,6 +113,11 @@ pub struct MixSettings {
     /// Seconds per beat and beats per bar, for the metronome.
     pub beat_secs: f64,
     pub beats_per_bar: u32,
+    /// Each track's note route through a Pachinko unit (D32), and the units with the
+    /// length of their steps in seconds. (The reverb and echo are sent to as before.)
+    pub routes: Vec<Option<Route>>,
+    pub pachinko: [Pachinko; UNITS],
+    pub step_secs: [f64; UNITS],
 }
 
 impl MixSettings {
@@ -124,6 +130,9 @@ impl MixSettings {
             bpm: p.bpm,
             beat_secs: p.tick_secs(p.beat_ticks()),
             beats_per_bar: p.meter.0.max(1),
+            routes: p.tracks.iter().map(|t| t.route).collect(),
+            pachinko: p.pachinko,
+            step_secs: p.pachinko.map(|u| p.tick_secs(u.rate.ticks(p))),
         }
     }
 }
@@ -244,6 +253,8 @@ pub struct Engine {
     echo: EchoFx,
     ensemble: Ensemble,
     tape: Tape,
+    /// Each Pachinko unit's balls as they fall.
+    balls: [Balls; UNITS],
     duck_env: f32,
     buf: [Vec<f32>; 6],
     shared: Arc<Shared>,
@@ -274,6 +285,9 @@ impl Engine {
                 bpm: 72.0,
                 beat_secs: 60.0 / 72.0,
                 beats_per_bar: 4,
+                routes: Vec::new(),
+                pachinko: Default::default(),
+                step_secs: [0.25; UNITS],
             },
             master: 1.0,
             volume: 1.0,
@@ -281,6 +295,7 @@ impl Engine {
             echo: EchoFx::new(sr),
             ensemble: Ensemble::new(sr),
             tape: Tape::new(sr),
+            balls: [Balls::new(&Pachinko::default()); UNITS],
             duck_env: 0.0,
             buf: Default::default(),
             shared,
@@ -429,9 +444,9 @@ impl Engine {
         if !self.playing || self.pos < 0.0 {
             return;
         }
-        for (t, msg) in self.timeline.chase(self.pos) {
+        for (t, msg, at) in self.timeline.chase(self.pos) {
             if t as usize == track {
-                self.dispatch(track, msg);
+                self.play(track, msg, at);
             }
         }
     }
@@ -442,9 +457,25 @@ impl Engine {
     }
 
     fn chase(&mut self) {
-        for (track, msg) in self.timeline.chase(self.pos) {
-            self.dispatch(track as usize, msg);
+        for (track, msg, at) in self.timeline.chase(self.pos) {
+            self.play(track as usize, msg, at);
         }
+    }
+
+    /// Play a message from the timeline at `at` seconds: a note routed through a
+    /// Pachinko unit only if its step's ball falls its way.
+    fn play(&mut self, track: usize, msg: Msg, at: f64) {
+        if let Msg::On(..) = msg
+            && let Some(Some(route)) = self.mix.routes.get(track)
+            && let Some(unit) = self.mix.pachinko.get(route.unit as usize)
+        {
+            let u = route.unit as usize;
+            let step = (at.max(0.0) / self.mix.step_secs[u].max(1e-6) + 1e-6).floor() as u64;
+            if !self.balls[u].passes(unit, step, route.right) {
+                return;
+            }
+        }
+        self.dispatch(track, msg);
     }
 
     fn dispatch(&mut self, track: usize, msg: Msg) {
@@ -476,9 +507,9 @@ impl Engine {
                     if e.t > self.pos + half {
                         break;
                     }
-                    let (track, msg) = (e.track as usize, e.msg);
+                    let (track, msg, at) = (e.track as usize, e.msg, e.t);
                     self.idx += 1;
-                    self.dispatch(track, msg);
+                    self.play(track, msg, at);
                 }
                 if self.looping.is_none() && !self.endless && self.pos >= self.timeline.duration {
                     self.playing = false;

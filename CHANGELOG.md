@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.12.0 — 2026-11-24
+
+- **Pachinko**, a note gate tracks can be routed through (Effects tab), after a eurorack
+  random-gate module: each step (1/16 to a bar) a ball falls left or right, **Chance**
+  of the time left. A track routed to a unit's left output plays the steps whose ball
+  fell left; one on its right output, the rest, so two tracks take turns. **Déjà vu**
+  loops the last **Length** balls (1-16), all the way round for ever; **Pattern** drops a
+  different set. Two units, A and B. The same settings always play the same notes, live,
+  rendered and in the exported MIDI; the roll fades the notes it holds back. The engine
+  now routes each track's notes on their own; the reverb and echo sends are unchanged.
+- **Density and complexity dials on every track**, beside mute and solo (now stacked):
+  density leaves out the weakest notes or fills the gaps; complexity plays fewer notes of
+  each chord and arpeggio or adds octaves (ghost notes on drums). The written notes stay
+  as they are; the roll shows what's left out and added, and export plays it as heard.
+- **Sections on the ruler**: right-click a section for its menu again (dragging it had
+  taken over every button); left-drag moves it, a click moves the playhead.
+- **A new drone score**, a sixteenth style:
+  - **Strata** (50 bpm, Phrygian): vast, slow and heavy, no beat. A drone from far below
+    that never stops, a second drone whose overtones wander like a slow whistle, a choir
+    of drones, a swelling sub, the earth groaning, distant metal, a bell far off, and one
+    great slow climb.
+- **Five new synth drones** (Drones, and alternatives for any drone track): Basalt Drone
+  (deep, dark and heaving), Overtone Drone (a resonant filter that sings the harmonics as
+  brightness sweeps it), Radiant Drone (warm, beating sines), Prism Drone (high, bell-like
+  FM tones) and Buzz Drone (a plucked string that keeps buzzing).
+
 ## 0.11.0 — 2026-11-24
 
 - **Cinder**, a fourteenth style: dark ambient electronica after the end of the world,

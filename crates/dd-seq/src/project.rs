@@ -166,6 +166,17 @@ pub struct Track {
     /// writes it again for its role, beside the piece's own.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub added: bool,
+    /// How many of its notes it plays, 0..1: fewer below 0.5, more above (D31,
+    /// `shape`). Its notes stay as written.
+    #[serde(default = "crate::shape::neutral", skip_serializing_if = "crate::shape::is_neutral")]
+    pub density: f32,
+    /// How many notes of each chord and arpeggio it plays, 0..1: fewer below 0.5,
+    /// octaves added above.
+    #[serde(default = "crate::shape::neutral", skip_serializing_if = "crate::shape::is_neutral")]
+    pub complexity: f32,
+    /// The Pachinko unit and side its notes go through, which decides which play (D32).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<crate::pachinko::Route>,
 }
 
 /// A track's volume from the start of a bar (from 0): 100 is as the fader has it, 0 is
@@ -223,6 +234,9 @@ impl Default for Track {
             role: None,
             levels: Vec::new(),
             added: false,
+            density: crate::shape::NEUTRAL,
+            complexity: crate::shape::NEUTRAL,
+            route: None,
         }
     }
 }
@@ -470,6 +484,9 @@ pub struct Project {
     /// The fingerprint of the notes as composed: while it still matches, the piece is
     /// written again to fit a new tempo or length.
     pub composed: u64,
+    /// The Pachinko note gates tracks can be routed through (D32).
+    #[serde(skip_serializing_if = "crate::pachinko::all_default")]
+    pub pachinko: [crate::pachinko::Pachinko; crate::pachinko::UNITS],
 }
 
 impl Default for Project {
@@ -487,6 +504,7 @@ impl Default for Project {
             loop_bars: None,
             recipe: None,
             composed: 0,
+            pachinko: Default::default(),
         }
     }
 }

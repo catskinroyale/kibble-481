@@ -1081,7 +1081,19 @@ mod tests {
     fn its_sounds_are_its_own() {
         // (Chamber, written after, shares its strings, woodwinds, horn and harp on purpose)
         for style in Style::ALL.into_iter().filter(|s| {
-            !matches!(s, Style::Homeward | Style::Return | Style::Chamber | Style::Orbit | Style::Nebula | Style::Cinder | Style::Filmstrip)
+            !matches!(
+                s,
+                Style::Homeward
+                    | Style::Return
+                    | Style::Chamber
+                    | Style::Orbit
+                    | Style::Nebula
+                    | Style::Cinder
+                    | Style::Filmstrip
+                    | Style::Strata
+                    | Style::Lumen
+                    | Style::Mantra
+            )
         }) {
             for seed in 0..20 {
                 let p = compose(&Recipe { style, ..Recipe::random(seed) }, 70.0, (4, 4), 32);

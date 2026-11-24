@@ -257,6 +257,11 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Bowed Glass", 92, 3.0),
             gm("Goblin", 101, -1.3),
             synth("Modular Drone", 5.5),
+            synth("Basalt Drone", 1.9),
+            synth("Overtone Drone", 2.4),
+            synth("Radiant Drone", -2.8),
+            synth("Prism Drone", 4.3),
+            synth("Buzz Drone", 1.3),
         ],
         Role::City => vec![Alt { label: "City FX", source: Source::Kit(KitKind::CityFx), trim_db: 0.0, bundled: true }],
         Role::Drums => vec![

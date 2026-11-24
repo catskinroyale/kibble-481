@@ -2313,6 +2313,204 @@ pub fn factory() -> Vec<Patch> {
             spread: 0.7,
             ..named("Tape Strings", Category::Strings)
         },
+        // ------------------------------------------- drones for Strata, Lumen and Mantra
+        // basalt: saw and pulse an octave down into a dark, resonant low-pass, a sine
+        // under them two octaves down, the filter heaving very slowly
+        Patch {
+            layers: [
+                Layer {
+                    octave: -1,
+                    saw: 0.8,
+                    pulse: 0.5,
+                    width: 0.3,
+                    pwm: 0.25,
+                    lpf: 260.0,
+                    lpf_res: 0.45,
+                    env_amount: 0.0,
+                    key_track: 0.4,
+                    amp_env: env(5.0, 6.0, 1.0, 9.0),
+                    detune: -7.0,
+                    pan: -0.3,
+                    drive: 0.3,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: -2,
+                    saw: 0.0,
+                    sine: 1.0,
+                    lpf: 400.0,
+                    env_amount: 0.0,
+                    amp_env: env(7.0, 6.0, 1.0, 9.0),
+                    pan: 0.3,
+                    level: 0.6,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.03,
+            lfo_to_filter: 0.9,
+            lfo_delay: 0.0,
+            drift: 4.0,
+            spread: 0.5,
+            ..named("Basalt Drone", Category::Drone)
+        },
+        // overtones: a bright saw through a very resonant low-pass that picks out one
+        // harmonic after another as brightness (CC74) sweeps it, like a throat singer
+        Patch {
+            layers: [
+                Layer {
+                    hpf: 120.0,
+                    lpf: 700.0,
+                    lpf_res: 0.86,
+                    env_amount: 0.0,
+                    key_track: 1.0,
+                    amp_env: env(4.0, 6.0, 1.0, 8.0),
+                    detune: -3.0,
+                    pan: -0.25,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: -1,
+                    lpf: 300.0,
+                    lpf_res: 0.2,
+                    env_amount: 0.0,
+                    amp_env: env(5.0, 6.0, 1.0, 8.0),
+                    detune: 4.0,
+                    pan: 0.25,
+                    level: 0.45,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Triangle,
+            lfo_rate: 0.07,
+            lfo_to_filter: 0.5,
+            lfo_delay: 0.0,
+            drift: 2.0,
+            spread: 0.6,
+            gain_db: -2.0,
+            ..named("Overtone Drone", Category::Drone)
+        },
+        // radiant: sines and a soft square an octave apart, gently beating, a slow swell
+        // of tremolo like light on water
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    sine: 1.0,
+                    pulse: 0.3,
+                    width: 0.5,
+                    lpf: 1800.0,
+                    env_amount: 0.0,
+                    amp_env: env(5.0, 6.0, 1.0, 9.0),
+                    detune: -5.0,
+                    pan: -0.45,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: 1,
+                    saw: 0.0,
+                    sine: 0.8,
+                    fm_ratio: 3.0,
+                    fm_depth: 0.12,
+                    lpf: 5000.0,
+                    env_amount: 0.0,
+                    amp_env: env(8.0, 6.0, 1.0, 9.0),
+                    detune: 6.0,
+                    pan: 0.45,
+                    level: 0.45,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.12,
+            tremolo: 0.15,
+            lfo_delay: 0.0,
+            drift: 2.0,
+            spread: 0.9,
+            ..named("Radiant Drone", Category::Drone)
+        },
+        // prism: bell-like FM sines two octaves up, held, one ringing against the other
+        Patch {
+            layers: [
+                Layer {
+                    octave: 1,
+                    saw: 0.0,
+                    sine: 1.0,
+                    fm_ratio: 3.5,
+                    fm_depth: 0.25,
+                    lpf: 9000.0,
+                    env_amount: 0.0,
+                    amp_env: env(6.0, 6.0, 1.0, 10.0),
+                    pan: -0.5,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: 2,
+                    saw: 0.0,
+                    sine: 1.0,
+                    fm_ratio: 1.5,
+                    fm_depth: 0.15,
+                    lpf: 9000.0,
+                    env_amount: 0.0,
+                    amp_env: env(9.0, 6.0, 1.0, 10.0),
+                    detune: 4.0,
+                    pan: 0.5,
+                    level: 0.4,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Triangle,
+            lfo_rate: 0.09,
+            tremolo: 0.3,
+            lfo_delay: 0.0,
+            drift: 0.0,
+            spread: 1.0,
+            gain_db: -4.0,
+            ..named("Prism Drone", Category::Drone)
+        },
+        // buzz: a plucked string that keeps sounding, a narrow pulse and a saw driven
+        // into a resonant low-pass that closes slowly to a bright buzzing hum
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.4,
+                    pulse: 0.9,
+                    width: 0.12,
+                    pwm: 0.08,
+                    lpf: 900.0,
+                    lpf_res: 0.55,
+                    filter_env: env(0.004, 2.8, 0.25, 3.0),
+                    env_amount: 2.2,
+                    key_track: 0.8,
+                    vel_to_filter: 0.8,
+                    amp_env: env(0.004, 6.0, 0.35, 4.0),
+                    detune: -4.0,
+                    pan: -0.2,
+                    drive: 0.45,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 1.0,
+                    lpf: 1400.0,
+                    lpf_res: 0.35,
+                    filter_env: env(0.004, 1.6, 0.2, 3.0),
+                    env_amount: 1.6,
+                    key_track: 0.8,
+                    amp_env: env(0.004, 5.0, 0.3, 4.0),
+                    detune: 5.0,
+                    pan: 0.2,
+                    level: 0.5,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.2,
+            lfo_to_filter: 0.15,
+            lfo_delay: 0.0,
+            drift: 3.0,
+            spread: 0.5,
+            ..named("Buzz Drone", Category::Drone)
+        },
         Patch::default(),
     ]
 }

@@ -343,6 +343,7 @@ impl App {
                 ("vigil", dd_seq::compose::Style::Vigil),
                 ("cinder", dd_seq::compose::Style::Cinder),
                 ("filmstrip", dd_seq::compose::Style::Filmstrip),
+                ("strata", dd_seq::compose::Style::Strata),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
@@ -1272,10 +1273,14 @@ fn same_music(a: &Project, b: &Project) -> bool {
         && a.meter == b.meter
         && a.length_bars == b.length_bars
         && a.tracks.len() == b.tracks.len()
-        && a.tracks
-            .iter()
-            .zip(&b.tracks)
-            .all(|(x, y)| x.notes == y.notes && x.ctrls == y.ctrls && x.levels == y.levels && x.source.is_drums() == y.source.is_drums())
+        && a.tracks.iter().zip(&b.tracks).all(|(x, y)| {
+            x.notes == y.notes
+                && x.density == y.density
+                && x.complexity == y.complexity
+                && x.ctrls == y.ctrls
+                && x.levels == y.levels
+                && x.source.is_drums() == y.source.is_drums()
+        })
 }
 
 impl App {
@@ -1362,8 +1367,8 @@ impl eframe::App for App {
         egui::Panel::left("tracks")
             .frame(egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(6, 6)))
             .resizable(true)
-            .default_size(250.0)
-            .size_range(210.0..=420.0)
+            .default_size(300.0)
+            .size_range(260.0..=460.0)
             .show(ui, |ui| self.tracks_panel(ui));
         egui::CentralPanel::default()
             .frame(egui::Frame::central_panel(ui.style()).fill(tokens.canvas).inner_margin(0.0))

@@ -671,6 +671,118 @@ tunes and titles are our own.
   -1 dBFS. The other thirteen styles' notes are unchanged (fingerprints of 1,560 pieces
   identical to 0.10.2's).
 
+## D30 — Strata, Lumen and Mantra: three drone scores, five new drones (2026-11-24)
+
+Asked for three new drone-based scores with new synth drone sounds. Three different
+answers to "drone": one deep and dark with no beat, one bright, one rhythmic. Each is
+written by its own module in the manner of Cinder (layers fading in and out by section
+through the shared `nebula::envelopes`, CC11 at most 8 a quaver, the `Writer`), four
+bars a chord over a drone that holds the tonic (and fifth) through every section and a
+bar into the next, so in any order of sections the drone never stops.
+
+- **New patches** (`patch.rs`, category Drone; palette Drone alternatives, trimmed to
+  within ±3 dB; left out of the other styles' choosing as `strata::DRONE_SOUNDS`):
+  Basalt Drone (saw and 30% pulse an octave down into a 260 Hz low-pass at 0.45
+  resonance, driven, a sine two octaves down; LFO 0.03 Hz on the filter), Overtone Drone
+  (a saw through a 700 Hz low-pass at 0.86 resonance tracking the keyboard fully, so CC74
+  (±3 octaves) moves a whistling peak across the harmonics; a soft saw an octave down
+  under it), Radiant Drone (sine and soft square ±5 cents, FM sines an octave up, 15%
+  tremolo at 0.12 Hz), Prism Drone (FM sines at ratios 3.5 and 1.5, one and two octaves
+  up, 30% tremolo) and Buzz Drone (a 12% pulse and a saw, plucked: the filter envelope
+  closes over 2.8 s onto a resonant, driven buzz that sustains at 35%).
+- **Strata** (`strata.rs`): Phrygian (i, ♭II, iv, ♭VI, ♭vii), no drums at all. The
+  Overtone Drone's brightness is two slow sine waves (7 and 3 bars) against each other,
+  reaching ±18 to ±44 as intensity rises, so the harmonic it sings wanders without
+  repeating. One riser into the first Night shift and a boom as it lands; hull groans
+  (tuned to the tonic) and distant metal or scrapes now and then; the bell every four
+  bars from the Night shift. The Black Hole reverb, a half-note echo, no tape.
+  The choir of drones was first the loudest layer (-20 LUFS of a -19 mix): turned down
+  5 dB and the bedrock and overtones up, so the drones lead.
+- **Lumen** (`lumen.rs`): Dorian, the tonic voiced as a suspended ninth (no third) with
+  IV, ♭III and ♭VII major. The pulse is a four-note figure of chord degrees in quavers,
+  every other quaver while quiet; chimes are 3-5 note falling runs on the minor
+  pentatonic; the melody (Starlight Lead) four or five long notes over six of eight bars,
+  an octave up every other time in the Night shift. The Shimmer reverb at 0.35.
+- **Mantra** (`mantra.rs`): harmonic minor (i, iv, ♭VI, V). The cycle is a pluck every
+  beat for the whole piece, the fifth below, the tonic twice, the tonic an octave down,
+  as a drone lute is tuned and played (the repeated tonic cuts the one before, as a
+  re-pluck does). Drums (kit): a frame drum on the low tom with the sub under it, the
+  low and high tabla strokes, a shaker in semiquavers past 0.6 intensity; one of four
+  loops per seed. The voice (Ribbon Lead, mono with a 0.28 s glide) holds each note a
+  semiquaver into the next so it slides; every phrase ends on the tonic, fifth or octave,
+  and in the Night shift begins a step higher each time (at most four).
+- **Titles** avoid well-known names (a first list made "Molten Core", "Clear Sky" and
+  "Burning Wheel" possible, and repeated the style name Vigil: changed).
+- **Level**: Strata about -18 LUFS (its weight is low, where loudness counts least;
+  peaks about -0.7 to -1.4 dBFS), Lumen about -16.3 (peaks about -2.5), Mantra about
+  -16.7 (peaks about -0.7 to -1.4). The other fifteen styles' notes are unchanged
+  (fingerprints of 1,800 pieces identical to 0.11.0's).
+
+## D31 — Track density and complexity; Lumen and Mantra withdrawn; the ruler's menu (2026-11-24)
+
+- **Lumen and Mantra** were heard and not liked; Strata stays. Their code, tests and
+  sounds stay (`Style::offered` is false for them): the Score tab, the CLI and the
+  screenshot names no longer offer them, and a piece already in one still opens, plays
+  and shows its style while it's chosen. Their drones (Radiant, Prism, Buzz) stay in the
+  palette.
+- **Density and complexity** (`shape.rs`, `Track::density`/`complexity`, 0..1, 0.5 =
+  as written, left out of the saved file at 0.5 so every saved piece and fingerprint is
+  unchanged): applied when the timeline is built and when MIDI is exported, never to the
+  written notes, so turning a dial back restores exactly what was there and editing still
+  edits what's written. Chosen over rewriting notes because the dials then work on any
+  track (composed, recorded, drawn, imported) and need nothing from the styles. Which
+  notes go or come is decided by a hash of their tick and key, not a random stream, so
+  one edit never reshuffles the rest. Density down ranks each chord (notes within 40
+  ticks) by its beat (downbeat, beat, quaver, semiquaver), length, velocity and a little
+  hash, keeping 15% to 100%; up strikes each chord again in the gap to the next on the
+  semiquaver grid, quavers up to halfway and semiquavers beyond, each strike softer.
+  Complexity down keeps `round(n × share)` notes of a chord (bass, top, then inner from
+  the bottom) and of the distinct notes struck alone in each bar (where there are three
+  or more: the lowest, then the most played); up adds the top an octave up, then the
+  bass an octave down (single notes: some doubled an octave up). On a drum kit the same
+  "lowest first" keeps kick and snare; up adds ghosts a semiquaver before hits; city
+  effects are never changed by complexity (their keys are different sounds).
+- **The ruler's sections**: making a section's name draggable (0.10.0) put a drag-only
+  widget over it that took every button, so the ruler's right-click menu never opened
+  there and a right-drag moved the section. Now the name takes left-drags (move), clicks
+  (the playhead, as elsewhere on the ruler) and right-clicks (the same menu as the ruler:
+  the section's name, part, new notes, copies and delete, then the loop).
+
+## D32 — Pachinko: a routed note gate; per-track note routing in the engine (2026-11-24)
+
+Asked for an effect, taking inspiration from a eurorack Pachinko module, that a track is
+routed to and that decides whether each note plays, with the engine changed to route
+per track for it (the reverb and echo routing left as they are). The Pachinko modules
+sold are clones of a well-known random sampler whose gate section drops a ball left or
+right each clock tick (its bias setting the odds) and whose déjà vu control loops recent
+random values. Only that idea is taken; nothing is named after the original.
+
+- **Model** (`pachinko.rs`): two units (`Project::pachinko`, `UNITS` = 2). Each step (a
+  semiquaver, quaver, crotchet or bar in ticks: no tempo changes, so steps are even in
+  seconds too) one ball u in [0, 1) falls; left if u < chance. `Track::route` names a
+  unit and a side; a note is heard if its step's ball fell its side, so L and R of one
+  unit are exact complements, and every note struck in a step (a chord) shares a ball.
+  Déjà vu: a loop of `length` (1-16) balls; each step draws keep and fresh; if keep ≥
+  déjà vu the loop slot takes fresh. So 0 is always new, 1 a locked loop, and the chance
+  compares at play time, so turning it over a locked loop thins or fills that pattern
+  (as the module's bias does).
+- **Deterministic**: the balls are a function of the step number, seed, déjà vu and
+  length only, worked out from step 0 (`Balls`, xorshift64*, allocation-free, fixed
+  16-slot memory, moved forward as the engine plays and recomputed from 0 after a jump
+  back or a change: thousands of steps take microseconds). Live, after a seek, a WAV and
+  the exported MIDI (`pachinko::passed`) agree; the roll uses the same.
+- **Engine routing**: `MixSettings` carries each track's route and the units (sent like
+  the mix, so turning a dial or rerouting takes effect at once, without rebuilding the
+  timeline); `Engine::play` sends a timeline note-on through its unit (offs, controllers
+  and unrouted tracks pass straight through; a note-off for a note never struck is
+  harmless). Notes picked up on a seek go through the gate at their own start time
+  (`Timeline::chase` now returns it). Live input and auditions aren't gated (they're the
+  player's, not the score's). The reverb and echo sends are unchanged.
+- **Order**: a track's density and complexity (D31) shape its notes first; Pachinko
+  gates what they leave and add.
+- **Saved files**: units at their defaults and unrouted tracks are left out, so every
+  saved piece, and every style's fingerprint, is unchanged.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

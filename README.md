@@ -76,7 +76,7 @@ fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are fifteen **styles**, each playing the same kinds of section its own way, all
+There are sixteen **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -240,6 +240,18 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   key with a bright, major sixth: its IV chord is major); a small warm plate and heavily
   worn tape. About -16.5 LUFS. Its tracks: Field Recording, Vinyl & Tape, Drums, Bass,
   Electric Piano, Tape Strings, Lead, Music Box, Glockenspiel and Children's Voices.
+- **Strata** (50 bpm, Phrygian): a deep drone score, vast, slow and heavy, with no beat.
+  Out of a cold wind a drone rises from far below (the new **Basalt Drone**: saws and a
+  pulse an octave down into a dark, resonant filter, a sine two octaves down) and never
+  stops. Over it the new **Overtone Drone** holds the tonic and fifth while brightness
+  sweeps its very resonant filter up and down through the harmonics, a slowly wandering
+  whistle of overtones like a throat singer's, roaming further as it builds. A sub swells
+  under each new chord, a choir of drones holds the Phrygian chords above (the flat second
+  pressing down on the tonic, the flat sixth and seventh), the earth groans, distant metal
+  clangs and scrapes, and a bell tolls far off. One great slow climb (a long riser landing
+  on a boom) and everything sinks back into the depths and the wind. The deepest reverb
+  there is and a long dark echo. About -18 LUFS. Its tracks: Wind, Bedrock, Overtones,
+  Choir, Sub, Depths, Metal and Bell.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -282,8 +294,8 @@ switched on and off by the lamp by its name), then Glide, LFO and Touch; every s
 a small dial, straight up at its usual setting, and every choice (octave, LFO shape, mono
 legato) a neon lamp.
 
-47 factory patches, all original: seven brass, six pads, three strings, six leads, six
-basses, six bells, four keys, two plucks, five drones and two atmospheres. Among them are
+64 factory patches, all original: eight brass, seven pads, five strings, nine leads,
+seven basses, six bells, four keys, four plucks, eleven drones and three atmospheres. Among them are
 the sounds the CS-80's design is known for: brass that blooms and sags, strings with a
 delayed vibrato, resonant high- and low-pass "voices", a solo horn played with touch,
 ring-modulated bells, a clavinet and an organ. The bells keep to whole-number FM and ring
@@ -347,6 +359,31 @@ Load any other `.sf2` from the Sound tab.
   drag the end to resize; double-click or right-click to delete; ⇧-drag to select. ↑ ↓
   transpose (⇧ by octaves), ← → nudge, Q quantise (⇧Q ends too), ⌘D duplicate, ⌘C ⌘V
   copy and paste at the playhead. The other tracks show faintly behind.
+- **Density and complexity**: two small dials on each track, beside its mute (over solo).
+  Straight up plays the notes as written; the written notes never change. **Density**
+  left leaves out the weakest notes first (off the beat, short and soft), down to about
+  the strongest sixth; right fills the gaps, striking held notes again and echoing hits,
+  on the quavers and then the semiquavers. **Complexity** left plays fewer notes of each
+  chord (the bass and top kept longest) and fewer of the different notes in each bar's
+  arpeggio or line (the lowest and most played kept longest); right adds the chord's top
+  an octave up, then its bass an octave down, and doubles some single notes an octave up
+  (on a drum kit: fewer drums, the kick and snare kept; then soft ghost notes). The roll
+  shows notes left out faded and notes added as outlines; playback, WAV and MIDI export
+  play them as heard. Double-click a dial to put it back.
+- **Pachinko** (Effects tab): two note gates, A and B, after a eurorack random-gate
+  module. Each drops a ball every step (1/16, 1/8, 1/4 or a bar); it lands left with the
+  **Chance** set, else right. Route a track (the Routing grid beside them) to a unit's
+  **L** output and it plays only the notes struck in steps whose ball fell left; to its
+  **R** output, only the others. One track on L at 30% plays about three steps in ten; a
+  second on R of the same unit plays exactly the steps the first leaves out. A chord's
+  notes share their step's ball. **Déjà vu** at 0 drops a new ball every step; turned up,
+  more of them repeat the ball from **Length** steps before, and all the way round the
+  pattern loops for ever (turn the chance then to thin or fill that same pattern).
+  **Pattern** drops a different set of balls. It is worked out from the step number, so
+  the same settings play the same notes live, after a seek, in a WAV and in exported
+  MIDI; the roll fades the notes it holds back. Live playing isn't gated.
+- **Sections on the ruler**: drag a section's name to move it; right-click it for its
+  menu (name, part, new notes, copies, delete, the loop); click it to move the playhead.
 - **Volume** (in the lane's menu): the selected track's volume bar by bar, on top of its
   fader (100 is the fader's level). Drag to set bars, sweeping across several to set each;
   the volume ramps between the bars you set and holds after the last, so bars you haven't

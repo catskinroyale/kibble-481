@@ -246,6 +246,35 @@ impl App {
         }
         act
     }
+
+    /// The ruler's right-click menu at the bar last right-clicked: the section there's
+    /// menu, then the loop.
+    fn ruler_menu(&mut self, ui: &mut egui::Ui, blocks: &[Block]) -> Option<SectionAct> {
+        let bar = self.roll.menu_bar;
+        let mut act = None;
+        let section = {
+            let mut at = 0;
+            blocks.iter().position(|b| {
+                at += b.bars;
+                bar < at
+            })
+        }
+        .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
+        if let Some(i) = section {
+            act = self.section_menu(ui, i);
+            ui.separator();
+        }
+        ui.label(format!("Bar {}", bar + 1));
+        if ui.button("Loop the next 4 bars").clicked() {
+            self.doc.project.loop_bars = Some((bar, bar + 4));
+            ui.close();
+        }
+        if self.doc.project.loop_bars.is_some() && ui.button("Clear the loop").clicked() {
+            self.doc.project.loop_bars = None;
+            ui.close();
+        }
+        act
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -690,14 +719,31 @@ impl App {
             _ => None,
         };
         let mut move_to = None;
+        // (what a click on a section's name asks for, done once the ruler is drawn: the
+        // playhead, the loop cleared, and its right-click menu)
+        let (mut box_seek, mut box_unloop, mut box_resps) = (None, false, Vec::new());
         if blocks.len() > 1 {
             for &(i, r) in &boxes {
+                // a left drag moves the section; a click moves the playhead as anywhere on
+                // the ruler; a right-click opens the section's menu
                 let h = ui
-                    .interact(r.intersect(grid), ui.scope_id().with(("section-move", i)), Sense::drag())
+                    .interact(r.intersect(grid), ui.scope_id().with(("section-move", i)), Sense::click_and_drag())
                     .on_hover_cursor(if moving.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
-                if h.drag_started() {
+                if h.drag_started_by(egui::PointerButton::Primary) {
                     self.roll.drag = Some(Drag::SectionMove { index: i, orig: blocks.clone() });
                 }
+                if h.clicked()
+                    && let Some(pp) = h.interact_pointer_pos()
+                {
+                    box_seek = Some(p.tick_secs(snap(v.tick(pp.x), p.beat_ticks())));
+                }
+                box_unloop |= h.double_clicked();
+                if h.secondary_clicked()
+                    && let Some(pp) = h.interact_pointer_pos()
+                {
+                    self.roll.menu_bar = bar_at(pp.x);
+                }
+                box_resps.push(h.clone().on_hover_text("Drag to move this section before or after another; right-click for its menu"));
                 if h.drag_stopped()
                     && let Some(Drag::SectionMove { index, orig }) = self.roll.drag.take()
                     && let Some(pp) = h.interact_pointer_pos()
@@ -882,37 +928,23 @@ impl App {
         {
             self.roll.menu_bar = bar_at(pp.x);
         }
-        let bar = self.roll.menu_bar;
-        // the section under a right-click, for its menu
-        let menu_section = {
-            let mut at = 0;
-            blocks.iter().position(|b| {
-                at += b.bars;
-                bar < at
-            })
-        }
-        .filter(|&i| blocks[i].part.is_some() || !blocks[i].name.is_empty());
         let resp = resp.on_hover_text(
             "Click to move the playhead, drag the bar numbers to scrub, ⇧-drag to set the loop, double-click to clear it. Drag a section to move it before or after another, or its end to change its length; its buttons are in the row above. Right-click a section to rename it, change its part, write new notes or duplicate it.",
         );
         // stays open while its name is typed; closed when something is chosen
-        egui::Popup::context_menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            if let Some(i) = menu_section {
-                if let Some(a) = self.section_menu(ui, i) {
+        for r in box_resps.iter().chain([&resp]) {
+            egui::Popup::context_menu(r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                if let Some(a) = self.ruler_menu(ui, &blocks) {
                     act = Some(a);
                 }
-                ui.separator();
-            }
-            ui.label(format!("Bar {}", bar + 1));
-            if ui.button("Loop the next 4 bars").clicked() {
-                self.doc.project.loop_bars = Some((bar, bar + 4));
-                ui.close();
-            }
-            if self.doc.project.loop_bars.is_some() && ui.button("Clear the loop").clicked() {
-                self.doc.project.loop_bars = None;
-                ui.close();
-            }
-        });
+            });
+        }
+        if let Some(secs) = box_seek {
+            self.seek(secs);
+        }
+        if box_unloop {
+            self.doc.project.loop_bars = None;
+        }
         if let Some(a) = act {
             egui::Popup::close_all(ui.ctx());
             self.section_action(a);
@@ -1070,12 +1102,29 @@ impl App {
         // this track
         if let Some(tr) = p.tracks.get(self.sel) {
             let base = rgb(tr.color);
+            let visible =
+                |r: Rect| !(r.right() < grid.left() || r.left() > grid.right() || r.bottom() < grid.top() || r.top() > grid.bottom());
+            // what its density and complexity dials do: notes left out faded, notes added
+            // outlined (as written when both are straight up)
+            let shaped = dd_seq::shape::shape(&tr.notes, &tr.source, tr.density, tr.complexity, p.bar_ticks(), p.beat_ticks());
+            // and what its Pachinko route lets through (faded too)
+            let through = dd_seq::pachinko::passed(p, self.sel, &tr.notes);
+            let added_through = dd_seq::pachinko::passed(p, self.sel, &shaped.added);
+            for (n, _) in shaped.added.iter().zip(&added_through).filter(|(_, pass)| **pass) {
+                let r = v.note_rect(n);
+                if visible(r) {
+                    gp.rect_filled(r, 2.0, base.gamma_multiply(0.12));
+                    gp.rect_stroke(r, 2.0, Stroke::new(1.0, base.gamma_multiply(0.7)), StrokeKind::Inside);
+                }
+            }
             for (i, n) in tr.notes.iter().enumerate() {
                 let r = v.note_rect(n);
-                if r.right() < grid.left() || r.left() > grid.right() || r.bottom() < grid.top() || r.top() > grid.bottom() {
+                if !visible(r) {
                     continue;
                 }
                 let shade = 0.45 + 0.55 * n.vel as f32 / 127.0;
+                let heard = shaped.kept.get(i).copied().unwrap_or(true) && through.get(i).copied().unwrap_or(true);
+                let shade = if heard { shade } else { shade * 0.22 };
                 gp.rect_filled(r, 2.0, base.gamma_multiply(shade));
                 let sel = self.roll.selected.contains(&i);
                 gp.rect_stroke(

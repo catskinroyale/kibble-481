@@ -147,6 +147,18 @@ enum RowAction {
     Layer(u8, bool),
 }
 
+/// A track row's small dial for its density or complexity: straight up plays the notes
+/// as written. Says whether it moved.
+fn track_dial(ui: &mut egui::Ui, label: &str, help: &str, v: &mut f32) -> bool {
+    ui.allocate_ui_with_layout(vec2(34.0, 38.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+        widgets::unit_dial(ui, label, help, v, dd_seq::shape::NEUTRAL, 9.0, widgets::DialLayout::Under, |v| {
+            let x = ((v - dd_seq::shape::NEUTRAL) / dd_seq::shape::NEUTRAL * 100.0).round();
+            if x == 0.0 { "as is".to_string() } else { format!("{x:+.0}%") }
+        })
+    })
+    .inner
+}
+
 /// A small square toggle button with a letter, as on a mixing desk.
 pub fn toggle(ui: &mut egui::Ui, label: &str, on: &mut bool, color: Color32, help: &str) -> bool {
     let t = Tokens::get(ui.ctx());
@@ -269,7 +281,7 @@ impl App {
                                 }
                                 ui.vertical(|ui| {
                                     ui.spacing_mut().item_spacing.y = 1.0;
-                                    let name_w = ui.available_width() - 72.0;
+                                    let name_w = ui.available_width() - 124.0;
                                     if renaming {
                                         let r = ui.add(
                                             egui::TextEdit::singleline(&mut tr.name)
@@ -310,7 +322,7 @@ impl App {
                                             }
                                         }
                                     }
-                                    let w = (ui.available_width() - 76.0).max(80.0);
+                                    let w = (ui.available_width() - 128.0).max(80.0);
                                     let col = if err.is_some() { t.caution } else { t.text_dim };
                                     let shown = |s: &str| egui::RichText::new(s).font(t.font(10.5)).color(col);
                                     let resp = if role == Some(Role::City) {
@@ -379,8 +391,24 @@ impl App {
                                 });
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.spacing_mut().item_spacing.x = 3.0;
-                                    toggle(ui, "S", &mut tr.strip.solo, t.solo, "Solo");
-                                    toggle(ui, "M", &mut tr.strip.mute, t.mute, "Mute");
+                                    // mute over solo, and beside them the track's density and complexity
+                                    ui.allocate_ui_with_layout(vec2(20.0, 38.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                                        ui.spacing_mut().item_spacing.y = 2.0;
+                                        toggle(ui, "M", &mut tr.strip.mute, t.mute, "Mute");
+                                        toggle(ui, "S", &mut tr.strip.solo, t.solo, "Solo");
+                                    });
+                                    touched |= track_dial(
+                                        ui,
+                                        "Cmplx",
+                                        "Complexity: how many notes of each chord and arpeggio it plays. Left plays fewer (the bass and top of a chord, the lowest and most played notes of an arpeggio kept longest); right adds the chord's top an octave up, then its bass an octave down, and doubles some single notes (on drums, soft ghost notes). The written notes stay as they are",
+                                        &mut tr.complexity,
+                                    );
+                                    touched |= track_dial(
+                                        ui,
+                                        "Dens",
+                                        "Density: how many of its notes it plays. Left leaves out the weakest first (off the beat, short and soft), keeping the downbeats; right fills the gaps, striking held notes again and echoing hits, on the quavers then the semiquavers. The written notes stay as they are",
+                                        &mut tr.density,
+                                    );
                                     // level
                                     let (r, _) = ui.allocate_exact_size(vec2(4.0, 26.0), Sense::hover());
                                     ui.painter().rect_filled(r, 1.0, t.canvas);
@@ -734,6 +762,110 @@ impl App {
                 });
             });
         }
+        self.pachinko_ui(ui, &t);
+    }
+
+    /// The Pachinko note gates (D32): each unit's rate, chance, déjà vu, loop length and
+    /// pattern, then which tracks' notes go through which side of which unit.
+    fn pachinko_ui(&mut self, ui: &mut egui::Ui, t: &Tokens) {
+        use dd_seq::pachinko::{Rate, Route, UNITS};
+        let p = &mut self.doc.project;
+        ui.add_space(6.0);
+        widgets::inset(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                for (u, unit) in p.pachinko.iter_mut().enumerate() {
+                    let name = ["Pachinko A", "Pachinko B"][u % UNITS];
+                    fx_strip(
+                        ui,
+                        t,
+                        name,
+                        "A note gate, after a eurorack random-gate module: each step a ball falls left or right. Tracks routed to its left output play the notes of the steps whose ball fell left, tracks on its right the rest",
+                        |ui| {
+                            ui.label(egui::RichText::new("Step").font(t.font(10.0)).color(t.text_dim));
+                            for r in Rate::ALL {
+                                if widgets::lamp_row(ui, r.label(), unit.rate == r, true)
+                                    .on_hover_text("How often a ball falls: notes struck in one step share it")
+                                    .clicked()
+                                {
+                                    unit.rate = r;
+                                }
+                            }
+                            strip_rule(ui, t);
+                            let mut len = (unit.length.clamp(1, 16) as f32 - 1.0) / 15.0;
+                            let mut dials = vec![
+                                Amt::new(
+                                    "Chance",
+                                    &mut unit.chance,
+                                    0.5,
+                                    "How often a ball falls left: the left output's notes play this often, the right output's the rest",
+                                    ("mostly right", "mostly left"),
+                                ),
+                                Amt::new(
+                                    "Déjà vu",
+                                    &mut unit.dejavu,
+                                    0.0,
+                                    "How often a ball repeats one from the loop instead of falling anew; all the way round, the pattern loops for ever",
+                                    ("new every time", "locked"),
+                                ),
+                                Amt::new("Length", &mut len, 7.0 / 15.0, "How many balls the loop holds", ("1", "16"))
+                                    .shown(|v| format!("{}", (1.0 + v * 15.0).round())),
+                            ];
+                            mini_dials(ui, &mut dials);
+                            drop(dials);
+                            unit.length = (1.0 + len * 15.0).round().clamp(1.0, 16.0) as u8;
+                            strip_rule(ui, t);
+                            let w = ui.available_width();
+                            if ui
+                                .add_sized(vec2(w, 20.0), egui::Button::new(egui::RichText::new(format!("Pattern {}", unit.seed)).font(t.font(10.5))))
+                                .on_hover_text("Drop a different set of balls (a new seed); the same pattern number always drops the same balls")
+                                .clicked()
+                            {
+                                unit.seed = unit.seed % 999 + 1;
+                            }
+                        },
+                    );
+                }
+                // beside them, which tracks go through which
+                egui::Frame::new().fill(t.inset).corner_radius(4.0).inner_margin(egui::Margin::symmetric(5, 4)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(egui::RichText::new("Routing").font(t.semibold(11.5)).color(t.accent)).on_hover_text(
+                "Which tracks' notes go through which unit: L plays the steps whose ball fell left, R the rest. A track routed nowhere plays every note. The reverb and echo sends are unchanged, on the mixer",
+            );
+            ui.add_space(2.0);
+            egui::Grid::new("pachinko-routes").num_columns(UNITS * 2 + 1).spacing(vec2(3.0, 2.0)).show(ui, |ui| {
+                ui.label("");
+                for u in 0..UNITS {
+                    ui.label(egui::RichText::new(["A L", "B L"][u]).font(t.font(10.0)).color(t.text_dim));
+                    ui.label(egui::RichText::new(["A R", "B R"][u]).font(t.font(10.0)).color(t.text_dim));
+                }
+                ui.end_row();
+                for tr in p.tracks.iter_mut() {
+                    ui.add_sized(
+                        vec2((ui.available_width() - 4.0 * 24.0).clamp(30.0, 90.0), 18.0),
+                        egui::Label::new(egui::RichText::new(&tr.name).font(t.font(10.5)).color(rgb(tr.color))).truncate(),
+                    );
+                    for u in 0..UNITS as u8 {
+                        for right in [false, true] {
+                            let r = Route { unit: u, right };
+                            let mut on = tr.route == Some(r);
+                            let help = format!(
+                                "Send {}'s notes through Pachinko {} {}; click again to play every note",
+                                tr.name,
+                                ["A", "B"][u as usize % UNITS],
+                                if right { "right (the steps whose ball fell right)" } else { "left (the steps whose ball fell left)" }
+                            );
+                            if toggle(ui, if right { "R" } else { "L" }, &mut on, t.accent, &help) {
+                                tr.route = on.then_some(r);
+                            }
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+                });
+            });
+        });
     }
 
     fn score_tab(&mut self, ui: &mut egui::Ui) {
@@ -1053,7 +1185,9 @@ impl App {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 fx_strip(ui, t, "Style", "How the composer writes. Choosing one sets its tempo", |ui| {
-                    for s in Style::ALL {
+                    // (a style no longer offered only while the piece is in it)
+                    let shown: Vec<Style> = Style::ALL.into_iter().filter(|s| s.offered() || r.style == *s).collect();
+                    for s in shown {
                         let key = s.key().map_or(String::new(), |(k, m)| format!(" in {} {}", KEY_NAMES[k as usize], m.label()));
                         let metre = s.meter().map_or(String::new(), |(a, b)| format!(" in {a}/{b}"));
                         let help = format!("{}. Choosing it sets {} bpm{key}{metre}.", s.help(), s.tempo());

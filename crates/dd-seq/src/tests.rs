@@ -319,3 +319,36 @@ fn cuts_shape_soundfont_tracks() {
     let (e2, b2) = bright(&p);
     assert!(b2 > b0 * 1.5 && e2 < e0, "low cut: brightness {b0} -> {b2}, energy {e0} -> {e2}");
 }
+
+/// A track routed through Pachinko plays only the bars whose ball falls its way: as the
+/// unit decides for the roll and the MIDI file, the left side and the right in turn.
+#[test]
+fn pachinko_gates_the_notes_it_is_routed() {
+    use crate::pachinko::{Pachinko, Rate, Route, passed};
+    use crate::project::{Note, PPQ, Project, Track};
+    let f = fonts();
+    let sr = 24000;
+    let mut p = Project { bpm: 120.0, length_bars: 16, ..Project::default() };
+    let mut t = Track::new("Clav", Source::Synth(dd_dsp::patch::by_name("Neon Clav")), 0);
+    t.strip.reverb = 0.0;
+    t.strip.echo = 0.0;
+    for b in 0..16 {
+        for k in [60, 64, 67] {
+            t.notes.push(Note { start: b * 4 * PPQ, len: PPQ / 2, key: k, vel: 110 });
+        }
+    }
+    p.tracks.push(t);
+    p.fx.duck = 0.0;
+    p.pachinko[0] = Pachinko { chance: 0.5, rate: Rate::Bar, seed: 3, ..Pachinko::default() };
+    let n = (p.bar_secs() * sr as f64) as usize;
+    let loud = |l: &[f32], b: usize| peak(&l[b * n..b * n + n / 3]) > 0.01;
+    for right in [false, true] {
+        p.tracks[0].route = Some(Route { unit: 0, right });
+        let through = passed(&p, 0, &p.tracks[0].notes);
+        let (l, _) = render_buffers(&p, &f, sr, None);
+        let heard: Vec<bool> = (0..16).map(|b| loud(&l, b)).collect();
+        let want: Vec<bool> = (0..16).map(|b| through[b * 3]).collect();
+        assert_eq!(heard, want, "right {right}");
+        assert!(want.iter().any(|w| *w) && want.iter().any(|w| !*w));
+    }
+}
