@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.0 — 2026-11-25
+
+- **Gallery as HD video**: export the photos over the soundtrack as a finished 1920×1080
+  H.264 video (`.mp4` or `.mov`) at the gallery's frame rate, from the Export menu or
+  Plan and export (and `kibble-481-cli video`). Each change and fade lands on the frame
+  the Resolve timeline gives, and the video is exactly as long as the soundtrack. Needs
+  ffmpeg installed.
+- **Three new transitions**: every photo **fades in** from black, **fades out** to
+  black, or **fades in and out**, each fade with its own length. The Resolve timeline
+  has them too. On the command line: `--transition`, `--fade-in`, `--fade-out`.
+
 ## 0.12.0 — 2026-11-24
 
 - **Pachinko**, a note gate tracks can be routed through (Effects tab), after a eurorack

@@ -61,7 +61,7 @@ pub fn tempo_to_fit(s: &Slideshow, meter: (u32, u32), bpm: f64, score_bars: u32,
 pub const EXACT_MIN: f64 = 1.0;
 pub const EXACT_MAX: f64 = 60.0;
 
-/// How one image gives way to the next on the exported timeline.
+/// How one image gives way to the next on the exported timeline and video.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Transition {
     /// The next image dissolves in over the last, centred on the change.
@@ -71,16 +71,26 @@ pub enum Transition {
     FadeToBlack,
     /// Straight from one to the next.
     Cut,
+    /// Every image fades up from black as it starts (`fade_in`), and cuts away at its end.
+    FadeIn,
+    /// Every image cuts in, and fades out to black as it ends (`fade_out`).
+    FadeOut,
+    /// Every image fades up from black (`fade_in`) and out to black (`fade_out`).
+    FadeInOut,
 }
 
 impl Transition {
-    pub const ALL: [Transition; 3] = [Transition::Crossfade, Transition::FadeToBlack, Transition::Cut];
+    pub const ALL: [Transition; 6] =
+        [Transition::Crossfade, Transition::FadeToBlack, Transition::Cut, Transition::FadeIn, Transition::FadeOut, Transition::FadeInOut];
 
     pub fn label(self) -> &'static str {
         match self {
             Transition::Crossfade => "Crossfade",
             Transition::FadeToBlack => "Fade to black",
             Transition::Cut => "Cut",
+            Transition::FadeIn => "Fade in",
+            Transition::FadeOut => "Fade out",
+            Transition::FadeInOut => "Fade in and out",
         }
     }
 
@@ -89,12 +99,25 @@ impl Transition {
             Transition::Crossfade => "The next image dissolves in over the last, centred on the change",
             Transition::FadeToBlack => "Each image fades out to black, then the next fades in from black, centred on the change",
             Transition::Cut => "No fade: straight from one image to the next on the change",
+            Transition::FadeIn => "Every image fades up from black as it starts, and cuts away at its end",
+            Transition::FadeOut => "Every image cuts in, and fades out to black as it ends",
+            Transition::FadeInOut => "Every image fades up from black as it starts, and out to black as it ends, each fade its own length",
         }
     }
 
-    /// Whether it has a fade whose length counts.
+    /// Whether the one fade (`fade`, centred on the change) counts.
     pub fn fades(self) -> bool {
-        self != Transition::Cut
+        matches!(self, Transition::Crossfade | Transition::FadeToBlack)
+    }
+
+    /// Whether each image fades up from black as it starts.
+    pub fn fades_in(self) -> bool {
+        matches!(self, Transition::FadeIn | Transition::FadeInOut)
+    }
+
+    /// Whether each image fades out to black as it ends.
+    pub fn fades_out(self) -> bool {
+        matches!(self, Transition::FadeOut | Transition::FadeInOut)
     }
 }
 
@@ -128,6 +151,10 @@ pub struct Slideshow {
     pub transition: Transition,
     /// Crossfade between images, in seconds.
     pub fade: f32,
+    /// Fading each image up from black (FadeIn, FadeInOut), in seconds.
+    pub fade_in: f32,
+    /// Fading each image out to black (FadeOut, FadeInOut), in seconds.
+    pub fade_out: f32,
     /// Bars of music before the first image.
     pub intro_bars: u32,
     /// Bars of music after the last image; at least one, the final ring-out.
@@ -155,6 +182,8 @@ impl Default for Slideshow {
             image_bars: 4,
             transition: Transition::Crossfade,
             fade: 6.0,
+            fade_in: 1.0,
+            fade_out: 1.0,
             intro_bars: 2,
             outro_bars: 2,
             show_on_timeline: true,
@@ -163,6 +192,21 @@ impl Default for Slideshow {
             order: crate::resolve::PhotoOrder::Name,
             fps: 25,
         }
+    }
+}
+
+impl Slideshow {
+    /// The fade centred on each change that editors overlap the clips for (a crossfade
+    /// or a dip to black), in seconds; none for the other transitions.
+    pub fn dissolve(&self) -> f64 {
+        if self.transition.fades() { self.fade as f64 } else { 0.0 }
+    }
+
+    /// The fade up from black at each image's start and out to black at its end, in
+    /// seconds (0 where the transition has none).
+    pub fn edge_fades(&self) -> (f64, f64) {
+        let t = self.transition;
+        (if t.fades_in() { self.fade_in.max(0.0) as f64 } else { 0.0 }, if t.fades_out() { self.fade_out.max(0.0) as f64 } else { 0.0 })
     }
 }
 

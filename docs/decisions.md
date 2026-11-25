@@ -783,6 +783,38 @@ random values. Only that idea is taken; nothing is named after the original.
 - **Saved files**: units at their defaults and unrouted tracks are left out, so every
   saved piece, and every style's fingerprint, is unchanged.
 
+## D33 — Fade-in/out transitions and an HD video export (2026-11-25)
+
+Asked for transitions where every image just fades in, just fades out, or fades in and
+out, each with its own timing; and a video export, in HD, with the gallery's timings and
+frame rate honoured.
+
+- **Transitions**: `Transition::{FadeIn, FadeOut, FadeInOut}` with `Slideshow::fade_in`
+  and `fade_out` (seconds, default 1). Unlike the crossfade and the dip to black (centred
+  on the change), these are each image's own: the fade in starts on the image's first
+  frame from black, the fade out ends on its last. If both together are longer than the
+  shortest image they shrink in proportion to fit it. Older documents open unchanged
+  (the fields default).
+- **One schedule** (`shots.rs`): each photo's place and fades in whole frames, every
+  fade an even number of frames so it centres on a frame. The FCPXML (dissolves to and
+  from black gaps, as the dip to black already did) and the video both follow it, so the
+  timeline, the markers and the video agree to the frame. The existing transitions'
+  timelines are unchanged (their tests pass as before).
+- **Video** (`video.rs`): 1920×1080, H.264 (x264 at CRF 17, tuned for stills; else the
+  system's encoder), yuv420p tagged Rec. 709, AAC 320k at 48 kHz, `.mp4` or `.mov`,
+  constant frame rate at the gallery's fps. Every frame is composited here (frame `n` is
+  the picture at `n / fps` s; linear fades; later images over earlier over black) and
+  piped raw to ffmpeg, so timing is ours, not the encoder's. Its length is the
+  soundtrack's (the music and its rung-out tail) rounded up to a whole frame. Photos are
+  read and scaled to fit (black bars) by ffmpeg, which also reads HEIC; one it can't
+  read shows as black and is reported.
+- **ffmpeg isn't bundled**: an H.264 encoder can't be shipped under the project's
+  licence terms without patent and GPL questions (D4's spirit), and the Resolve package
+  remains the no-dependency route. It's found via `KIBBLE_FFMPEG`, beside the app, the
+  `PATH`, or the usual install folders; without it, the export says how to get it. A
+  test encodes a short gallery and checks the size, rate, frame count and fades on given
+  frames (skipped where there's no ffmpeg).
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

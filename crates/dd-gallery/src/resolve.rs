@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::slideshow::{Plan, Transition};
+use crate::shots::shots;
+use crate::slideshow::{Plan, Slideshow};
 
 /// The order photos are shown in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,46 +110,17 @@ pub fn image_size(path: &Path) -> Option<(u32, u32)> {
     None
 }
 
-/// Where each photo goes, in whole frames: (photo, first frame, frames),
-/// and the cross dissolve's length in frames. Only as many photos as the
-/// plan has images, or images as there are photos.
-fn frames(plan: &Plan, photos: usize, fade: f64, fps: u32) -> (Vec<(usize, u64, u64)>, u64) {
-    let at = |secs: f64| (secs * fps as f64).round() as u64;
-    let spans: Vec<(f64, f64)> = plan.spans().take(photos).collect();
-    let clips: Vec<(usize, u64, u64)> =
-        spans.iter().enumerate().map(|(i, (a, b))| (i, at(*a), at(*b).saturating_sub(at(*a)).max(1))).collect();
-    // even, so it centres on the cut, and at most half the shortest image
-    let shortest = clips.iter().map(|c| c.2).min().unwrap_or(0);
-    let dissolve = (at(fade).min(shortest / 2) / 2) * 2;
-    (clips, dissolve)
-}
-
 /// A timeline for Final Cut Pro XML 1.9, which DaVinci Resolve imports: the
-/// photos on the video track at their changes, the soundtrack beneath, at `fps`
-/// frames a second in 1080p, and between the photos, as `transition` asks: a cross
+/// photos on the video track at their changes, the soundtrack beneath, at the gallery's
+/// frames a second in 1080p, and between the photos, as its transition asks: a cross
 /// dissolve centred on each change; a fade to black and up again (each photo ends
 /// `fade` early, a black gap in its place, with a dissolve out to it and one in from
-/// it, so the change still centres on the beat); or a cut.
-#[allow(clippy::too_many_arguments)]
-pub fn fcpxml(
-    plan: &Plan,
-    photos: &[PathBuf],
-    audio: &Path,
-    audio_secs: f64,
-    fade: f64,
-    transition: Transition,
-    fps: u32,
-    title: &str,
-) -> String {
-    let (mut clips, dissolve) = frames(plan, photos.len(), if transition.fades() { fade } else { 0.0 }, fps);
-    let dip = transition == Transition::FadeToBlack && dissolve > 0;
-    if dip {
-        // each photo but the last gives its final `dissolve` frames to black
-        let n = clips.len();
-        for c in clips.iter_mut().take(n.saturating_sub(1)) {
-            c.2 = c.2.saturating_sub(dissolve).max(1);
-        }
-    }
+/// it, so the change still centres on the beat); a cut; or every photo fading up from
+/// black and/or out to it (a dissolve to or from a black gap at its start or end). The
+/// photos sit as `shots::shots` places them, so the timeline matches the video.
+pub fn fcpxml(plan: &Plan, photos: &[PathBuf], audio: &Path, audio_secs: f64, gallery: &Slideshow, title: &str) -> String {
+    let fps = gallery.fps.max(1);
+    let clips = shots(plan, photos.len(), gallery, fps);
     let t = |frames: u64| if frames == 0 { "0s".to_string() } else { format!("{frames}/{fps}s") };
     let audio_frames = (audio_secs * fps as f64).floor() as u64;
     let mut out = String::new();
@@ -159,8 +131,8 @@ pub fn fcpxml(
     // a still's format: its size, where it can be read
     let mut sizes: Vec<Option<(u32, u32)>> = Vec::new();
     let mut format_of = Vec::new();
-    for (i, _, _) in &clips {
-        let size = image_size(&photos[*i]);
+    for c in &clips {
+        let size = image_size(&photos[c.photo]);
         let k = sizes.iter().position(|s| *s == size).unwrap_or_else(|| {
             sizes.push(size);
             sizes.len() - 1
@@ -177,8 +149,8 @@ pub fn fcpxml(
             None => out += &format!("    <format id=\"f{k}\" name=\"FFVideoFormatRateUndefined\"/>\n"),
         }
     }
-    for (j, (i, _, _)) in clips.iter().enumerate() {
-        let p = &photos[*i];
+    for (j, c) in clips.iter().enumerate() {
+        let p = &photos[c.photo];
         out += &format!(
             "    <asset id=\"p{j}\" name=\"{}\" src=\"{}\" start=\"0s\" duration=\"0s\" hasVideo=\"1\" format=\"f{}\" videoSources=\"1\"/>\n",
             xml(&file_name(p)),
@@ -209,59 +181,59 @@ pub fn fcpxml(
     };
     // the soundtrack hangs from the first thing on the timeline: the intro's
     // gap, or the first photo
-    let first = clips.first().map(|c| c.1).unwrap_or(audio_frames);
     let mut hung = false;
-    if first > 0 {
-        out += &format!("            <gap name=\"Gap\" offset=\"0s\" start=\"0s\" duration=\"{}\">\n", t(first));
-        out += &music("0s");
-        hung = true;
-        out += "            </gap>\n";
-    }
-    for (j, &(i, start, len)) in clips.iter().enumerate() {
-        if j > 0 && dissolve > 0 {
-            if dip {
-                // out to black, the black, and in from it
-                let black = start - dissolve;
-                out += &format!(
-                    "            <transition name=\"Cross Dissolve\" offset=\"{}\" duration=\"{}\"/>\n",
-                    t(black - dissolve / 2),
-                    t(dissolve)
-                );
-                out += &format!("            <gap name=\"Gap\" offset=\"{}\" start=\"0s\" duration=\"{}\"/>\n", t(black), t(dissolve));
-            }
-            out += &format!(
-                "            <transition name=\"Cross Dissolve\" offset=\"{}\" duration=\"{}\"/>\n",
-                t(start - dissolve / 2),
-                t(dissolve)
-            );
+    let gap = |out: &mut String, hung: &mut bool, from: u64, to: u64| {
+        if to <= from {
+            return;
         }
-        let name = xml(&file_name(&photos[i]));
+        if std::mem::replace(hung, true) {
+            *out += &format!("            <gap name=\"Gap\" offset=\"{}\" start=\"0s\" duration=\"{}\"/>\n", t(from), t(to - from));
+        } else {
+            *out += &format!("            <gap name=\"Gap\" offset=\"{}\" start=\"0s\" duration=\"{}\">\n", t(from), t(to - from));
+            *out += &music("0s");
+            *out += "            </gap>\n";
+        }
+    };
+    let dissolve = |out: &mut String, at: u64, len: u64| {
+        *out += &format!("            <transition name=\"Cross Dissolve\" offset=\"{}\" duration=\"{}\"/>\n", t(at - len / 2), t(len));
+    };
+    let mut cursor = 0;
+    for (j, c) in clips.iter().enumerate() {
+        // black before it (the intro, or between photos fading to and from black)
+        gap(&mut out, &mut hung, cursor, c.from);
+        if c.fade_in > 0 {
+            dissolve(&mut out, c.from, c.fade_in);
+        }
+        let name = xml(&file_name(&photos[c.photo]));
         // a still starts an hour in, as Final Cut writes them, so a dissolve
         // has picture to draw on before it
         let from = t(3600 * fps as u64);
-        match std::mem::replace(&mut hung, true) {
-            false => {
-                out += &format!(
-                    "            <video ref=\"p{j}\" offset=\"{}\" name=\"{name}\" start=\"{from}\" duration=\"{}\">\n",
-                    t(start),
-                    t(len)
-                );
-                out += &music(&from);
-                out += "            </video>\n";
-            }
-            true => {
-                out += &format!(
-                    "            <video ref=\"p{j}\" offset=\"{}\" name=\"{name}\" start=\"{from}\" duration=\"{}\"/>\n",
-                    t(start),
-                    t(len)
-                )
-            }
+        let len = c.to - c.from;
+        if std::mem::replace(&mut hung, true) {
+            out += &format!(
+                "            <video ref=\"p{j}\" offset=\"{}\" name=\"{name}\" start=\"{from}\" duration=\"{}\"/>\n",
+                t(c.from),
+                t(len)
+            );
+        } else {
+            out += &format!(
+                "            <video ref=\"p{j}\" offset=\"{}\" name=\"{name}\" start=\"{from}\" duration=\"{}\">\n",
+                t(c.from),
+                t(len)
+            );
+            out += &music(&from);
+            out += "            </video>\n";
         }
+        if c.fade_out > 0 {
+            dissolve(&mut out, c.to, c.fade_out);
+        }
+        cursor = c.to;
     }
     // the outro, in black, to the end of the soundtrack
-    let end = clips.last().map(|c| c.1 + c.2).unwrap_or(first);
-    if audio_frames > end && !clips.is_empty() {
-        out += &format!("            <gap name=\"Gap\" offset=\"{}\" start=\"0s\" duration=\"{}\"/>\n", t(end), t(audio_frames - end));
+    if clips.is_empty() {
+        gap(&mut out, &mut hung, 0, audio_frames);
+    } else {
+        gap(&mut out, &mut hung, cursor, audio_frames);
     }
     out += "          </spine>\n        </sequence>\n      </project>\n    </event>\n  </library>\n</fcpxml>\n";
     out
@@ -325,6 +297,10 @@ mod tests {
     use super::*;
     use crate::slideshow::{Grid, Slideshow, Transition};
 
+    fn gallery(fade: f32, transition: Transition, fps: u32) -> Slideshow {
+        Slideshow { hold: 8.0, fade, transition, fps, ..Slideshow::default() }
+    }
+
     fn plan() -> Plan {
         // 60 bpm in 4/4: 4 s bars, 8 s images after a two-bar intro
         let s = Slideshow { hold: 8.0, ..Slideshow::default() };
@@ -342,7 +318,7 @@ mod tests {
     fn timeline_places_each_photo() {
         let p = plan();
         let photos: Vec<PathBuf> = (1..=p.images).map(|i| PathBuf::from(format!("/photos/my trip & co/{i}.jpg"))).collect();
-        let x = fcpxml(&p, &photos, Path::new("/music/track.wav"), p.audio(), 2.0, Transition::Crossfade, 25, "Trip");
+        let x = fcpxml(&p, &photos, Path::new("/music/track.wav"), p.audio(), &gallery(2.0, Transition::Crossfade, 25), "Trip");
         assert_eq!(x.matches("<video ").count(), p.images as usize);
         assert_eq!(x.matches("<transition ").count(), p.images as usize - 1);
         assert_eq!(x.matches("<asset-clip ").count(), 1);
@@ -361,7 +337,7 @@ mod tests {
         let s = Slideshow { hold: 8.0, intro_bars: 0, ..Slideshow::default() };
         let p = Plan::for_track(&s, Grid::new(60.0, (4, 4)), 60.0);
         let photos: Vec<PathBuf> = (1..=p.images).map(|i| PathBuf::from(format!("/{i}.jpg"))).collect();
-        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), 1.0, Transition::Crossfade, 25, "T");
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(1.0, Transition::Crossfade, 25), "T");
         assert!(!x.contains("<gap name=\"Gap\" offset=\"0s\""));
         // hung from the first photo, an hour into its picture
         assert!(x.contains("<asset-clip ref=\"a1\" lane=\"-1\" offset=\"90000/25s\""));
@@ -371,7 +347,7 @@ mod tests {
     fn fewer_photos_than_images() {
         let p = plan();
         let photos = vec![PathBuf::from("/a.jpg"), PathBuf::from("/b.jpg")];
-        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), 1.0, Transition::Crossfade, 30, "T");
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(1.0, Transition::Crossfade, 30), "T");
         assert_eq!(x.matches("<video ").count(), 2);
     }
 
@@ -381,7 +357,7 @@ mod tests {
         let photos: Vec<PathBuf> = (1..=p.images).map(|i| PathBuf::from(format!("/{i}.jpg"))).collect();
         let n = p.images as usize;
         // to black: each change a dissolve out to a black gap and one in from it
-        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), 2.0, Transition::FadeToBlack, 25, "T");
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(2.0, Transition::FadeToBlack, 25), "T");
         assert_eq!(x.matches("<transition ").count(), 2 * (n - 1));
         // the intro, the black at each change, and the outro
         assert_eq!(x.matches("<gap ").count(), 1 + (n - 1) + 1);
@@ -390,9 +366,29 @@ mod tests {
         assert!(x.contains("<gap name=\"Gap\" offset=\"350/25s\" start=\"0s\" duration=\"50/25s\"/>"));
         assert!(x.contains("offset=\"400/25s\" name=\"2.jpg\""));
         // a cut: no transitions at all, the photos end to end
-        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), 2.0, Transition::Cut, 25, "T");
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(2.0, Transition::Cut, 25), "T");
         assert_eq!(x.matches("<transition ").count(), 0);
         assert!(x.contains("offset=\"200/25s\" name=\"1.jpg\" start=\"90000/25s\" duration=\"200/25s\""));
+    }
+
+    #[test]
+    fn every_photo_fades_in_or_out_from_black() {
+        let p = plan();
+        let photos: Vec<PathBuf> = (1..=p.images).map(|i| PathBuf::from(format!("/{i}.jpg"))).collect();
+        let n = p.images as usize;
+        let g = Slideshow { transition: Transition::FadeIn, fade_in: 2.0, ..gallery(0.0, Transition::FadeIn, 25) };
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &g, "T");
+        // a dissolve up from a black gap before every photo, the first included
+        assert_eq!(x.matches("<transition ").count(), n);
+        assert!(x.contains("<gap name=\"Gap\" offset=\"0s\" start=\"0s\" duration=\"225/25s\">"));
+        assert!(x.contains("<transition name=\"Cross Dissolve\" offset=\"200/25s\" duration=\"50/25s\"/>"));
+        assert!(x.contains("offset=\"225/25s\" name=\"1.jpg\" start=\"90000/25s\" duration=\"175/25s\""));
+        assert!(x.contains("<gap name=\"Gap\" offset=\"400/25s\" start=\"0s\" duration=\"25/25s\"/>"));
+        // in and out: two each
+        let g = Slideshow { transition: Transition::FadeInOut, fade_in: 2.0, fade_out: 1.0, ..g };
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &g, "T");
+        assert_eq!(x.matches("<transition ").count(), 2 * n);
+        assert!(x.contains("<transition name=\"Cross Dissolve\" offset=\"376/25s\" duration=\"24/25s\"/>"));
     }
 
     #[test]

@@ -25,6 +25,7 @@ pub(crate) enum Want {
     ExportWav,
     Stems,
     Resolve,
+    Video,
     PhotoFolder,
     /// Write this patch (as JSON) to the file chosen.
     SavePatch(String),
@@ -86,6 +87,7 @@ impl App {
             Want::ExportWav => self.export_wav_to(path),
             Want::Stems => self.export_stems_to(path),
             Want::Resolve => self.export_resolve_to(path),
+            Want::Video => self.export_video_to(path),
             Want::PhotoFolder => self.doc.gallery.folder = Some(path),
             Want::SavePatch(json) => {
                 if let Err(e) = std::fs::write(&path, json) {

@@ -996,6 +996,45 @@ impl App {
         });
     }
 
+    pub(crate) fn export_video(&mut self) {
+        if self.doc.gallery.folder.is_none() {
+            self.status = "Choose a photo folder on the Gallery tab first: the video shows its photos".into();
+            return;
+        }
+        if dd_gallery::video::ffmpeg().is_none() {
+            self.status =
+                "Video export needs ffmpeg (macOS: brew install ffmpeg; Windows: ffmpeg.exe beside Kibble-481 or on the PATH)".into();
+            return;
+        }
+        let d = rfd::AsyncFileDialog::new()
+            .add_filter("MPEG-4 video", &["mp4"])
+            .add_filter("QuickTime movie", &["mov"])
+            .set_file_name(format!("{}.mp4", self.version_name()));
+        self.ask(Want::Video, Kind::Save, d);
+    }
+
+    pub(crate) fn export_video_to(&mut self, path: PathBuf) {
+        let path = match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase) {
+            Some(e) if e == "mp4" || e == "mov" => path,
+            _ => path.with_extension("mp4"),
+        };
+        let (doc, fonts) = (self.doc.clone(), self.fonts.clone());
+        self.start_job("Rendering the video", move |progress, cancel| {
+            let made = dd_gallery::video::export_video(&doc, &fonts, &path, progress, cancel)?;
+            let unread = match made.unread.len() {
+                0 => String::new(),
+                n => format!(" ({n} photos couldn't be read and show as black)"),
+            };
+            Ok(format!(
+                "Exported {}: 1920×1080, {} fps, {} frames ({}){unread}",
+                path.display(),
+                made.fps,
+                made.frames,
+                dd_gallery::slideshow::timecode(made.secs)
+            ))
+        });
+    }
+
     fn start_job(&mut self, label: &str, f: impl FnOnce(&AtomicU32, &AtomicBool) -> Result<String, String> + Send + 'static) {
         if self.job.is_some() {
             return;
@@ -1177,6 +1216,14 @@ impl App {
                 {
                     ui.close();
                     self.export_resolve();
+                }
+                if ui
+                    .button("Gallery as HD video…")
+                    .on_hover_text("Your photos over the soundtrack with the gallery's transition, 1920×1080 H.264 at its frame rate (needs ffmpeg)")
+                    .clicked()
+                {
+                    ui.close();
+                    self.export_video();
                 }
             });
             ui.add_space(8.0);

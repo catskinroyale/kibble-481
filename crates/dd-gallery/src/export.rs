@@ -74,7 +74,7 @@ pub fn export_for_resolve(
     };
     // as many images as there are photos, or as were asked for without a folder
     let plan = doc.plan_for(if photos.is_empty() { g.images as usize } else { photos.len() });
-    let fade = if g.transition.fades() { g.fade as f64 } else { 0.0 };
+    let fade = g.dissolve();
     let wav = dir.join(format!("{title}.wav"));
     let audio_secs = render_wav(p, fonts, None, &wav, progress, cancel)?;
     let mut out = Exported { wav: wav.clone(), ..Exported::default() };
@@ -89,7 +89,7 @@ pub fn export_for_resolve(
         }
     }
     if !photos.is_empty() {
-        let xml = resolve::fcpxml(&plan, &photos, &wav, audio_secs, fade, g.transition, g.fps, &p.title);
+        let xml = resolve::fcpxml(&plan, &photos, &wav, audio_secs, g, &p.title);
         let path = dir.join(format!("{title}.fcpxml"));
         std::fs::write(&path, xml).map_err(|e| e.to_string())?;
         out.timeline = Some(path);

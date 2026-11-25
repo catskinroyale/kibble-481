@@ -1397,8 +1397,44 @@ impl App {
                 suffix: " s",
                 ..Default::default()
             };
-            if widgets::slider(ui, &spec, &mut fade, g.transition.fades()) {
-                g.fade = fade as f32;
+            if g.transition.fades() || !(g.transition.fades_in() || g.transition.fades_out()) {
+                if widgets::slider(ui, &spec, &mut fade, g.transition.fades()) {
+                    g.fade = fade as f32;
+                }
+            } else {
+                // each image's own fades, up from black and out to it
+                let mut fade_in = g.fade_in as f64;
+                let spec = SliderSpec {
+                    id: "fade_in",
+                    label: "Fade in",
+                    help: "How long each image takes to fade up from black, from the moment it starts (the fades fit within the shortest image)",
+                    min: 0.0,
+                    max: MAX_FADE,
+                    default: 1.0,
+                    step: 0.1,
+                    decimals: 1,
+                    suffix: " s",
+                    ..Default::default()
+                };
+                if widgets::slider(ui, &spec, &mut fade_in, g.transition.fades_in()) {
+                    g.fade_in = fade_in as f32;
+                }
+                let mut fade_out = g.fade_out as f64;
+                let spec = SliderSpec {
+                    id: "fade_out",
+                    label: "Fade out",
+                    help: "How long each image takes to fade out to black, ending as the next starts (the fades fit within the shortest image)",
+                    min: 0.0,
+                    max: MAX_FADE,
+                    default: 1.0,
+                    step: 0.1,
+                    decimals: 1,
+                    suffix: " s",
+                    ..Default::default()
+                };
+                if widgets::slider(ui, &spec, &mut fade_out, g.transition.fades_out()) {
+                    g.fade_out = fade_out as f32;
+                }
             }
             let (mut intro, mut outro) = (g.intro_bars as f64, g.outro_bars as f64);
             let spec = SliderSpec {
@@ -1435,7 +1471,7 @@ impl App {
         // the photos to plan for: those in the folder, or a number given
         let n_photos = if photos.is_empty() { self.doc.gallery.images } else { photos.len() as u32 };
         let plan = self.doc.plan_for(n_photos as usize);
-        let fade = if self.doc.gallery.transition.fades() { self.doc.gallery.fade as f64 } else { 0.0 };
+        let fade = self.doc.gallery.dissolve();
         let mut set_bars = None;
         let mut set_bpm: Option<f64> = None;
         let mut fit_to: Option<Vec<dd_seq::project::Block>> = None;
@@ -1737,6 +1773,14 @@ impl App {
                     {
                         self.export_resolve();
                     }
+                    if ui
+                        .add_enabled(!photos.is_empty(), egui::Button::new("Export HD video…"))
+                        .on_hover_text("Your photos over the soundtrack with this transition, as a 1920×1080 H.264 video at the frame rate above (needs ffmpeg)")
+                        .on_disabled_hover_text("Choose a photo folder first")
+                        .clicked()
+                    {
+                        self.export_video();
+                    }
                     if ui.button("Copy cue list").clicked() {
                         ui.ctx().copy_text(plan.cue_csv(fade));
                         self.status = "Cue list copied".into();
@@ -1747,6 +1791,9 @@ impl App {
                 Transition::Crossfade => "with a cross dissolve",
                 Transition::FadeToBlack => "fading to black and up again",
                 Transition::Cut => "with a straight cut",
+                Transition::FadeIn => "each fading up from black",
+                Transition::FadeOut => "each fading out to black",
+                Transition::FadeInOut => "each fading up from black and out to it",
             };
             widgets::note(
                 ui,

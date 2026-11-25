@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32};
 use dd_gallery::doc::Document;
 use dd_gallery::export::export_for_resolve;
 use dd_gallery::resolve::PhotoOrder;
-use dd_gallery::slideshow::Fit;
+use dd_gallery::slideshow::{Fit, Transition};
 use dd_seq::fonts::{FontBank, soundfont_dir};
 
 const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
@@ -18,11 +18,18 @@ const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
                                                render the mix (24-bit, 48 kHz), or one track
   kibble-481-cli midi <in.kibble> <out.mid>        export a standard MIDI file
   kibble-481-cli import <in.mid> <out.kibble>      turn any MIDI file into a project
-  kibble-481-cli resolve <in.kibble> <out-dir> [--photos <dir>] [--by-date] [--fps <n>]
-                     [--hold <secs>] [--bars-per-image <n>] [--fade <secs>] [--fit-track] [--stems]
+  kibble-481-cli resolve <in.kibble> <out-dir> [gallery options] [--stems]
                                                soundtrack, FCPXML timeline, EDL markers and cues
+  kibble-481-cli video <in.kibble> <out.mp4|.mov> [gallery options]
+                                               the photos over the soundtrack as a 1080p H.264
+                                               video at the frame rate (needs ffmpeg)
   kibble-481-cli patches                           list the synth's factory patches
   kibble-481-cli fonts                             list the loaded SoundFonts and their presets
+
+Gallery options (else as the .kibble file has them):
+  --photos <dir> [--by-date] [--fps 24|25|30|50|60] [--hold <secs>] [--bars-per-image <n>]
+  [--transition crossfade|black|cut|in|out|inout] [--fade <secs>] [--fade-in <secs>]
+  [--fade-out <secs>] [--fit-track]
 
 SoundFonts are read from $KIBBLE_SOUNDFONTS or the bundled soundfonts folder.";
 
@@ -48,6 +55,62 @@ fn open(path: &Path, fonts: &FontBank) -> Result<Document, String> {
 
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
+}
+
+/// The gallery's settings from the command line, over those in the document.
+fn gallery_flags(args: &[String], doc: &mut Document) -> Result<(), String> {
+    let g = &mut doc.gallery;
+    if let Some(d) = flag(args, "--photos") {
+        g.folder = Some(d.into());
+    }
+    if args.iter().any(|a| a == "--by-date") {
+        g.order = PhotoOrder::Date;
+    }
+    if let Some(n) = flag(args, "--fps") {
+        g.fps = n.parse().map_err(|_| "--fps takes a number")?;
+        if !dd_gallery::resolve::FRAME_RATES.contains(&g.fps) {
+            return Err("--fps takes 24, 25, 30, 50 or 60".into());
+        }
+    }
+    if let Some(n) = flag(args, "--hold") {
+        g.hold = n.parse().map_err(|_| "--hold takes seconds")?;
+    }
+    if let Some(n) = flag(args, "--bars-per-image") {
+        g.image_bars = n.parse().map_err(|_| "--bars-per-image takes a whole number of bars")?;
+        g.by_bars = true;
+    }
+    if let Some(n) = flag(args, "--transition") {
+        g.transition = match n.to_ascii_lowercase().as_str() {
+            "crossfade" => Transition::Crossfade,
+            "black" => Transition::FadeToBlack,
+            "cut" => Transition::Cut,
+            "in" => Transition::FadeIn,
+            "out" => Transition::FadeOut,
+            "inout" => Transition::FadeInOut,
+            _ => return Err("--transition takes crossfade, black, cut, in, out or inout".into()),
+        };
+    }
+    let secs = |name: &str| -> Result<Option<f32>, String> {
+        flag(args, name).map(|n| n.parse::<f32>().ok().filter(|v| *v >= 0.0).ok_or(format!("{name} takes seconds"))).transpose()
+    };
+    if let Some(v) = secs("--fade")? {
+        g.fade = v;
+    }
+    if let Some(v) = secs("--fade-in")? {
+        g.fade_in = v;
+    }
+    if let Some(v) = secs("--fade-out")? {
+        g.fade_out = v;
+    }
+    if args.iter().any(|a| a == "--fit-track") {
+        // size the track to the photos
+        let photos = g.folder.as_ref().map(|d| dd_gallery::resolve::photos(d, g.order)).transpose()?.unwrap_or_default();
+        g.fit = Fit::TrackToImages;
+        g.images = photos.len().max(1) as u32;
+        let bars = doc.plan().bars();
+        doc.project.length_bars = bars;
+    }
+    Ok(())
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
@@ -120,34 +183,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "resolve" => {
             let f = fonts();
             let mut doc = open(&arg(1)?, &f)?;
-            let g = &mut doc.gallery;
-            if let Some(d) = flag(&args, "--photos") {
-                g.folder = Some(d.into());
-            }
-            if args.iter().any(|a| a == "--by-date") {
-                g.order = PhotoOrder::Date;
-            }
-            if let Some(n) = flag(&args, "--fps") {
-                g.fps = n.parse().map_err(|_| "--fps takes a number")?;
-            }
-            if let Some(n) = flag(&args, "--hold") {
-                g.hold = n.parse().map_err(|_| "--hold takes seconds")?;
-            }
-            if let Some(n) = flag(&args, "--bars-per-image") {
-                g.image_bars = n.parse().map_err(|_| "--bars-per-image takes a whole number of bars")?;
-                g.by_bars = true;
-            }
-            if let Some(n) = flag(&args, "--fade") {
-                g.fade = n.parse().map_err(|_| "--fade takes seconds")?;
-            }
-            if args.iter().any(|a| a == "--fit-track") {
-                // size the track to the photos
-                let photos = g.folder.as_ref().map(|d| dd_gallery::resolve::photos(d, g.order)).transpose()?.unwrap_or_default();
-                g.fit = Fit::TrackToImages;
-                g.images = photos.len().max(1) as u32;
-                let bars = doc.plan().bars();
-                doc.project.length_bars = bars;
-            }
+            gallery_flags(&args, &mut doc)?;
             let plan = doc.plan();
             println!(
                 "{} images, {:.1}–{:.1} s each, music {:.1} s ({} bars)",
@@ -166,6 +202,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("{}\n{}", out.markers.display(), out.cues.display());
             for s in &out.stems {
                 println!("{}", s.display());
+            }
+        }
+        "video" => {
+            let f = fonts();
+            let mut doc = open(&arg(1)?, &f)?;
+            gallery_flags(&args, &mut doc)?;
+            let out = arg(2)?;
+            let made = dd_gallery::video::export_video(&doc, &f, &out, &progress, &cancel)?;
+            println!(
+                "{}: 1920x1080, {} fps, {} frames ({:.3} s; soundtrack {:.3} s), {}",
+                out.display(),
+                made.fps,
+                made.frames,
+                made.secs,
+                made.audio,
+                doc.gallery.transition.label().to_lowercase()
+            );
+            for u in &made.unread {
+                eprintln!("warning: couldn't read {u}; it shows as black");
             }
         }
         "patches" => {
