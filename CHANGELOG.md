@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.1 — 2026-11-25
+
+- **Fade out: the first image can fade in.** With the Fade out transition, a **First
+  image fade in** slider (shown only then) fades the first photo up from black; the
+  others still cut in.
+- **Stretch final fade**: the last photo's fade out runs on to the end of the soundtrack,
+  so the picture reaches black as the reverb tail dies away (Fade out, and Fade in and
+  out). In the video and the Resolve timeline alike. On the command line:
+  `--first-fade-in <secs>` and `--stretch-final-fade`.
+
 ## 0.13.0 — 2026-11-25
 
 - **Gallery as HD video**: export the photos over the soundtrack as a finished 1920×1080

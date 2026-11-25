@@ -29,8 +29,9 @@ fn even(frames: u64) -> u64 {
     frames / 2 * 2
 }
 
-/// The shots of the plan's images, no more than there are photos.
-pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32) -> Vec<Shot> {
+/// The shots of the plan's images, no more than there are photos. `end` is the frame the
+/// soundtrack (and the video) ends on, for a final fade stretched to it.
+pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32, end: u64) -> Vec<Shot> {
     let at = |secs: f64| frame(secs, fps);
     let spans: Vec<(u64, u64)> = plan.spans().take(photos).map(|(a, b)| (at(a), at(b).max(at(a) + 1))).collect();
     let n = spans.len();
@@ -67,11 +68,32 @@ pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32) -> Vec<Shot> {
                 (fi, fo) = ((fi as f64 * k).floor() as u64, (fo as f64 * k).floor() as u64);
             }
             let (fi, fo) = (even(fi), even(fo));
-            spans
-                .into_iter()
+            let mut out: Vec<Shot> = spans
+                .iter()
                 .enumerate()
-                .map(|(i, (a, b))| Shot { photo: i, from: a + fi / 2, to: b - fo / 2, fade_in: fi, fade_out: fo })
-                .collect()
+                .map(|(i, &(a, b))| Shot { photo: i, from: a + fi / 2, to: b - fo / 2, fade_in: fi, fade_out: fo })
+                .collect();
+            // fading out only: the first image may still fade up from black, within its time
+            if s.transition == Transition::FadeOut
+                && let (Some(first), Some(&(a, b))) = (out.first_mut(), spans.first())
+            {
+                let up = even(at(s.first_fade_in.max(0.0) as f64).min((b - a).saturating_sub(fo)));
+                (first.from, first.fade_in) = (a + up / 2, up);
+            }
+            // the last image's fade out drawn out to the end of the soundtrack, so the
+            // picture goes to black as the reverb tail dies away
+            if s.stretch_final_fade
+                && s.transition.fades_out()
+                && let (Some(last), Some(&(_, b))) = (out.last_mut(), spans.last())
+            {
+                // from where its fade would start, an even number of frames to the end
+                let start = (b - fo).max(last.from);
+                if end > start + 1 {
+                    let len = even(end - start);
+                    (last.to, last.fade_out) = (end - len / 2, len);
+                }
+            }
+            out
         }
     }
 }
@@ -122,7 +144,7 @@ mod tests {
     #[test]
     fn fade_in_rises_from_black_at_each_start() {
         let s = Slideshow { hold: 8.0, transition: Transition::FadeIn, fade_in: 2.0, ..Slideshow::default() };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 225, to: 400, fade_in: 50, fade_out: 0 });
         // black until the image's start, then up over 2 s (50 frames)
         assert!(layers(&sh, 199).is_empty());
@@ -138,7 +160,7 @@ mod tests {
     #[test]
     fn fade_out_falls_to_black_by_each_end() {
         let s = Slideshow { hold: 8.0, transition: Transition::FadeOut, fade_out: 1.0, ..Slideshow::default() };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 200, to: 388, fade_in: 0, fade_out: 24 });
         assert_eq!(alpha(&sh, 200, 0), 1.0);
         assert_eq!(alpha(&sh, 376, 0), 1.0);
@@ -151,29 +173,65 @@ mod tests {
     #[test]
     fn in_and_out_each_their_own_length_within_the_image() {
         let s = Slideshow { hold: 8.0, transition: Transition::FadeInOut, fade_in: 3.0, fade_out: 1.0, ..Slideshow::default() };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 237, to: 388, fade_in: 74, fade_out: 24 });
         assert_eq!(alpha(&sh, 200, 0), 0.0);
         assert_eq!(alpha(&sh, 274, 0), 1.0);
         assert_eq!(alpha(&sh, 300, 0), 1.0);
         // longer than the image: both shrink to fit it
         let s = Slideshow { fade_in: 6.0, fade_out: 6.0, ..s };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert!(sh.iter().all(|x| x.fade_in + x.fade_out <= 200 && x.to > x.from));
         // never two images at once
         assert!((0..1500).all(|f| layers(&sh, f).len() <= 1));
     }
 
     #[test]
+    fn fading_out_the_first_may_fade_in_and_the_last_fade_to_the_end() {
+        let s = Slideshow {
+            hold: 8.0,
+            transition: Transition::FadeOut,
+            fade_out: 1.0,
+            first_fade_in: 2.0,
+            stretch_final_fade: true,
+            ..Slideshow::default()
+        };
+        let p = plan(&s);
+        // the soundtrack rings on 10 s after the music
+        let end = ((p.total + 10.0) * 25.0) as u64;
+        let sh = shots(&p, 99, &s, 25, end);
+        // the first rises from black over 2 s, then fades out as the others do
+        assert_eq!(sh[0], Shot { photo: 0, from: 225, to: 388, fade_in: 50, fade_out: 24 });
+        assert_eq!(alpha(&sh, 200, 0), 0.0);
+        assert_eq!(alpha(&sh, 250, 0), 1.0);
+        // the others cut in
+        assert_eq!(sh[1].fade_in, 0);
+        // the last fades from where it would have begun to, right to the last frame
+        let last = *sh.last().unwrap();
+        let b = (p.end * 25.0).round() as u64;
+        assert_eq!(last.to + last.fade_out / 2, end);
+        assert_eq!(last.to - last.fade_out / 2, b - 24);
+        assert_eq!(alpha(&sh, b - 24, sh.len() - 1), 1.0);
+        let (mid, tail) = (alpha(&sh, b + 125, sh.len() - 1), alpha(&sh, end - 1, sh.len() - 1));
+        assert!(mid > 0.3 && mid < 1.0 && tail > 0.0 && tail < 0.01, "{mid} {tail}");
+        assert!(layers(&sh, end).is_empty());
+        // without the stretch, black by the end of the last image
+        let s = Slideshow { stretch_final_fade: false, first_fade_in: 0.0, ..s };
+        let sh = shots(&p, 99, &s, 25, end);
+        assert_eq!(sh[0].fade_in, 0);
+        assert!(layers(&sh, b).is_empty());
+    }
+
+    #[test]
     fn crossfades_mix_the_two_and_cuts_dont() {
         let s = Slideshow { hold: 8.0, transition: Transition::Crossfade, fade: 2.0, ..Slideshow::default() };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         // centred on the change at 16 s: the first whole beneath, the second rising
         assert_eq!(layers(&sh, 375), vec![(0, 1.0)]);
         assert_eq!(layers(&sh, 400), vec![(0, 1.0), (1, 0.5)]);
         assert_eq!(layers(&sh, 425), vec![(1, 1.0)]);
         let s = Slideshow { transition: Transition::Cut, ..s };
-        let sh = shots(&plan(&s), 99, &s, 25);
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(layers(&sh, 399), vec![(0, 1.0)]);
         assert_eq!(layers(&sh, 400), vec![(1, 1.0)]);
     }

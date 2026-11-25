@@ -1416,7 +1416,25 @@ impl App {
                     suffix: " s",
                     ..Default::default()
                 };
-                if widgets::slider(ui, &spec, &mut fade_in, g.transition.fades_in()) {
+                if g.transition == Transition::FadeOut {
+                    // fading out only: the first image may still fade up from black
+                    let mut first = g.first_fade_in as f64;
+                    let spec = SliderSpec {
+                        id: "first_fade_in",
+                        label: "First image fade in",
+                        help: "How long the first image takes to fade up from black as it starts (0: it cuts in like the rest); the others cut in",
+                        min: 0.0,
+                        max: MAX_FADE,
+                        default: 0.0,
+                        step: 0.1,
+                        decimals: 1,
+                        suffix: " s",
+                        ..Default::default()
+                    };
+                    if widgets::slider(ui, &spec, &mut first, true) {
+                        g.first_fade_in = first as f32;
+                    }
+                } else if widgets::slider(ui, &spec, &mut fade_in, g.transition.fades_in()) {
                     g.fade_in = fade_in as f32;
                 }
                 let mut fade_out = g.fade_out as f64;
@@ -1434,6 +1452,13 @@ impl App {
                 };
                 if widgets::slider(ui, &spec, &mut fade_out, g.transition.fades_out()) {
                     g.fade_out = fade_out as f32;
+                }
+                if g.transition.fades_out() {
+                    widgets::inset(ui, |ui| {
+                        ui.checkbox(&mut g.stretch_final_fade, "Stretch final fade").on_hover_text(
+                            "The last image's fade out runs on to the end of the soundtrack, so the picture reaches black as the reverb tail dies away",
+                        );
+                    });
                 }
             }
             let (mut intro, mut outro) = (g.intro_bars as f64, g.outro_bars as f64);

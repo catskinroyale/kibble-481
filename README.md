@@ -463,7 +463,10 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   the tempo. Between them: a **crossfade**, a **fade to black** and up again, or a
   **cut**, with the fade's length yours; or every photo can **fade in** from black as it
   starts, **fade out** to black as it ends, or **fade in and out**, each fade its own
-  length (both fit within the shortest image). The plan
+  length (both fit within the shortest image). Fading out only, the first photo can still
+  fade in (**First image fade in**); and **Stretch final fade** draws the last photo's
+  fade out on to the very end of the soundtrack, so it reaches black as the reverb tail
+  dies away. The plan
   always follows the score as it stands, with no more images than photos (the rest goes to
   the outro). The **calculator** in Plan and export works out, before you change
   anything, how many images the score holds and what's left over, and how many bars your

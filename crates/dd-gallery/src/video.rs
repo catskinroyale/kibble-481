@@ -117,7 +117,6 @@ pub fn export_video(doc: &Document, fonts: &FontBank, out: &Path, progress: &Ato
     }
     let plan = doc.plan_for(photos.len());
     let fps = g.fps.max(1);
-    let shots = shots(&plan, photos.len(), g, fps);
     // the soundtrack, to 15% of the way
     let wav = out.with_extension("soundtrack.wav");
     let part = AtomicU32::new(0);
@@ -129,12 +128,20 @@ pub fn export_video(doc: &Document, fonts: &FontBank, out: &Path, progress: &Ato
         }
         job.join().map_err(|_| "The soundtrack's render failed".to_string())?
     });
-    let made = audio.and_then(|secs| encode(&ff, &photos, &shots, &wav, secs, fps, out, progress, cancel));
+    let made = audio.and_then(|secs| {
+        let shots = shots(&plan, photos.len(), g, fps, frames_for(secs, fps));
+        encode(&ff, &photos, &shots, &wav, secs, fps, out, progress, cancel)
+    });
     let _ = std::fs::remove_file(&wav);
     if made.is_err() {
         let _ = std::fs::remove_file(out);
     }
     made
+}
+
+/// The video's frames: as long as the soundtrack, to the next whole frame.
+fn frames_for(audio_secs: f64, fps: u32) -> u64 {
+    (audio_secs * fps as f64 - 1e-9).ceil().max(1.0) as u64
 }
 
 /// Every frame of `shots` over the soundtrack `wav` (`audio_secs` long) into `out`.
@@ -150,8 +157,7 @@ fn encode(
     progress: &AtomicU32,
     cancel: &AtomicBool,
 ) -> Result<Made, String> {
-    // as long as the soundtrack, to the next whole frame
-    let frames = (audio_secs * fps as f64 - 1e-9).ceil().max(1.0) as u64;
+    let frames = frames_for(audio_secs, fps);
     let rate = fps.to_string();
     let mut cmd = Command::new(ff);
     cmd.args([

@@ -120,9 +120,9 @@ pub fn image_size(path: &Path) -> Option<(u32, u32)> {
 /// photos sit as `shots::shots` places them, so the timeline matches the video.
 pub fn fcpxml(plan: &Plan, photos: &[PathBuf], audio: &Path, audio_secs: f64, gallery: &Slideshow, title: &str) -> String {
     let fps = gallery.fps.max(1);
-    let clips = shots(plan, photos.len(), gallery, fps);
-    let t = |frames: u64| if frames == 0 { "0s".to_string() } else { format!("{frames}/{fps}s") };
     let audio_frames = (audio_secs * fps as f64).floor() as u64;
+    let clips = shots(plan, photos.len(), gallery, fps, audio_frames);
+    let t = |frames: u64| if frames == 0 { "0s".to_string() } else { format!("{frames}/{fps}s") };
     let mut out = String::new();
     out += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"1.9\">\n  <resources>\n";
     out += &format!(

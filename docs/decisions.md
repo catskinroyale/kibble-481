@@ -815,6 +815,14 @@ frame rate honoured.
   test encodes a short gallery and checks the size, rate, frame count and fades on given
   frames (skipped where there's no ffmpeg).
 
+- **First image fade in and stretched final fade** (0.13.1, asked for): with Fade out
+  only, `Slideshow::first_fade_in` fades the first image up from black (within its time,
+  after its fade out); 0 is none. `stretch_final_fade` (Fade out, Fade in and out) makes
+  the last image's fade out start where it would have and end on the soundtrack's last
+  frame (the WAV's, tail included), so `shots::shots` now takes that end frame: the
+  video's frame count, or the FCPXML's soundtrack length. The picture then reaches black
+  as the reverb dies away rather than sitting black through the outro.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

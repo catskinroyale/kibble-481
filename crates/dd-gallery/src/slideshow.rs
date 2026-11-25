@@ -155,6 +155,11 @@ pub struct Slideshow {
     pub fade_in: f32,
     /// Fading each image out to black (FadeOut, FadeInOut), in seconds.
     pub fade_out: f32,
+    /// Fading out only: the first image's fade up from black, in seconds (0: none).
+    pub first_fade_in: f32,
+    /// The last image's fade out drawn out to the end of the soundtrack, its reverb
+    /// tail included, so the picture reaches black as the sound dies away.
+    pub stretch_final_fade: bool,
     /// Bars of music before the first image.
     pub intro_bars: u32,
     /// Bars of music after the last image; at least one, the final ring-out.
@@ -184,6 +189,8 @@ impl Default for Slideshow {
             fade: 6.0,
             fade_in: 1.0,
             fade_out: 1.0,
+            first_fade_in: 0.0,
+            stretch_final_fade: false,
             intro_bars: 2,
             outro_bars: 2,
             show_on_timeline: true,

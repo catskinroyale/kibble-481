@@ -29,7 +29,7 @@ const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
 Gallery options (else as the .kibble file has them):
   --photos <dir> [--by-date] [--fps 24|25|30|50|60] [--hold <secs>] [--bars-per-image <n>]
   [--transition crossfade|black|cut|in|out|inout] [--fade <secs>] [--fade-in <secs>]
-  [--fade-out <secs>] [--fit-track]
+  [--fade-out <secs>] [--first-fade-in <secs>] [--stretch-final-fade] [--fit-track]
 
 SoundFonts are read from $KIBBLE_SOUNDFONTS or the bundled soundfonts folder.";
 
@@ -101,6 +101,12 @@ fn gallery_flags(args: &[String], doc: &mut Document) -> Result<(), String> {
     }
     if let Some(v) = secs("--fade-out")? {
         g.fade_out = v;
+    }
+    if let Some(v) = secs("--first-fade-in")? {
+        g.first_fade_in = v;
+    }
+    if args.iter().any(|a| a == "--stretch-final-fade") {
+        g.stretch_final_fade = true;
     }
     if args.iter().any(|a| a == "--fit-track") {
         // size the track to the photos
