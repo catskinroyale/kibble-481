@@ -179,6 +179,8 @@ pub struct App {
     pub(crate) fit: Option<crate::panels::FitPlan>,
     pub(crate) status: String,
     pub(crate) about: crate::about::About,
+    /// The pane reordering the gallery's photos, while it's open.
+    pub(crate) reorder: Option<crate::reorder::Reorder>,
     update: Option<crate::update::UpdateStatus>,
     update_rx: Option<std::sync::mpsc::Receiver<crate::update::UpdateStatus>>,
     /// The track whose name is being edited (double-click a name).
@@ -257,6 +259,7 @@ impl App {
             fit: None,
             status: String::new(),
             about: Default::default(),
+            reorder: None,
             update: None,
             update_rx: None,
             renaming: None,
@@ -285,6 +288,12 @@ impl App {
         }
         app.roll.fit_to(&app.doc.project);
         app.shape = Shape::of(&app.doc.project);
+        if app.snapshot.as_ref().is_some_and(|s| s.wants("reorder")) {
+            if let Some(dir) = std::env::var_os("KIBBLE_SCREENSHOT_PHOTOS") {
+                app.doc.gallery.folder = Some(dir.into());
+            }
+            app.open_reorder(&cc.egui_ctx);
+        }
         if let Some(snap) = &app.snapshot {
             // screenshots start from defaults and never touch the user's settings
             app.settings = Settings::default();
@@ -312,6 +321,10 @@ impl App {
                 cc.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::unique("dd-edit-layer"), 1usize));
             }
             app.about.open = snap.wants("about");
+            if let Some(dir) = std::env::var_os("KIBBLE_SCREENSHOT_PHOTOS") {
+                app.doc.gallery.folder = Some(dir.into());
+            }
+
             // these change the piece after it opens, as a user would
             if snap.wants("edited") {
                 app.doc.project.tracks[0].notes.pop();
@@ -1035,6 +1048,18 @@ impl App {
         });
     }
 
+    /// Open the pane to reorder the gallery's photos by hand.
+    pub(crate) fn open_reorder(&mut self, ctx: &egui::Context) {
+        let g = &self.doc.gallery;
+        let Some(folder) = &g.folder else { return };
+        let base = if g.order == dd_gallery::resolve::PhotoOrder::Custom { dd_gallery::resolve::PhotoOrder::Name } else { g.order };
+        match (g.photos(), dd_gallery::resolve::photos(folder, base)) {
+            (Ok(now), Ok(listed)) if !now.is_empty() => self.reorder = Some(crate::reorder::Reorder::new(ctx, now, listed)),
+            (Err(e), _) | (_, Err(e)) => self.status = e,
+            _ => self.status = "No photos in the folder".into(),
+        }
+    }
+
     fn start_job(&mut self, label: &str, f: impl FnOnce(&AtomicU32, &AtomicBool) -> Result<String, String> + Send + 'static) {
         if self.job.is_some() {
             return;
@@ -1422,6 +1447,17 @@ impl eframe::App for App {
             .show(ui, |ui| self.roll_ui(ui));
         self.poll_update_check();
         self.about.show(&ctx, &self.update, &mut self.settings.check_updates, &self.fonts);
+        if let Some(r) = &mut self.reorder
+            && let Some(done) = r.show(&ctx)
+        {
+            if let crate::reorder::Outcome::Save(order) = done {
+                let g = &mut self.doc.gallery;
+                g.arranged = order.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+                g.order = dd_gallery::resolve::PhotoOrder::Custom;
+                self.status = format!("The gallery's {} photos are in your order now", order.len());
+            }
+            self.reorder = None;
+        }
         if std::mem::take(&mut self.about.check_requested) {
             self.start_update_check(&ctx);
         }

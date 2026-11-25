@@ -483,6 +483,10 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   the sections as they are hold every photo, instead of changing them. With the photos
   counted, the plan places every one the score holds, following the music only in where
   each change falls.
+- **Reorder images** (Plan and export): the folder's photos as thumbnails in a pane;
+  drag them into the order you want (or right-click one to send it to the front or the
+  end, or click one and use the arrow keys), then **Save and close**. Both exports use
+  that order (**Your order** under Photos); photos added later go at the end.
 - **Gallery as HD video** (Export menu, or Plan and export): the same photos over the
   soundtrack as a finished 1920×1080 H.264 video (`.mp4` or `.mov`, AAC audio, Rec. 709)
   at the gallery's frame rate (24, 25, 30, 50 or 60). Every frame is drawn from the same

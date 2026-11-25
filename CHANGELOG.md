@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.2 — 2026-11-25
+
+- **Reorder images**: a new step in Plan and export opens a pane of the folder's photos as
+  thumbnails; drag them into the order you want (your strongest first, say), or
+  right-click one to send it to the front or the end, and **Save and close**. The Resolve
+  timeline and the HD video both use that order. **Your order** joins By name and By date
+  under Photos; photos added to the folder later go at the end, and choosing another
+  folder starts again from its own order.
+
 ## 0.13.1 — 2026-11-25
 
 - **Fade out: the first image can fade in.** With the Fade out transition, a **First

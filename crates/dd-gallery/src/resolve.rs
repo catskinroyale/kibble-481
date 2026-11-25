@@ -20,6 +20,9 @@ pub enum PhotoOrder {
     Name,
     /// By when each file was last modified, oldest first.
     Date,
+    /// In the order set by hand (`Slideshow::arranged`); photos it doesn't list come
+    /// after, by name.
+    Custom,
 }
 
 /// The frame rates offered for the timeline.
@@ -45,10 +48,26 @@ pub fn photos(folder: &Path, order: PhotoOrder) -> Result<Vec<PathBuf>, String> 
         .collect();
     let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     match order {
-        PhotoOrder::Name => found.sort_by(|a, b| natural(&name(&a.0), &name(&b.0))),
+        PhotoOrder::Name | PhotoOrder::Custom => found.sort_by(|a, b| natural(&name(&a.0), &name(&b.0))),
         PhotoOrder::Date => found.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| natural(&name(&a.0), &name(&b.0)))),
     }
     Ok(found.into_iter().map(|(p, _)| p).collect())
+}
+
+/// The photos in the order `names` (file names) gives them, any it doesn't name after
+/// in the order they came; names of photos no longer there are passed over.
+pub fn arrange(photos: Vec<PathBuf>, names: &[String]) -> Vec<PathBuf> {
+    let rank: std::collections::HashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (n.as_str(), i)).collect();
+    let mut keyed: Vec<(usize, usize, PathBuf)> = photos
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let r = p.file_name().and_then(|n| n.to_str()).and_then(|n| rank.get(n).copied()).unwrap_or(usize::MAX);
+            (r, i, p)
+        })
+        .collect();
+    keyed.sort_by_key(|k| (k.0, k.1));
+    keyed.into_iter().map(|k| k.2).collect()
 }
 
 /// Compare names with runs of digits as numbers.
@@ -389,6 +408,37 @@ mod tests {
         let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &g, "T");
         assert_eq!(x.matches("<transition ").count(), 2 * n);
         assert!(x.contains("<transition name=\"Cross Dissolve\" offset=\"376/25s\" duration=\"24/25s\"/>"));
+    }
+
+    #[test]
+    fn photos_in_the_order_set_by_hand() {
+        let list: Vec<PathBuf> = ["a.jpg", "b.jpg", "c.jpg", "d.jpg"].iter().map(|n| PathBuf::from(format!("/p/{n}"))).collect();
+        let names: Vec<String> = ["c.jpg", "gone.jpg", "a.jpg"].iter().map(|s| s.to_string()).collect();
+        let got = arrange(list, &names);
+        // those set first, in their order, then the rest as they came
+        assert_eq!(got.iter().map(|p| file_name(p)).collect::<Vec<_>>(), ["c.jpg", "a.jpg", "b.jpg", "d.jpg"]);
+    }
+
+    /// Set by hand, the order holds for the exports; photos added since come after.
+    #[test]
+    fn the_gallery_lists_its_photos_in_your_order() {
+        let dir = std::env::temp_dir().join(format!("kibble-order-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for n in ["a.jpg", "b.jpg", "c.jpg", "new.jpg"] {
+            std::fs::write(dir.join(n), b"").unwrap();
+        }
+        let names = |v: Vec<PathBuf>| v.iter().map(|p| file_name(p)).collect::<Vec<_>>();
+        let mut g =
+            Slideshow { folder: Some(dir.clone()), arranged: vec!["c.jpg".into(), "a.jpg".into(), "b.jpg".into()], ..Slideshow::default() };
+        assert_eq!(names(g.photos().unwrap()), ["a.jpg", "b.jpg", "c.jpg", "new.jpg"]);
+        g.order = PhotoOrder::Custom;
+        let photos = g.photos().unwrap();
+        assert_eq!(names(photos.clone()), ["c.jpg", "a.jpg", "b.jpg", "new.jpg"]);
+        // the timeline's first photo is the one put first
+        let p = plan();
+        let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(1.0, Transition::Cut, 25), "T");
+        assert!(x.find("name=\"c.jpg\"").unwrap() < x.find("name=\"a.jpg\"").unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

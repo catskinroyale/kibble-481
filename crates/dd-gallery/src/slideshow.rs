@@ -172,6 +172,9 @@ pub struct Slideshow {
     /// The folder of photos to export a video editor's timeline with.
     pub folder: Option<std::path::PathBuf>,
     pub order: crate::resolve::PhotoOrder,
+    /// The photos' file names in the order set by hand (`PhotoOrder::Custom`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arranged: Vec<String>,
     /// Frames a second of the exported timeline and markers.
     pub fps: u32,
 }
@@ -197,12 +200,21 @@ impl Default for Slideshow {
             follow_music: true,
             folder: None,
             order: crate::resolve::PhotoOrder::Name,
+            arranged: Vec::new(),
             fps: 25,
         }
     }
 }
 
 impl Slideshow {
+    /// The photos to show, in order: the folder's, by name, date or as set by hand (none
+    /// without a folder).
+    pub fn photos(&self) -> Result<Vec<std::path::PathBuf>, String> {
+        let Some(folder) = &self.folder else { return Ok(Vec::new()) };
+        let found = crate::resolve::photos(folder, self.order)?;
+        Ok(if self.order == crate::resolve::PhotoOrder::Custom { crate::resolve::arrange(found, &self.arranged) } else { found })
+    }
+
     /// The fade centred on each change that editors overlap the clips for (a crossfade
     /// or a dip to black), in seconds; none for the other transitions.
     pub fn dissolve(&self) -> f64 {

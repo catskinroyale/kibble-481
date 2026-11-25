@@ -88,7 +88,17 @@ impl App {
             Want::Stems => self.export_stems_to(path),
             Want::Resolve => self.export_resolve_to(path),
             Want::Video => self.export_video_to(path),
-            Want::PhotoFolder => self.doc.gallery.folder = Some(path),
+            Want::PhotoFolder => {
+                // an order set by hand was for the folder before
+                let g = &mut self.doc.gallery;
+                if g.folder.as_ref() != Some(&path) {
+                    g.arranged.clear();
+                    if g.order == dd_gallery::resolve::PhotoOrder::Custom {
+                        g.order = dd_gallery::resolve::PhotoOrder::Name;
+                    }
+                }
+                g.folder = Some(path);
+            }
             Want::SavePatch(json) => {
                 if let Err(e) = std::fs::write(&path, json) {
                     self.status = format!("Couldn't save the patch: {e}");

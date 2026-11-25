@@ -8,6 +8,7 @@ mod dialogs;
 mod live;
 mod mixer_ui;
 mod panels;
+mod reorder;
 mod roll;
 mod snapshot;
 mod sound;

@@ -110,7 +110,7 @@ fn gallery_flags(args: &[String], doc: &mut Document) -> Result<(), String> {
     }
     if args.iter().any(|a| a == "--fit-track") {
         // size the track to the photos
-        let photos = g.folder.as_ref().map(|d| dd_gallery::resolve::photos(d, g.order)).transpose()?.unwrap_or_default();
+        let photos = g.photos()?;
         g.fit = Fit::TrackToImages;
         g.images = photos.len().max(1) as u32;
         let bars = doc.plan().bars();

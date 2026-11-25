@@ -823,6 +823,26 @@ frame rate honoured.
   video's frame count, or the FCPXML's soundtrack length. The picture then reaches black
   as the reverb dies away rather than sitting black through the outro.
 
+## D34 — Photos in an order set by hand (2026-11-25)
+
+Asked for a way to set the photos' order for the exports (a strongest image first, not
+the folder's listing): a Reorder images step in Plan and export opening a pane of
+thumbnails to drag into order, saved on closing; no removing photos yet.
+
+- **Stored by file name** (`Slideshow::arranged`, with `PhotoOrder::Custom`), so the
+  order survives the folder being copied or moved, and a `.kibble` stays readable.
+  `Slideshow::photos` is the one listing every export and the calculator use: the
+  folder's photos in the names' order, any it doesn't name (added since) after, by name;
+  names of photos gone are passed over. Choosing another folder clears it. Older
+  documents open as before (empty is left out of the file).
+- **Thumbnails** (`reorder.rs`): decoded on up to four background threads to 320 px at
+  most, turned as the camera's EXIF says, by the `image` crate (already in the build
+  through eframe; JPEG, PNG, TIFF, WebP, BMP, GIF), or ffmpeg where it's there for the
+  rest (HEIC, raw). The pane opens at once and fills in.
+- **The pane** is a modal: tiles in rows (each tile a drag source; a line shows where a
+  drop lands), a right-click menu and buttons for to the front or the end, arrow keys
+  for the selected tile, Folder order to start again, Cancel or Save and close.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

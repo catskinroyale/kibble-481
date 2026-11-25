@@ -1268,8 +1268,7 @@ impl App {
 
     fn gallery_tab(&mut self, ui: &mut egui::Ui) {
         let t = Tokens::get(ui.ctx());
-        let photos =
-            self.doc.gallery.folder.as_ref().and_then(|d| dd_gallery::resolve::photos(d, self.doc.gallery.order).ok()).unwrap_or_default();
+        let photos = self.doc.gallery.photos().unwrap_or_default();
         let mut choose = false;
         let g = &mut self.doc.gallery;
         widgets::section(ui, "photos", "Photos", true, |ui| {
@@ -1291,6 +1290,11 @@ impl App {
                     ui.label("Order");
                     ui.selectable_value(&mut g.order, PhotoOrder::Name, "By name");
                     ui.selectable_value(&mut g.order, PhotoOrder::Date, "By date");
+                    ui.add_enabled_ui(!g.arranged.is_empty(), |ui| {
+                        ui.selectable_value(&mut g.order, PhotoOrder::Custom, "Your order")
+                            .on_hover_text("The order set in Reorder images (Plan and export)")
+                            .on_disabled_hover_text("Set an order in Reorder images (Plan and export) first");
+                    });
                 });
                 ui.horizontal(|ui| {
                     ui.label("Frame rate");
@@ -1787,6 +1791,35 @@ impl App {
                 );
                 widgets::note(ui, egui::RichText::new(msg).color(t.caution).text(), "");
             }
+            widgets::divider(ui);
+            widgets::subtitle(ui, "Reorder images", "The order the photos appear in, in both exports");
+            let mut reorder = false;
+            widgets::inset(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(!photos.is_empty(), egui::Button::new("Reorder images…"))
+                        .on_hover_text("Drag the photos' thumbnails into the order you want: your strongest first, say")
+                        .on_disabled_hover_text("Choose a photo folder first")
+                        .clicked()
+                    {
+                        reorder = true;
+                    }
+                    let g = &self.doc.gallery;
+                    let now = match g.order {
+                        PhotoOrder::Custom => "In your order".to_string(),
+                        PhotoOrder::Name => "In the folder's order, by name".to_string(),
+                        PhotoOrder::Date => "In the folder's order, by date".to_string(),
+                    };
+                    ui.label(egui::RichText::new(now).color(t.text_dim));
+                });
+                if let Some(first) = photos.first().and_then(|p| p.file_name()) {
+                    ui.label(egui::RichText::new(format!("Opens with {}", first.to_string_lossy())).font(t.font(10.5)).color(t.text_dim));
+                }
+            });
+            if reorder {
+                self.open_reorder(ui.ctx());
+            }
+            widgets::divider(ui);
             widgets::inset(ui, |ui| {
                 ui.checkbox(&mut self.settings.stems_with_gallery, "Stems too")
                     .on_hover_text("A WAV of each track as well, for mixing on Resolve's Fairlight page");

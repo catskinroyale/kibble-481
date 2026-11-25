@@ -68,10 +68,7 @@ pub fn export_for_resolve(
     let p = &doc.project;
     let g = &doc.gallery;
     let title = safe_name(name);
-    let photos = match &g.folder {
-        Some(folder) => resolve::photos(folder, g.order)?,
-        None => Vec::new(),
-    };
+    let photos = g.photos()?;
     // as many images as there are photos, or as were asked for without a folder
     let plan = doc.plan_for(if photos.is_empty() { g.images as usize } else { photos.len() });
     let fade = g.dissolve();

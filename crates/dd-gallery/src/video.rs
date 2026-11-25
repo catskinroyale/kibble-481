@@ -90,6 +90,21 @@ fn load(ff: &Path, photo: &Path) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
+/// A small picture of a photo, as PNG bytes, read by ffmpeg (for the kinds a picture
+/// library may not read, such as HEIC): no larger than `max` pixels either way.
+pub fn thumbnail_png(photo: &Path, max: u32) -> Option<Vec<u8>> {
+    let ff = ffmpeg()?;
+    let fit = format!("scale={max}:{max}:force_original_aspect_ratio=decrease");
+    let out = Command::new(ff)
+        .args(["-v", "error", "-i"])
+        .arg(photo)
+        .args(["-frames:v", "1", "-vf", &fit, "-f", "image2pipe", "-vcodec", "png", "-"])
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    (out.status.success() && !out.stdout.is_empty()).then_some(out.stdout)
+}
+
 /// What a video export did.
 #[derive(Debug, Default)]
 pub struct Made {
@@ -108,7 +123,7 @@ pub fn export_video(doc: &Document, fonts: &FontBank, out: &Path, progress: &Ato
     let ff = ffmpeg().ok_or(NO_FFMPEG)?;
     let g = &doc.gallery;
     let folder = g.folder.as_ref().ok_or("Choose a photo folder first: the video shows its photos")?;
-    let photos = crate::resolve::photos(folder, g.order)?;
+    let photos = g.photos()?;
     if photos.is_empty() {
         return Err(format!("No photos in {}", folder.display()));
     }

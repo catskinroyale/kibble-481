@@ -21,3 +21,5 @@ rfd = "0.17.2"
 pollster = "0.4.0"
 midir = "0.11.1"
 ureq = { version = "2.12.1", default-features = false, features = ["tls"] }
+# thumbnails for reordering the gallery's photos (eframe already brings it in)
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff", "webp", "bmp", "gif"] }
