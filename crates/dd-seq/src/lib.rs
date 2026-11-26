@@ -2,6 +2,8 @@
 //! engine that plays and mixes it live or offline, SoundFont instruments, recording,
 //! and MIDI and WAV files.
 
+pub mod ambience;
+mod canopy;
 mod chamber;
 mod cinder;
 pub mod city;
@@ -25,6 +27,7 @@ pub mod render;
 pub mod rng;
 pub mod shape;
 mod strata;
+mod tarn;
 pub mod timeline;
 mod vigil;
 

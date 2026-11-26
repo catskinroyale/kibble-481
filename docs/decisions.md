@@ -843,6 +843,147 @@ thumbnails to drag into order, saved on closing; no removing photos yet.
   drop lands), a right-click menu and buttons for to the front or the end, arrow keys
   for the selected tile, Folder order to start again, Cancel or Save and close.
 
+## D35 — Canopy and Tarn: two pastoral scores, new pads, drones and field sounds (2026-11-26)
+
+Two briefs. **Canopy**: pastoral ambient electronica, serene and hopeful, beatless, about
+60 bpm, D major or Lydian; warm analogue string-style pads with a slow four-second attack,
+chorus and gentle detune; a soft low sine and triangle drone on the root and fifth,
+slowly breathing; sparse electric piano and celesta phrases with long decay and plenty of
+space; now and then a tape-wobbled glockenspiel; faint birdsong and wind; light tape,
+soft reverb; sunrise in a forest. **Tarn**: warm pastoral ambient, nostalgic and
+reflective, beatless, about 54 bpm, A Dorian; tape-keyboard breathy pads and a warm
+filtered saw pad with long attack and tape wobble; a deep analogue drone on the root with
+slight pitch drift; a soft felt piano playing sparse, simple motifs with long pauses;
+distant reverb-soaked nylon guitar; faint crickets and breeze; tape, vinyl dust, wide
+reverb; golden hour over a lake. Both: no drums, percussion or voices. Asked also to find
+new pads and drones, synthesised or from SoundFonts. No instrument maker is named (the
+brief's tape keyboard is "Breath Choir", "Tape Choir").
+
+- **Lydian** (`Mode::Lydian`): added for Canopy, but not to `Mode::ALL`, so no other
+  style, random recipe or test sweep meets it; the Score tab lists it after the four
+  minor modes only while the chosen style is written in it. Canopy and Tarn set their
+  keys as Return and Orbit do (`Style::key`: D Lydian, A Dorian); the key can be changed
+  after.
+- **New patches** (`patch.rs`): Dawn Strings (saws ±8-9 cents and a soft pulse an octave
+  up, 4-4.5 s attack, filter opening with it; played through the ensemble), Breath Choir
+  (a hollow pulse-and-sine tone with a layer of noise through a resonant, fully tracking
+  low-pass, 7 cents of 0.55 Hz wobble and 7 of drift), Amber Pad (two saws ±11-12 cents
+  behind a 520-600 Hz low-pass whose envelope takes five or six seconds to open, 6 cents of
+  0.42 Hz wobble), Meadow Drone (a sine, and an octave down a sine and square through a
+  380 Hz low-pass: a rounded, triangle-like tone; 25% tremolo at 0.08 Hz) and Loam Drone
+  (saw and pulse into a 240 Hz low-pass, a sine an octave down, 14 cents of drift).
+- **Found in the bundled fonts** and never offered before: the Ambient Electronic font's
+  Warm Analog Pad, Airy Choir and Glass Pad (programs 88, 91, 89), and GeneralUser GS's
+  variation banks: Orchestra Pad (8:48), Synth Strings 3 (8:50), Chorused Tine EP (8:4,
+  offered as Chorused EP) and Bell Tine EP (12:4). No new font was added: these were
+  already shipped and licensed (D4), and searching further afield for a font would need
+  its licence checked and its checksum pinned first.
+- All twelve are palette alternatives, trimmed to their roles (the slow-attack pads are
+  measured in the level test's three seconds, so they read low there and carry larger
+  trims), and left out of the other styles' choosing as `canopy::PASTORAL_SOUNDS`.
+- **Field sounds** (City FX kit, synthesised, looping seamlessly, restarting on a seek):
+  Crickets (126: seven crickets, each a chirp of three or four 24-38 Hz pulses of a
+  3.9-5.3 kHz tone, repeated at its own rate, resting now and then; the far ones duller
+  and quieter) and Breeze (127: low noise swelling in two slow gusts out of step, and a
+  2.2-6.5 kHz band of leaves rustling with the cube of the gust).
+- **Canopy** (`canopy.rs`): four bars a chord, every progression with the major II (the
+  Lydian colour), the tonic as an add9 or major seventh, iii7, V add9, vi7. The drone
+  holds root and fifth through every section and a bar into the next; its expression
+  breathes on a three-bar sine. The piano's and celesta's phrases are drawn from three
+  per seed (two to four notes, stepping, the last on the chord), so a piece's phrases are
+  kin; the piano plays in a chord's first bar, the celesta answers in its third, each
+  note gated by the layer's presence. The glockenspiel plays one or two notes in a
+  chord's last bar; its wobble is pitch bend every demisemiquaver while it rings (a
+  0.45 Hz sway and a 0.11 Hz drag, 15 cents at most): the tape over the mix (0.3) wobbles
+  everything a little, this the glockenspiel much more. `canopy::wobble`, `phrases` and
+  `realise` are shared with Tarn.
+- **Tarn** (`tarn.rs`): i add9, IV add9, ♭III maj7, ♭VII, v7, four bars a chord. The
+  felt piano is the GM grand cut at 1.9 kHz, played softly; it plays one motif (three
+  times in four) or another, its second note now and then a step away, then rests
+  through the chord. The guitar's broken chords (root, fifth, octave and the chord's own
+  third, three-quarters of a beat apart) are far off: low and high cut, 0.85 reverb.
+  The Cloud reverb, a half-note echo with wow, tape at 0.5.
+- **Level**: Canopy about -16 LUFS (peaks -1.2 to -3.6 dBFS), Tarn about -16.8 (peaks
+  -1.1 to -2.7) over six seeds at 48 bars. The pads were first 12 dB over the piano:
+  turned down and the keys, bells and field sounds up. The other eighteen styles' notes
+  are unchanged (fingerprints of 1,800 pieces identical to 0.13.2's).
+
+## D36 — Ambience as beds, more from the dials, a panic button, VU meters (2026-11-26)
+
+Asked (after hearing Canopy and Tarn): the tape hiss far too present, to be very subtle;
+the field sounds (hiss, crickets, birds, rain…) not tracks but options with their own
+levels, a separate kind of track for background ambience, per score; more variety from
+New notes and much more from the density and complexity dials (changing intervals or the
+scale's use), so more than one or two settings of each score are useful, rather than more
+scores; the panic button at the far left with the transport, red, an exclamation mark;
+the level controls to look like VU meters, red over 0 dB, amber under, green under that,
+after a standard.
+
+- **Beds** (`ambience.rs`, `Track::ambience`): each bed is a track holding one sound of
+  the City FX kit, so the engine, timeline, render and MIDI export need nothing new. Chosen
+  over a separate list of sounds in the project (which would have needed its own mixer
+  channel, meter and chase in the engine). The fourteen kinds (`BEDS`): rain (any of the
+  nine), thunder, machinery hum, neon buzz, tape hiss, vinyl crackle, radio static,
+  birdsong, playground, crickets, breeze, engine throb, life support, ticking. Score
+  effects (risers, booms, braams, metal, grains, drones, hull groans, pipes, timpani, steam,
+  scrapes) stay music.
+- **No style was rewritten**: `compose::finish` calls `ambience::adopt`, which splits each
+  City FX track by bed (a copy of its strip, expression and bar levels for each, so the sum
+  is the same), leaves the effects on the track (named Effects if it was City) and puts the
+  beds after the music. A test compared 1,080 pieces of every style with 0.13.2's: every
+  music track's notes, controllers, strip and sound identical, and the City notes the same
+  set. (It found that Momento and Noir could choose the electric pianos added in D35 for
+  their keys: they're now left out of that choice too, so D35's claim that no other style
+  changed now holds for sounds as well as notes.)
+- **Opening older files** (`Document::load` → `adopt_opened`): the same split; a piece that
+  was unedited is still unedited (its fingerprint taken again). `fingerprint` leaves the
+  beds out, so switching one on or off or adding one isn't an edit.
+- **Kept through new notes**: a new piece in the same style (New notes, New piece, a new
+  key, Write again, a tempo change) keeps the beds as set: the same set, each at its level
+  and switch (`ambience::keep`). Another style brings its own. Section rewrites leave the
+  beds alone. Callers now say whether the style is the same, since the Score tab writes
+  the new style into the recipe before the piece is written again.
+- **In the app**: the track list, the roll's overview, its ghosts, the section menu's
+  tracks and the mixer leave the beds out; the selection never rests on one. Under the
+  track list (always in view) an Ambience panel: each bed's lamp (on/off), name (rain: a
+  menu of the nine), level slider (-40 to +6 dB), small meter and ×; **+ Add** with the
+  kinds not there (none in Noir, D18). The City role leaves the + Add menu for tracks. The
+  Effects track shows "Score effects" where the rain menu was.
+- **Tape hiss** made 10.5 dB quieter in the kit itself (0.2 to 0.06 of the kit's level),
+  so every style that uses it (Derelict, Nebula, Cinder, Filmstrip, Tarn) gets the faint
+  version; the kit test's "not silent" floor moved from 0.1 to 0.03 for it.
+- **The dials** (`shape.rs`), now knowing the piece's scale (`scale_of`: the recipe's key
+  and mode, else the seven pitch classes most used):
+  - complexity below 0.3 bares chords to their bass and the fifth above it in the top's
+    octave (all chords by 0), as well as thinning them;
+  - above about 0.62 it colours chords with the scale's next third above the top (a
+    seventh or ninth, every chord at 1); above 0.6, a melody (single notes, median at or
+    above A3) gets a third below in the scale on some notes (never a bass line); above 0.7,
+    passing notes of the scale halfway through leaps of a third or more with a beat or more
+    between, as well as the octaves as before;
+  - density below 0.3 lets what's left ring on to the next note kept (up to two bars);
+  - above 0.5 more and more of a chord's restrikes are an arpeggio (up, down, or up and
+    down, chosen per chord) instead of the whole chord.
+  All decided by hashes of where the notes are, as before. A test checks seven settings of
+  one Canopy piece all play different notes.
+- **Vary dials** (Score tab, on by default; `shape::vary`): New notes and New piece turn
+  each track's dials somewhere new (a third of the time straight up, else 0.15 to 0.88),
+  leaving drones, effects and beds straight up. Off, a new seed keeps the dials as set; a
+  piece written again in the same style keeps them anyway (`keep_dials`; they used to
+  return to straight up).
+- **Panic**: the first control of the transport, a red rounded button with a white "!";
+  it now stops playback (or ends a take) as well as silencing every voice and clearing the
+  reverb, echo, ensemble and tape (`App::panic_stop`).
+- **Meters**: no IEC or EBU document found defines colour zones for a digital meter
+  (IEC TR 60268-18 sets the scale, 0 = full scale, not colours; the K-system puts green
+  below its 0 and yellow above); the zones follow EBU R68's alignment: green below
+  -18 dBFS (0 VU), amber from there, red at 0 dB, taken as -0.5 dBFS since nothing here
+  passes full scale (the mixes' ceiling is 0.95). Drawn as lamps (a gap every 3 points),
+  each zone faint beyond the level so the scale reads in silence; the same on the
+  mixer, the track list and the beds. Faders' grooves carry the zones: red over 0 dB.
+- **Level**: the demo -14.7 LUFS, Tarn -16.9 (about the same without the hiss), Tarn with
+  every dial at an extreme -17.4; peaks -1.2 to -2.9 dBFS.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

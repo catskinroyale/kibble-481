@@ -153,6 +153,8 @@ pub fn rain_on_neon() -> Project {
     for tr in p.tracks.iter_mut() {
         tr.sort();
     }
+    // (its rain, hum, thunder and neon are beds of ambience, D36)
+    crate::ambience::adopt(&mut p);
     p
 }
 

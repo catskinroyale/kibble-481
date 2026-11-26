@@ -2,13 +2,11 @@
 //! the transport, the performance strip and About.
 
 use dd_dsp::fx::{EchoTime, Interval, Space, Tuning};
-use dd_dsp::kit::fx;
 use dd_dsp::rain::RainKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
 use dd_gallery::slideshow::{
     Calc, EXACT_MIN, Grid, MAX_FADE, MAX_HOLD, MAX_IMAGE_BARS, MIN_HOLD, Transition, tempo_for, tempo_to_fit, timecode,
 };
-use dd_seq::city;
 use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
 use dd_seq::palette::{Alt, Role, alternatives, apply, position};
@@ -143,8 +141,6 @@ pub(crate) struct FitPlan {
 /// What a track row's dropdown asked for.
 enum RowAction {
     Alt(Role, Box<Alt>),
-    Rain(Option<RainKind>),
-    Layer(u8, bool),
 }
 
 /// A track row's small dial for its density or complexity: straight up plays the notes
@@ -193,7 +189,8 @@ impl App {
                 let style = self.doc.project.recipe.map(|r| r.style);
                 ui.menu_button("+ Add", |ui| {
                     ui.label(egui::RichText::new("A new track, with the notes the style writes for it").color(t.text_dim));
-                    for role in Role::ALL {
+                    // (the city's sounds are beds of ambience, added below the tracks)
+                    for role in Role::ALL.into_iter().filter(|r| *r != Role::City) {
                         let alts = alternatives(role);
                         // Noir has no rain, weather or literal sounds (D18)
                         let allowed = !(role == Role::City && style == Some(dd_seq::compose::Style::Noir));
@@ -227,10 +224,18 @@ impl App {
         let mut row_action: Option<(usize, RowAction)> = None;
         let mut delete_now: Option<usize> = None;
         let mut rows: Vec<Rect> = Vec::new();
+        // the track each row shows (the beds of ambience have their own rows below)
+        let mut row_ids: Vec<usize> = Vec::new();
         let dragging = egui::DragAndDrop::payload::<TrackDrag>(ui.ctx()).map(|d| d.0);
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            let n = self.doc.project.tracks.len();
-            for i in 0..n {
+        // the ambience sits below the tracks, always in view
+        let n_beds = dd_seq::ambience::beds(&self.doc.project).len().max(1) as f32;
+        let amb_h = (44.0 + 44.0 * n_beds).min(ui.available_height() * 0.45);
+        egui::ScrollArea::vertical().id_salt("track-list").auto_shrink([false, false]).max_height(ui.available_height() - amb_h).show(ui, |ui| {
+            let n = self.doc.project.tracks.iter().filter(|t| !t.ambience).count();
+            for i in 0..self.doc.project.tracks.len() {
+                if self.doc.project.tracks[i].ambience {
+                    continue;
+                }
                 let selected = i == self.sel;
                 let peak = self.meter(i);
                 let heard = self.doc.project.audible(i);
@@ -247,8 +252,6 @@ impl App {
                         .collect()
                 });
                 let current = role.and_then(|r| position(r, &self.doc.project.tracks[i].source));
-                let city_rain = city::rain(&self.doc.project, i);
-                let layers = [fx::THUNDER, fx::HUM, fx::NEON].map(|k| city::has(&self.doc.project, i, k));
                 let frame = egui::Frame::new()
                     .fill(if selected { t.hover } else { t.inset })
                     .corner_radius(4.0)
@@ -326,34 +329,9 @@ impl App {
                                     let col = if err.is_some() { t.caution } else { t.text_dim };
                                     let shown = |s: &str| egui::RichText::new(s).font(t.font(10.5)).color(col);
                                     let resp = if role == Some(Role::City) {
-                                        let label = city_rain.map_or("No rain".to_string(), |k| k.label().to_string());
-                                        egui::ComboBox::from_id_salt(("city", i))
-                                            .width(w)
-                                            .height(420.0)
-                                            .selected_text(shown(&label))
-                                            .show_ui(ui, |ui| {
-                                                ui.label(egui::RichText::new("Rain").color(t.text_dim));
-                                                for k in RainKind::ALL {
-                                                    if ui.selectable_label(city_rain == Some(k), k.label()).clicked() {
-                                                        row_action = Some((i, RowAction::Rain(Some(k))));
-                                                    }
-                                                }
-                                                if ui.selectable_label(city_rain.is_none(), "No rain").clicked() {
-                                                    row_action = Some((i, RowAction::Rain(None)));
-                                                }
-                                                ui.separator();
-                                                for (j, (key, name)) in
-                                                    [(fx::THUNDER, "Thunder"), (fx::HUM, "Machinery hum"), (fx::NEON, "Neon buzz")]
-                                                        .into_iter()
-                                                        .enumerate()
-                                                {
-                                                    let mut on = layers[j];
-                                                    if ui.checkbox(&mut on, name).changed() {
-                                                        row_action = Some((i, RowAction::Layer(key, on)));
-                                                    }
-                                                }
-                                            })
-                                            .response
+                                        // (the score's effects: the field sounds are beds of ambience below)
+                                        ui.add(egui::Label::new(shown("Score effects")).truncate())
+                                            .on_hover_text("Risers, booms, metal and the like, played as part of the score")
                                     } else if let Some(r) = role {
                                         let label = current.map_or(tr.source.label(), |c| alts[c].0.label.to_string());
                                         egui::ComboBox::from_id_salt(("alt", i))
@@ -400,31 +378,17 @@ impl App {
                                     touched |= track_dial(
                                         ui,
                                         "Cmplx",
-                                        "Complexity: how many notes of each chord and arpeggio it plays. Left plays fewer (the bass and top of a chord, the lowest and most played notes of an arpeggio kept longest); right adds the chord's top an octave up, then its bass an octave down, and doubles some single notes (on drums, soft ghost notes). The written notes stay as they are",
+                                        "Complexity: how rich the harmony is. Left plays fewer notes of each chord and arpeggio (the bass and top kept longest), and near the end bares chords to open fifths; right adds octaves, then colours chords with sevenths and ninths from the key, harmonises a melody a third below and fills its leaps with passing notes (on drums, soft ghost notes). The written notes stay as they are",
                                         &mut tr.complexity,
                                     );
                                     touched |= track_dial(
                                         ui,
                                         "Dens",
-                                        "Density: how many of its notes it plays. Left leaves out the weakest first (off the beat, short and soft), keeping the downbeats; right fills the gaps, striking held notes again and echoing hits, on the quavers then the semiquavers. The written notes stay as they are",
+                                        "Density: how busy it is. Left leaves out the weakest notes first (off the beat, short and soft), keeping the downbeats, and near the end lets the few left ring on into the space; right fills the gaps, striking held notes again and echoing hits, more and more chords broken into arpeggios (up, down, or up and down). The written notes stay as they are",
                                         &mut tr.density,
                                     );
-                                    // level
-                                    let (r, _) = ui.allocate_exact_size(vec2(4.0, 26.0), Sense::hover());
-                                    ui.painter().rect_filled(r, 1.0, t.canvas);
-                                    // on the mixer meter's scale and colours
-                                    let db = if peak > 1e-6 { 20.0 * peak.log10() } else { -90.0 };
-                                    let h = crate::mixer_ui::db_pos(db) * r.height();
-                                    if h > 0.5 {
-                                        let col = if db > -0.5 {
-                                            t.alert
-                                        } else if db > -6.0 {
-                                            t.caution
-                                        } else {
-                                            rgb(tr.color)
-                                        };
-                                        ui.painter().rect_filled(Rect::from_min_max(pos2(r.left(), r.bottom() - h), r.max), 1.0, col);
-                                    }
+                                    // level, on the mixer meter's scale and in its VU colours
+                                    crate::mixer_ui::vu_bar(ui, peak, vec2(4.0, 26.0), heard, &t);
                                     // lit while the track is heard
                                     widgets::lamp(ui, heard, rgb(tr.color), 13.0).on_hover_text(if heard {
                                         "Heard"
@@ -437,6 +401,7 @@ impl App {
                     })
                     .response;
                 rows.push(resp.rect);
+                row_ids.push(i);
                 if dragging == Some(i) {
                     ui.painter().rect_filled(resp.rect, 4.0, t.hover.gamma_multiply(0.6));
                 }
@@ -486,6 +451,10 @@ impl App {
                     .color(t.text_dim),
             );
         });
+        ui.add_space(4.0);
+        crate::mixer_ui::rule(ui, &t);
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical().id_salt("ambience").auto_shrink([false, false]).show(ui, |ui| self.ambience_panel(ui, &t));
         if let Some((i, act)) = row_action {
             let stopped = !self.playing();
             match act {
@@ -494,18 +463,6 @@ impl App {
                     self.status = format!("{} now plays {}", self.doc.project.tracks[i].name, alt.label);
                     if stopped {
                         self.audition = Some((i, crate::sound::preview(&self.doc.project, i, role)));
-                    }
-                }
-                RowAction::Rain(kind) => {
-                    city::set_rain(&mut self.doc.project, i, kind);
-                    if let (true, Some(k)) = (stopped, kind) {
-                        self.audition = Some((i, vec![(0.05, 4.0, k.key(), 100)]));
-                    }
-                }
-                RowAction::Layer(key, on) => {
-                    city::set_layer(&mut self.doc.project, i, key, on);
-                    if stopped && on {
-                        self.audition = Some((i, vec![(0.05, 3.0, key, 100)]));
                     }
                 }
             }
@@ -529,7 +486,9 @@ impl App {
                 );
                 if ui.input(|i| i.pointer.any_released()) {
                     egui::DragAndDrop::clear_payload(ui.ctx());
-                    let to = if slot > from { slot - 1 } else { slot };
+                    // the row's slot as a place among all the tracks (beds included)
+                    let at = row_ids.get(slot).copied().unwrap_or_else(|| row_ids.last().map_or(0, |l| l + 1));
+                    let to = if at > from { at - 1 } else { at };
                     if to != from && from < self.doc.project.tracks.len() {
                         let tracks = &mut self.doc.project.tracks;
                         let tr = tracks.remove(from);
@@ -581,7 +540,7 @@ impl App {
                     tracks[i].ctrls.clear();
                 }
                 // (the last track left stays: there is always one to play)
-                "delete" if tracks.len() > 1 => {
+                "delete" if tracks.iter().filter(|t| !t.ambience).count() > 1 => {
                     let gone = tracks.remove(i);
                     if self.sel > i {
                         self.sel -= 1;
@@ -591,6 +550,140 @@ impl App {
                 }
                 _ => {}
             }
+        }
+    }
+
+    // ------------------------------------------------------------ ambience
+
+    /// The beds of ambience (D36): field sounds under the music, each with a switch, a
+    /// level and a meter, rather than tracks of notes. The style chooses them; any can
+    /// be added or taken away, and a new piece in the same style keeps them as set.
+    fn ambience_panel(&mut self, ui: &mut egui::Ui, t: &Tokens) {
+        use dd_seq::ambience::{self, BEDS};
+        let noir = self.doc.project.recipe.is_some_and(|r| r.style == dd_seq::compose::Style::Noir);
+        let mut add: Option<usize> = None;
+        let mut remove: Option<usize> = None;
+        let mut rain_to: Option<(usize, RainKind)> = None;
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Ambience").font(t.semibold(13.0)));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let have: Vec<&str> = ambience::beds(&self.doc.project)
+                    .into_iter()
+                    .filter_map(|i| ambience::bed_of_track(&self.doc.project.tracks[i]).map(|b| b.name))
+                    .collect();
+                ui.add_enabled_ui(!noir, |ui| {
+                    ui.menu_button("+ Add", |ui| {
+                        ui.label(egui::RichText::new("A field sound under the music").color(t.text_dim));
+                        for (k, b) in BEDS.iter().enumerate().filter(|(_, b)| !have.contains(&b.name)) {
+                            if ui.button(b.name).on_hover_text(b.help).clicked() {
+                                add = Some(k);
+                                ui.close();
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("Add a bed of ambience: rain, birdsong, crickets, a breeze, tape hiss…")
+                    .on_disabled_hover_text("Noir is music alone: no rain, weather or city sounds");
+                });
+            });
+        });
+        let beds = ambience::beds(&self.doc.project);
+        if beds.is_empty() {
+            ui.label(egui::RichText::new("None: just the music.").font(t.font(10.5)).color(t.text_dim));
+        }
+        for i in beds {
+            let peak = self.meter(i);
+            let tr = &mut self.doc.project.tracks[i];
+            let Some(bed) = ambience::bed_of_track(tr) else { continue };
+            let rain = tr.notes.first().and_then(|n| RainKind::of_key(n.key));
+            egui::Frame::new()
+                .fill(t.inset)
+                .corner_radius(4.0)
+                .inner_margin(egui::Margin::symmetric(6, 4))
+                .stroke(Stroke::new(1.0, t.divider))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 5.0;
+                        let on = !tr.strip.mute;
+                        if widgets::lamp(ui, on, rgb(tr.color), 13.0)
+                            .on_hover_text(if on { "On: click to silence it" } else { "Off: click to hear it" })
+                            .clicked()
+                        {
+                            tr.strip.mute = !tr.strip.mute;
+                        }
+                        let name_w = 92.0;
+                        match rain {
+                            Some(k) => {
+                                egui::ComboBox::from_id_salt(("bed-rain", i))
+                                    .width(name_w)
+                                    .selected_text(egui::RichText::new(k.label()).font(t.font(11.0)))
+                                    .show_ui(ui, |ui| {
+                                        for kind in RainKind::ALL {
+                                            if ui.selectable_label(kind == k, kind.label()).clicked() {
+                                                rain_to = Some((i, kind));
+                                            }
+                                        }
+                                    })
+                                    .response
+                                    .on_hover_text("Which rain");
+                            }
+                            None => {
+                                ui.add_sized(
+                                    vec2(name_w, 18.0),
+                                    egui::Label::new(egui::RichText::new(bed.name).font(t.font(11.5)).color(if on {
+                                        t.text
+                                    } else {
+                                        t.text_dim
+                                    }))
+                                    .truncate(),
+                                )
+                                .on_hover_text(bed.help);
+                            }
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            if ui.small_button("×").on_hover_text("Take this bed away").clicked() {
+                                remove = Some(i);
+                            }
+                            crate::mixer_ui::vu_bar(ui, peak, vec2(36.0, 6.0), on, t);
+                            ui.spacing_mut().slider_width = (ui.available_width() - 44.0).max(40.0);
+                            ui.add(
+                                egui::Slider::new(&mut tr.strip.gain_db, -40.0..=6.0)
+                                    .show_value(true)
+                                    .suffix(" dB")
+                                    .max_decimals(0)
+                                    .trailing_fill(true),
+                            )
+                            .on_hover_text("Its level");
+                        });
+                    });
+                });
+            ui.add_space(3.0);
+        }
+        let stopped = !self.playing();
+        if let Some(k) = add {
+            let i = ambience::add(&mut self.doc.project, &BEDS[k], None);
+            self.status = format!("{} under the music", BEDS[k].name);
+            if stopped {
+                let key = self.doc.project.tracks[i].notes.first().map_or(BEDS[k].key, |n| n.key);
+                self.audition = Some((i, vec![(0.05, 3.0, key, 100)]));
+            }
+        }
+        if let Some((i, kind)) = rain_to {
+            for n in self.doc.project.tracks[i].notes.iter_mut().filter(|n| RainKind::of_key(n.key).is_some()) {
+                n.key = kind.key();
+            }
+            if stopped {
+                self.audition = Some((i, vec![(0.05, 4.0, kind.key(), 100)]));
+            }
+        }
+        if let Some(i) = remove {
+            let name = self.doc.project.tracks[i].name.clone();
+            ambience::remove(&mut self.doc.project, i);
+            if self.sel > i {
+                self.sel -= 1;
+            }
+            self.status = format!("No {} (⌘Z brings it back)", name.to_lowercase());
         }
     }
 
@@ -875,6 +968,7 @@ impl App {
         let composed = self.doc.project.recipe.is_some();
         let (mut dice, mut again) = (None, false);
         let keep = &mut self.settings.keep_sounds;
+        let vary = &mut self.settings.vary_dials;
         let p = &mut self.doc.project;
         // writing, then the tempo and length as dials, the metre as lamps
         ui.add_space(6.0);
@@ -908,6 +1002,14 @@ impl App {
                         .clicked()
                     {
                         *keep = !*keep;
+                    }
+                    if widgets::lamp_row(ui, "Vary dials", *vary, true)
+                        .on_hover_text(
+                            "New notes turn each track's density and complexity somewhere new, for a new texture as well as new notes: thinner or busier, bare fifths or rich chords, arpeggios, passing notes. Off: the dials stay where you set them",
+                        )
+                        .clicked()
+                    {
+                        *vary = !*vary;
                     }
                 });
                 let style_tempo = p.recipe.map_or(72.0, |r| r.style.tempo()) as f32;
@@ -969,7 +1071,7 @@ impl App {
         if let Some(sections) = dice {
             self.new_piece(sections);
         } else if again && let Some(r) = self.doc.project.recipe {
-            self.recompose(r, true);
+            self.recompose(r, true, true);
         }
         ui.add_space(8.0);
         // the sections as a swim lane on the left, the parts to drag into it on the right
@@ -1219,8 +1321,10 @@ impl App {
                             });
                         }
                         widgets::strip_heading(ms, "Mode", true);
-                        for m in Mode::ALL {
-                            let help = "The scale: minor, Dorian, Phrygian or harmonic minor";
+                        // (and the style's own mode where it's none of those: Canopy's Lydian)
+                        let own = r.style.mode().filter(|m| !Mode::ALL.contains(m));
+                        for m in Mode::ALL.into_iter().chain(own) {
+                            let help = "The scale: minor, Dorian, Phrygian or harmonic minor (or the style's own)";
                             if widgets::lamp_row(ms, m.label(), r.mode == m, true).on_hover_text(help).clicked() {
                                 r.mode = m;
                             }
@@ -1888,6 +1992,21 @@ impl App {
         let t = Tokens::get(ui.ctx());
         ui.horizontal_centered(|ui| {
             ui.add_space(6.0);
+            // panic first, at hand: a red button with a pling
+            let (r, resp) = ui.allocate_exact_size(vec2(28.0, 24.0), Sense::click());
+            let fill = if resp.is_pointer_button_down_on() {
+                crate::mixer_ui::VU_RED.gamma_multiply(0.7)
+            } else if resp.hovered() {
+                crate::mixer_ui::VU_RED
+            } else {
+                crate::mixer_ui::VU_RED.gamma_multiply(0.85)
+            };
+            ui.painter().rect_filled(r, 5.0, fill);
+            ui.painter().text(r.center(), Align2::CENTER_CENTER, "!", t.semibold(17.0), egui::Color32::WHITE);
+            if resp.on_hover_text("Panic: stop, and silence every note and the effects' tails at once, for a clean start").clicked() {
+                self.panic_stop();
+            }
+            ui.add_space(4.0);
             let playing = self.playing();
             let recording = self.recording();
             if widgets::icon_button(ui, Icon::SkipBack, false, "To the start of this section, or the one before ([)").clicked() {
@@ -1980,9 +2099,6 @@ impl App {
                 .on_hover_text("Play with the computer keyboard (A W S E D F…); Z X change octave");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
-                if ui.button("Panic").on_hover_text("Silence every note at once").clicked() {
-                    self.panic();
-                }
                 ui.toggle_value(&mut self.settings.show_mixer, "Mixer");
                 ui.toggle_value(&mut self.settings.show_keys, "Keys");
                 let mut vol = self.settings.volume;

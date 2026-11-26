@@ -44,6 +44,9 @@ pub enum Mode {
     Dorian,
     Phrygian,
     HarmonicMinor,
+    /// The major scale with a raised fourth: bright and floating. Only the styles written
+    /// in it (Canopy) use it; the Score tab offers it with them.
+    Lydian,
 }
 
 impl Mode {
@@ -55,6 +58,7 @@ impl Mode {
             Mode::Dorian => "Dorian",
             Mode::Phrygian => "Phrygian",
             Mode::HarmonicMinor => "Harmonic minor",
+            Mode::Lydian => "Lydian",
         }
     }
 
@@ -64,6 +68,7 @@ impl Mode {
             Mode::Dorian => [0, 2, 3, 5, 7, 9, 10],
             Mode::Phrygian => [0, 1, 3, 5, 7, 8, 10],
             Mode::HarmonicMinor => [0, 2, 3, 5, 7, 8, 11],
+            Mode::Lydian => [0, 2, 4, 6, 7, 9, 11],
         }
     }
 }
@@ -134,6 +139,15 @@ pub enum Style {
     /// A hypnotic drone score (D30): a buzzing plucked drone turning in a four-note cycle
     /// over a hum, hand drums in a loop, a sliding voice-like lead, harmonic minor.
     Mantra,
+    /// Pastoral ambient electronica at sunrise in a forest (D35): beatless, D Lydian;
+    /// birdsong and a breeze, a soft drone breathing on the root and fifth, warm string
+    /// pads swelling in slowly, sparse electric piano and celesta, a tape-wobbled
+    /// glockenspiel now and then.
+    Canopy,
+    /// Warm, nostalgic pastoral ambient at golden hour over a lake (D35): beatless, A
+    /// Dorian; crickets, a breeze and vinyl dust, breathy tape-choir and filtered saw
+    /// pads, a deep drifting drone, a felt piano's simple motifs and far-off nylon guitar.
+    Tarn,
 }
 
 /// The sounds added to the palette for Homeward: the other styles leave them out of
@@ -141,7 +155,7 @@ pub enum Style {
 pub(crate) const HOMEWARD_SOUNDS: [&str; 5] = ["Synth Strings (FreePats)", "Viola", "Clarinet", "French Horn", "Concert Harp (FreePats)"];
 
 impl Style {
-    pub const ALL: [Style; 18] = [
+    pub const ALL: [Style; 20] = [
         Style::Nocturne,
         Style::Pursuit,
         Style::Blackout,
@@ -160,6 +174,8 @@ impl Style {
         Style::Strata,
         Style::Lumen,
         Style::Mantra,
+        Style::Canopy,
+        Style::Tarn,
     ];
 
     /// Whether the interface offers it: Lumen and Mantra are written still (a piece saved
@@ -188,6 +204,8 @@ impl Style {
             Style::Strata => "Strata",
             Style::Lumen => "Lumen",
             Style::Mantra => "Mantra",
+            Style::Canopy => "Canopy",
+            Style::Tarn => "Tarn",
         }
     }
 
@@ -236,6 +254,12 @@ impl Style {
             Style::Mantra => {
                 "Hypnotic and ritual, a drone score: a buzzing plucked drone turning in an endless four-note cycle over a deep hum, a frame drum and hand drums in a loop, a voice-like lead sliding between notes, a choir and a bell at the height, then the cycle turning on alone"
             }
+            Style::Canopy => {
+                "Serene and hopeful, sunrise in a forest, beatless: birdsong and a breeze, a soft drone breathing on the root and fifth, warm string pads swelling in slowly, sparse electric piano and celesta with plenty of space, a tape-wobbled glockenspiel now and then, in D Lydian"
+            }
+            Style::Tarn => {
+                "Warm, nostalgic and wistful, golden hour over a quiet lake, beatless: crickets, a breeze and vinyl dust, breathy tape-choir and filtered saw pads, a deep drone drifting slightly, a felt piano's simple motifs with long pauses, far-off nylon guitar, in A Dorian"
+            }
             Style::Chamber => {
                 "A chamber orchestra in a dark, sci-fi noir: a ticking pizzicato, the theme on a clarinet, then a solo violin, a horn and celesta, over a glass drone and a sub like a heartbeat; strings in octaves at the climax, a minor-major ninth to end"
             }
@@ -263,6 +287,8 @@ impl Style {
             Style::Strata => 50.0,
             Style::Lumen => 60.0,
             Style::Mantra => 72.0,
+            Style::Canopy => 60.0,
+            Style::Tarn => 54.0,
         }
     }
 
@@ -272,6 +298,8 @@ impl Style {
         match self {
             Style::Return => Some((4, Mode::Aeolian)),
             Style::Orbit => Some((9, Mode::Aeolian)),
+            Style::Canopy => Some((2, Mode::Lydian)),
+            Style::Tarn => Some((9, Mode::Dorian)),
             _ => None,
         }
     }
@@ -348,6 +376,9 @@ impl Style {
             Style::Strata => (19.0, 4),
             Style::Lumen => (16.0, 4),
             Style::Mantra => (13.0, 4),
+            // (Canopy's and Tarn's four bars a chord)
+            Style::Canopy => (16.0, 4),
+            Style::Tarn => (17.8, 4),
         }
     }
 }
@@ -403,8 +434,10 @@ pub fn fingerprint(p: &Project) -> u64 {
             h = h.wrapping_mul(0x0000_0100_0000_01b3);
         }
     };
-    eat(p.tracks.len() as u64);
-    for t in &p.tracks {
+    // (the ambience's beds aren't the notes: switching one on or off isn't an edit)
+    let music: Vec<&Track> = p.tracks.iter().filter(|t| !t.ambience).collect();
+    eat(music.len() as u64);
+    for t in music {
         eat(t.notes.len() as u64);
         for n in &t.notes {
             eat(((n.start as u64) << 32) | ((n.len as u64) << 16) | ((n.key as u64) << 8) | n.vel as u64);
@@ -536,7 +569,9 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => *rng.pick(&ROMANTIC),
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => *rng.pick(&ROMANTIC),
     };
     // (Noir's sits a little low, under a voice)
     let centre = match r.style {
@@ -615,7 +650,9 @@ fn chords(r: &Recipe, p: &Project, chord_ticks: u32, end: u32) -> Vec<Chord> {
             | Style::Filmstrip
             | Style::Strata
             | Style::Lumen
-            | Style::Mantra => {
+            | Style::Mantra
+            | Style::Canopy
+            | Style::Tarn => {
                 vec![a, b, c]
             }
         };
@@ -696,6 +733,12 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
     }
     if style == Style::Mantra {
         return crate::mantra::plan(bars);
+    }
+    if style == Style::Canopy {
+        return crate::canopy::plan(bars);
+    }
+    if style == Style::Tarn {
+        return crate::tarn::plan(bars);
     }
     if style == Style::Overcity && bars >= cb * 5 {
         // a long breath first, the theme, its development, the great swell, and dissolving
@@ -793,6 +836,8 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
                     | Style::Strata
                     | Style::Lumen
                     | Style::Mantra
+                    | Style::Canopy
+                    | Style::Tarn
                     | Style::Vigil
             ) {
                 1.0
@@ -926,6 +971,14 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             ["Endless", "Turning", "Inner", "Slow", "Sacred", "Circling", "Deep", "Quiet", "Old", "Hollow"],
             ["Mantra", "Cycle", "Ritual", "Wheel", "Breath", "Lantern", "Trance", "Offering", "Pilgrim", "Ember"],
         ),
+        Style::Canopy => (
+            ["First", "Green", "Morning", "Gentle", "Waking", "Dappled", "Early", "Soft", "Open", "Tender"],
+            ["Canopy", "Clearing", "Birches", "Dew", "Fern", "Sunrise", "Hollow", "Thicket", "Moss", "Branches"],
+        ),
+        Style::Tarn => (
+            ["Golden", "Still", "Late", "Amber", "Quiet", "Long", "Low", "Faded", "Warm", "Evening"],
+            ["Tarn", "Shallows", "Reeds", "Jetty", "Ripples", "Shore", "Boathouse", "Dusk", "Inlet", "Pines"],
+        ),
         Style::Orbit => (
             ["Slow", "Turning", "Still", "Distant", "Glass", "Silent", "Endless", "Pale", "Hidden", "Quiet"],
             ["Orbit", "Mechanism", "Pendulum", "Lighthouse", "Spiral", "Observatory", "Clockwork", "Tide", "Carousel", "Satellite"],
@@ -971,6 +1024,16 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         return finish(p, r);
     }
 
+    // and Canopy and Tarn theirs (in Lydian and Dorian)
+    if matches!(style, Style::Canopy | Style::Tarn) {
+        let r = &Recipe { mode: style.mode().unwrap_or(r.mode), ..*r };
+        match style {
+            Style::Canopy => crate::canopy::write(&mut p, r, &secs, density),
+            _ => crate::tarn::write(&mut p, r, &secs, density),
+        }
+        return finish(p, r);
+    }
+
     // ---------------------------------------------------------------- sounds
     // each part from its role's alternatives: the usual sound most often
     let mut snd = Rng::stream(r.seed, "sounds");
@@ -991,6 +1054,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
             .filter(|a| !crate::cinder::CINDER_SOUNDS.contains(&a.label) && !crate::filmstrip::FILMSTRIP_SOUNDS.contains(&a.label))
             .filter(|a| !crate::vigil::VIGIL_SOUNDS.contains(&a.label))
             .filter(|a| !crate::strata::DRONE_SOUNDS.contains(&a.label))
+            .filter(|a| !crate::canopy::PASTORAL_SOUNDS.contains(&a.label))
             .collect();
         let w: Vec<f64> = match style {
             Style::Nocturne => (0..alts.len()).map(|i| if i == 0 { 3.0 } else { 1.0 }).collect(),
@@ -1035,7 +1099,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => [1.0, 0.0, 0.0],
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => [1.0, 0.0, 0.0],
     };
     fx.space = [Space::Noir, Space::Cathedral, Space::BlackHole][snd.weighted(&halls)];
     // an echo of about 0.6 s
@@ -1072,7 +1138,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => (-4.0, -3.0, 0.0, 0.0),
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => (-4.0, -3.0, 0.0, 0.0),
     };
     let t_brass = add(Role::Brass, brass, Strip { reverb: 0.5, ensemble: true, gain_db: -3.0, ..s });
     let t_pad = add(pad_role, pad, Strip { reverb: 0.6, ensemble: true, gain_db: -6.0, ..s });
@@ -1102,7 +1170,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let t_keys = matches!(style, Style::Momento | Style::Noir | Style::Homeward | Style::Return).then(|| {
         // from its own stream, so the other parts' sounds stay as they were
         let mut kr = Rng::stream(r.seed, "keys");
-        let alts: Vec<Alt> = alternatives(Role::Keys).into_iter().filter(|a| a.bundled).collect();
+        // (the keys added for Canopy and Tarn left out, so every recipe sounds as it did)
+        let alts: Vec<Alt> =
+            alternatives(Role::Keys).into_iter().filter(|a| a.bundled && !crate::canopy::PASTORAL_SOUNDS.contains(&a.label)).collect();
         let other = if matches!(style, Style::Homeward | Style::Return) { 0.0 } else { 0.4 };
         let w: Vec<f64> = alts.iter().map(|a| if prefers(style, Role::Keys, a.label) { 3.0 } else { other }).collect();
         let alt = alts[kr.weighted(&w)].clone();
@@ -1472,7 +1542,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => {}
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => {}
     }
     for c in chords.iter().filter(|c| style == Style::Nocturne && matches!(part_at(c.start), Part::Swell | Part::NightShift)) {
         let k = near(c.root_pc, 45);
@@ -1589,7 +1661,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => {
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => {
             vec![&[4.0], &[6.0, 2.0]]
         }
     };
@@ -2016,7 +2090,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => {}
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => {}
     }
     if style == Style::Noir {
         // told in music alone: no rain, hum, neon or thunder
@@ -2071,7 +2147,9 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
         | Style::Filmstrip
         | Style::Strata
         | Style::Lumen
-        | Style::Mantra => {}
+        | Style::Mantra
+        | Style::Canopy
+        | Style::Tarn => {}
     }
     if style == Style::Nocturne && density > 0.2 {
         // a heartbeat from halfway through a swell, and all through a night shift, where
@@ -2114,6 +2192,8 @@ pub(crate) fn finish(mut p: Project, r: &Recipe) -> Project {
     }
     // the tracks the piece leaves silent go
     p.tracks.retain(|tr| !tr.notes.is_empty());
+    // and its field sounds are beds of ambience
+    crate::ambience::adopt(&mut p);
     p.recipe = Some(*r);
     p.composed = fingerprint(&p);
     p
@@ -3307,6 +3387,10 @@ fn replace_with(p: &mut Project, i: usize, fresh: &Project, seed: u64) {
         .collect();
     let same_count = p.tracks.len() == fresh.tracks.len();
     for (j, t) in p.tracks.iter_mut().enumerate() {
+        // (the beds of ambience run on through every section)
+        if t.ambience {
+            continue;
+        }
         let src = if t.added {
             added[j].as_ref()
         } else {
@@ -3519,7 +3603,7 @@ mod tests {
             for (bpm, meter, bars) in [(52.0, (4, 4), 8), (66.0, (4, 4), 24), (90.0, (3, 4), 40), (128.0, (6, 8), 17), (75.0, (5, 4), 3)] {
                 let p = compose(&r, bpm, meter, bars);
                 assert_eq!(p.bars(), bars.max(2), "seed {seed} {bpm} {meter:?} {bars}");
-                let city = p.tracks.iter().find(|t| t.name == "City").expect("city");
+                let city = &crate::ambience::merged(&p);
                 assert!(city.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.start == 0 && n.end() == p.end_tick()));
                 for t in &p.tracks {
                     assert!(t.notes.iter().all(|n| n.end() <= p.end_tick() && n.len > 0 && n.key <= 120), "{}", t.name);
@@ -3585,7 +3669,7 @@ mod tests {
             let r = Recipe { seed, style: Style::Blackout, ..Recipe::default() };
             let p = compose_plan(&r, 56.0, (4, 4), &plan);
             assert!(p.tracks.iter().all(|t| t.name != "Pluck"));
-            let city = p.tracks.iter().find(|t| t.name == "City").unwrap();
+            let city = &crate::ambience::merged(&p);
             assert!(
                 city.notes
                     .iter()
@@ -3751,7 +3835,7 @@ mod tests {
                 let track = |name: &str| p.tracks.iter().find(|t| t.name == name).unwrap_or_else(|| panic!("no {name} in seed {seed}"));
                 // no beat, no rain
                 assert!(p.tracks.iter().all(|t| t.role != Some(Role::Drums)), "seed {seed}");
-                let city = track("City");
+                let city = &crate::ambience::merged(&p);
                 assert!(city.notes.iter().all(|n| RainKind::of_key(n.key).is_none() && n.key != fx::THUNDER));
                 assert!(city.notes.iter().any(|n| n.key == fx::TAPE_HISS && n.start == 0 && n.end() == p.end_tick()));
                 assert!(city.notes.iter().any(|n| n.key == fx::TICKING));
@@ -3831,6 +3915,8 @@ mod tests {
                     | Style::Strata
                     | Style::Lumen
                     | Style::Mantra
+                    | Style::Canopy
+                    | Style::Tarn
             )
         }) {
             for seed in 0..60 {
@@ -4009,7 +4095,7 @@ mod tests {
         let mut p = crate::demo::rain_on_neon();
         resize(&mut p, 24, 40);
         assert_eq!(p.bars(), 40);
-        let city = p.tracks.iter().find(|t| t.name == "City").unwrap();
+        let city = &crate::ambience::merged(&p);
         assert!(city.notes.iter().any(|n| n.key == fx::RAIN && n.end() == p.end_tick()));
         resize(&mut p, 40, 10);
         assert_eq!(p.bars(), 10);
@@ -4028,7 +4114,7 @@ mod rain_choice {
         let n = 2000;
         for seed in 0..n {
             let p = compose(&Recipe { seed, ..Recipe::default() }, 66.0, (4, 4), 8);
-            let city = p.tracks.iter().find(|t| t.name == "City").unwrap();
+            let city = &crate::ambience::merged(&p);
             let main = city.notes.iter().filter(|x| RainKind::of_key(x.key).is_some()).max_by_key(|x| x.len).unwrap();
             *counts.entry(format!("{:?}", RainKind::of_key(main.key).unwrap())).or_insert(0) += 1;
         }
@@ -4123,7 +4209,7 @@ mod section_tests {
     fn new_notes_for_a_section_keep_what_is_held_through_it() {
         let mut p = edited(Style::Nocturne, 3);
         assert!(regenerate_section(&mut p, 2, 777));
-        let city = p.tracks.iter().find(|t| t.role == Some(Role::City)).unwrap();
+        let city = &crate::ambience::merged(&p);
         assert!(city.notes.iter().any(|n| RainKind::of_key(n.key).is_some() && n.start == 0 && n.end() == p.end_tick()));
         assert_eq!(p.arrangement()[2].seed, Some(777));
         // made longer, it is written again with its own seed

@@ -2511,6 +2511,219 @@ pub fn factory() -> Vec<Patch> {
             spread: 0.5,
             ..named("Buzz Drone", Category::Drone)
         },
+        // ------------------------------------------- pastoral pads and drones (Canopy, Tarn)
+        // dawn strings: a warm string machine played slowly, two saws a little apart and a
+        // soft pulse an octave up, each key swelling in over four seconds
+        Patch {
+            layers: [
+                Layer {
+                    lpf: 1700.0,
+                    lpf_res: 0.12,
+                    filter_env: env(4.5, 4.0, 0.8, 6.0),
+                    env_amount: 0.6,
+                    key_track: 0.5,
+                    vel_to_filter: 0.4,
+                    amp_env: env(4.0, 6.0, 1.0, 6.0),
+                    detune: -8.0,
+                    pan: -0.45,
+                    vel_to_amp: 0.3,
+                    ..saw
+                },
+                Layer {
+                    octave: 1,
+                    saw: 0.4,
+                    pulse: 0.6,
+                    width: 0.35,
+                    pwm: 0.2,
+                    hpf: 300.0,
+                    lpf: 2600.0,
+                    filter_env: env(5.0, 4.0, 0.8, 6.0),
+                    env_amount: 0.4,
+                    key_track: 0.5,
+                    amp_env: env(4.5, 6.0, 1.0, 6.0),
+                    detune: 9.0,
+                    pan: 0.45,
+                    level: 0.4,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Triangle,
+            lfo_rate: 0.35,
+            lfo_delay: 0.0,
+            vibrato: 3.0,
+            lfo_to_filter: 0.08,
+            drift: 4.0,
+            spread: 0.8,
+            ..named("Dawn Strings", Category::Strings)
+        },
+        // breath choir: a tape keyboard's breathy voices, a soft hollow tone with a breath
+        // of filtered noise through it, wavering as old tape does
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.3,
+                    pulse: 0.6,
+                    width: 0.3,
+                    sine: 0.5,
+                    hpf: 220.0,
+                    lpf: 1500.0,
+                    lpf_res: 0.2,
+                    env_amount: 0.0,
+                    key_track: 0.6,
+                    amp_env: env(1.4, 5.0, 0.9, 3.5),
+                    detune: -5.0,
+                    pan: -0.3,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+                Layer {
+                    saw: 0.15,
+                    noise: 0.8,
+                    hpf: 700.0,
+                    lpf: 2200.0,
+                    lpf_res: 0.55,
+                    env_amount: 0.0,
+                    key_track: 1.0,
+                    amp_env: env(1.8, 5.0, 0.85, 3.5),
+                    detune: 6.0,
+                    pan: 0.3,
+                    level: 0.35,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.55,
+            lfo_delay: 0.0,
+            vibrato: 7.0,
+            drift: 7.0,
+            spread: 0.7,
+            ..named("Breath Choir", Category::Pad)
+        },
+        // amber: a warm saw pad behind a closed filter that opens as slowly as it swells,
+        // gently wobbling like a stretched tape
+        Patch {
+            layers: [
+                Layer {
+                    lpf: 520.0,
+                    lpf_res: 0.22,
+                    filter_env: env(5.0, 6.0, 0.7, 6.0),
+                    env_amount: 1.3,
+                    key_track: 0.5,
+                    vel_to_filter: 0.5,
+                    amp_env: env(3.5, 6.0, 1.0, 6.0),
+                    detune: -11.0,
+                    pan: -0.5,
+                    drive: 0.1,
+                    vel_to_amp: 0.3,
+                    ..saw
+                },
+                Layer {
+                    lpf: 600.0,
+                    lpf_res: 0.18,
+                    filter_env: env(6.0, 6.0, 0.7, 6.0),
+                    env_amount: 1.2,
+                    key_track: 0.5,
+                    vel_to_filter: 0.5,
+                    amp_env: env(4.0, 6.0, 1.0, 6.0),
+                    detune: 12.0,
+                    pan: 0.5,
+                    level: 0.75,
+                    vel_to_amp: 0.3,
+                    ..saw
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.42,
+            lfo_delay: 0.0,
+            vibrato: 6.0,
+            drift: 8.0,
+            spread: 0.9,
+            ..named("Amber Pad", Category::Pad)
+        },
+        // meadow: a soft sine and a rounded, triangle-like tone an octave down, breathing
+        // slowly in and out
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.0,
+                    sine: 1.0,
+                    lpf: 900.0,
+                    env_amount: 0.0,
+                    amp_env: env(6.0, 6.0, 1.0, 9.0),
+                    detune: -3.0,
+                    pan: -0.3,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: -1,
+                    saw: 0.0,
+                    pulse: 0.5,
+                    width: 0.5,
+                    sine: 0.8,
+                    lpf: 380.0,
+                    lpf_res: 0.05,
+                    env_amount: 0.0,
+                    key_track: 0.8,
+                    amp_env: env(8.0, 6.0, 1.0, 9.0),
+                    detune: 3.0,
+                    pan: 0.3,
+                    level: 0.7,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.08,
+            tremolo: 0.25,
+            lfo_delay: 0.0,
+            drift: 2.0,
+            spread: 0.6,
+            ..named("Meadow Drone", Category::Drone)
+        },
+        // loam: a deep analogue drone, a saw and pulse in a dark low-pass over a sine an
+        // octave down, its pitch wandering a little as an old oscillator's does
+        Patch {
+            layers: [
+                Layer {
+                    saw: 0.8,
+                    pulse: 0.4,
+                    width: 0.4,
+                    pwm: 0.2,
+                    lpf: 240.0,
+                    lpf_res: 0.3,
+                    env_amount: 0.0,
+                    key_track: 0.5,
+                    amp_env: env(5.0, 6.0, 1.0, 8.0),
+                    detune: -6.0,
+                    pan: -0.25,
+                    drive: 0.2,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+                Layer {
+                    octave: -1,
+                    saw: 0.0,
+                    sine: 1.0,
+                    lpf: 300.0,
+                    env_amount: 0.0,
+                    amp_env: env(6.0, 6.0, 1.0, 8.0),
+                    pan: 0.25,
+                    level: 0.7,
+                    vel_to_amp: 0.3,
+                    ..Layer::default()
+                },
+            ],
+            lfo_shape: LfoShape::Sine,
+            lfo_rate: 0.05,
+            lfo_to_filter: 0.6,
+            lfo_delay: 0.0,
+            drift: 14.0,
+            spread: 0.5,
+            ..named("Loam Drone", Category::Drone)
+        },
         Patch::default(),
     ]
 }

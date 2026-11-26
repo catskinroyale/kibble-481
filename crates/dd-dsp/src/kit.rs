@@ -93,6 +93,12 @@ pub mod fx {
     /// A playground across the field: children calling, laughing and chattering, far
     /// off, for as long as it's held.
     pub const PLAYGROUND: u8 = 125;
+    /// Crickets in the grass at dusk: chirping near and far, out of step, for as long
+    /// as it's held.
+    pub const CRICKETS: u8 = 126;
+    /// A breeze through the trees: soft gusts of air and the leaves rustling with them,
+    /// for as long as it's held.
+    pub const BREEZE: u8 = 127;
 }
 
 /// The drum kit's General MIDI program: the Orchestra kit's place, so a General
@@ -188,7 +194,7 @@ pub fn effects(sr: f64) -> Vec<Sound> {
         pitched(fx::PIPE, "Pipe Clang", 0.55, pipe(sr)),
         one(fx::STEAM, "Steam Hiss", 0.3, steam(sr)),
         looping(fx::TICKING, "Ticking", 0.25, ticking(sr), (0.3, 1.0)),
-        looping(fx::TAPE_HISS, "Tape Hiss", 0.2, tape_hiss(sr), (1.5, 2.0)),
+        looping(fx::TAPE_HISS, "Tape Hiss", 0.06, tape_hiss(sr), (1.5, 2.0)),
         one(fx::SCRAPE, "Metal Scrape", 0.4, scrape(sr)),
         looping(fx::ENGINE, "Engine Throb", 0.7, engine(sr), (2.0, 3.0)),
         looping(fx::PUMP, "Life Support", 0.45, pump(sr), (0.5, 1.5)),
@@ -196,6 +202,8 @@ pub fn effects(sr: f64) -> Vec<Sound> {
         looping(fx::CRACKLE, "Vinyl Crackle", 0.35, crackle(sr), (0.5, 1.5)),
         looping(fx::BIRDS, "Birdsong", 0.4, birds(sr), (3.0, 4.0)),
         looping(fx::PLAYGROUND, "Playground", 0.4, playground(sr), (3.0, 4.0)),
+        looping(fx::CRICKETS, "Crickets", 0.35, crickets(sr), (3.0, 4.0)),
+        looping(fx::BREEZE, "Breeze", 0.45, breeze(sr), (4.0, 5.0)),
     ]
 }
 
@@ -1404,6 +1412,75 @@ fn playground(sr: f64) -> (Vec<f64>, (usize, usize)) {
     guarded(filtered)
 }
 
+/// Crickets in the grass: each a chirp of three or four quick pulses of a high tone, again
+/// and again at its own pace, some near and some far (duller and quieter), and a faint
+/// breath of night air under them.
+fn crickets(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let secs = 10.0;
+    let n = len(sr, secs);
+    let mut noise = Noise::new(65);
+    let mut air = Svf::default();
+    let mut out = crossfaded(sr, secs, 1.0, |_| air.run(noise.next(), 400.0, 0.6, sr).low * 0.03).0;
+    out.truncate(n);
+    for c in 0..7u32 {
+        let hz = 3900.0 + 1400.0 * noise.unit();
+        let near = 0.15 + 0.85 * noise.unit().powi(2);
+        // pulses a chirp and how fast they come; chirps a second; how far off (duller)
+        let pulses = 3 + (noise.unit() * 2.0) as usize;
+        let pulse_secs = 1.0 / (24.0 + 14.0 * noise.unit());
+        let every = 1.0 / (1.4 + 1.6 * noise.unit());
+        let dull = 2500.0 + 6000.0 * near;
+        let chirp: Vec<f64> = {
+            let mut osc = Osc::default();
+            let mut lp = Svf::default();
+            let m = len(sr, pulse_secs * pulses as f64);
+            (0..m)
+                .map(|j| {
+                    let t = j as f64 / sr;
+                    let ph = (t / pulse_secs).fract();
+                    // each pulse a quick rise and fall, a little apart from the next
+                    let env = if ph < 0.6 { (ph / 0.6 * PI).sin().powi(2) } else { 0.0 };
+                    lp.run(osc.next(hz * (1.0 + 0.01 * ph), sr) * env, dull, 0.7, sr).low
+                })
+                .collect()
+        };
+        // each cricket rests now and then, and starts wherever it likes in the loop
+        let mut at = noise.unit() * every;
+        let mut k = 0usize;
+        while at < secs {
+            if (k + c as usize) % 9 < 7 {
+                lay(&mut out, len(sr, at), &chirp, near * (0.8 + 0.2 * noise.unit()));
+            }
+            at += every * (0.95 + 0.1 * noise.unit());
+            k += 1;
+        }
+    }
+    guarded(out)
+}
+
+/// A breeze through the trees: the air itself (low, soft noise) swelling in slow gusts,
+/// and the leaves (a brighter band of noise, fluttering quickly) rustling with each gust.
+fn breeze(sr: f64) -> (Vec<f64>, (usize, usize)) {
+    let mut noise = Noise::new(66);
+    let (mut low, mut leaf_hp, mut leaf_lp) = (Svf::default(), Svf::default(), Svf::default());
+    let mut flutter = 0.0f64;
+    crossfaded(sr, 14.0, 2.5, |t| {
+        // gusts: slow sines out of step, never quite still
+        let gust = (0.55 + 0.25 * (TAU * 0.071 * t).sin() + 0.2 * (TAU * 0.163 * t + 1.3).sin()).max(0.05);
+        let n = noise.next();
+        let air = low.run(n, 280.0 + 500.0 * gust, 0.9, sr).low * gust;
+        // the leaves: a new flutter level every so often, eased towards
+        if noise.unit() < 40.0 / sr {
+            flutter = noise.unit();
+        }
+        let f = flutter * (1.0 - 1.0 / (0.03 * sr));
+        flutter = f;
+        let leaves = leaf_lp.run(leaf_hp.run(noise.next(), 2200.0, 0.7, sr).high, 6500.0, 0.7, sr).low;
+        let rustle = leaves * gust.powi(3) * (0.3 + 0.7 * f) * 0.45;
+        air + rustle
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1413,7 +1490,8 @@ mod tests {
         for s in drums(44100.0).into_iter().chain(effects(44100.0)) {
             assert!(s.data.iter().all(|v| v.is_finite() && v.abs() <= 1.0), "{}", s.name);
             let peak = s.data.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-            assert!(peak > 0.1, "{} is silent", s.name);
+            // (tape hiss is made faint on purpose, D36)
+            assert!(peak > 0.03, "{} is silent", s.name);
             if s.looped.is_none() {
                 assert!(s.data.last().unwrap().abs() < 1e-3, "{} ends with a click", s.name);
             }
@@ -1441,7 +1519,18 @@ mod tests {
             assert_eq!((s.keys, s.root), ((base, base + 11), base + 6), "{name}");
             assert_eq!(base % 12, 0, "{name}");
         }
-        for name in ["Ticking", "Tape Hiss", "Engine Throb", "Life Support", "Radio Static", "Vinyl Crackle", "Birdsong", "Playground"] {
+        for name in [
+            "Ticking",
+            "Tape Hiss",
+            "Engine Throb",
+            "Life Support",
+            "Radio Static",
+            "Vinyl Crackle",
+            "Birdsong",
+            "Playground",
+            "Crickets",
+            "Breeze",
+        ] {
             let s = fx.iter().find(|s| s.name == name).unwrap();
             let (a, b) = s.looped.unwrap();
             assert_eq!(s.data[b..b + 8], s.data[a..a + 8], "{name}");

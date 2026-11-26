@@ -99,6 +99,9 @@ pub struct Settings {
     pub stems_with_gallery: bool,
     /// A new piece keeps the current tracks' sounds and mix.
     pub keep_sounds: bool,
+    /// New notes (and a new piece) turn each track's density and complexity somewhere
+    /// new (D36).
+    pub vary_dials: bool,
     /// Ask GitHub for a newer release when the app opens.
     pub check_updates: bool,
 }
@@ -120,6 +123,7 @@ impl Default for Settings {
             volume: 0.9,
             stems_with_gallery: false,
             keep_sounds: false,
+            vary_dials: true,
             check_updates: true,
         }
     }
@@ -357,6 +361,8 @@ impl App {
                 ("cinder", dd_seq::compose::Style::Cinder),
                 ("filmstrip", dd_seq::compose::Style::Filmstrip),
                 ("strata", dd_seq::compose::Style::Strata),
+                ("canopy", dd_seq::compose::Style::Canopy),
+                ("tarn", dd_seq::compose::Style::Tarn),
             ] {
                 if snap.wants(w)
                     && let Some(r) = &mut app.doc.project.recipe
@@ -581,6 +587,18 @@ impl App {
         }
     }
 
+    /// The panic button: stop where it is (a take ends), and silence every note and the
+    /// reverb's, echo's and tape's tails at once, for a clean start.
+    pub(crate) fn panic_stop(&mut self) {
+        if self.recording() {
+            self.stop_recording();
+        } else if self.playing() {
+            self.send(Cmd::Pause);
+        }
+        self.panic();
+        self.status = "Panic: everything silenced".into();
+    }
+
     pub(crate) fn panic(&mut self) {
         self.live.release_all();
         self.send(Cmd::Panic);
@@ -652,13 +670,15 @@ impl App {
     }
 
     /// Write the piece again for a recipe at the current tempo, metre and length.
-    pub(crate) fn recompose(&mut self, recipe: Recipe, keep: bool) {
-        self.recompose_to(recipe, keep, None);
+    /// `same_style`: the piece was in this style before (its dials and beds of ambience
+    /// are kept; another style brings its own).
+    pub(crate) fn recompose(&mut self, recipe: Recipe, keep: bool, same_style: bool) {
+        self.recompose_to(recipe, keep, same_style, None);
     }
 
     /// Write the piece again for a recipe, to an arrangement of sections if one is
     /// given, else to the current one (if the composer can write it).
-    fn recompose_to(&mut self, recipe: Recipe, keep: bool, plan: Option<Vec<(dd_seq::project::Part, u32)>>) {
+    fn recompose_to(&mut self, recipe: Recipe, keep: bool, same_style: bool, plan: Option<Vec<(dd_seq::project::Part, u32)>>) {
         let old = &self.doc.project;
         let same_sections = plan.is_none();
         let mut p = match plan.or_else(|| old.plan()) {
@@ -669,6 +689,12 @@ impl App {
             keep_sounds(&mut p, old);
         }
         keep_levels(&mut p, old);
+        // the same style keeps its dials and its beds of ambience as they were set
+        // (the recipe may already name the new style: the caller knows)
+        if same_style {
+            dd_seq::shape::keep_dials(&mut p, old);
+            dd_seq::ambience::keep(&mut p, old);
+        }
         dd_seq::compose::keep_added(&mut p, old, keep);
         // the same sections keep the names they were given
         if same_sections && p.sections.len() == old.sections.len() {
@@ -707,6 +733,18 @@ impl App {
         }
     }
 
+    /// The selected track is always one of the music's (a bed of ambience isn't played,
+    /// recorded or edited in the roll): the nearest one after it, else before.
+    fn keep_sel_on_music(&mut self) {
+        let tracks = &self.doc.project.tracks;
+        if tracks.get(self.sel).is_none_or(|t| !t.ambience) {
+            return;
+        }
+        if let Some(i) = (self.sel..tracks.len()).chain((0..self.sel).rev()).find(|&i| !tracks[i].ambience) {
+            self.sel = i;
+        }
+    }
+
     /// A track's meter level.
     pub(crate) fn meter(&self, track: usize) -> f32 {
         self.meters.get(track).copied().unwrap_or(0.0)
@@ -721,7 +759,10 @@ impl App {
         style.settle(&mut r);
         let p = &self.doc.project;
         let plan = new_sections.then(|| dd_seq::compose::random_plan(&r, p.bpm, p.meter, p.length_bars.max(2)));
-        self.recompose_to(r, self.settings.keep_sounds, plan);
+        self.recompose_to(r, self.settings.keep_sounds, true, plan);
+        if self.settings.vary_dials {
+            dd_seq::shape::vary(&mut self.doc.project, r.seed);
+        }
         self.roll.fit_to(&self.doc.project);
         self.status = format!("\u{201c}{}\u{201d}: {} in {}, seed {}", self.doc.project.title, r.style.label(), r.key_label(), r.seed);
     }
@@ -858,11 +899,11 @@ impl App {
                 // a new seed brings new sounds, unless they're kept; a new style always
                 // brings its own (another style's instruments don't suit it)
                 let keep = r.style == old.style && (r.seed == old.seed || self.settings.keep_sounds);
-                self.recompose(r, keep);
+                self.recompose(r, keep, r.style == old.style);
                 self.status = format!("\u{201c}{}\u{201d}: {}, seed {}", self.doc.project.title, r.key_label(), r.seed);
             }
             (_, Some(r)) if before.untouched => {
-                self.recompose(r, true);
+                self.recompose(r, true, true);
                 self.status = format!("Written again for {} bars at {} bpm", self.doc.project.length_bars, self.doc.project.bpm);
             }
             _ if now.bars != before.bars => {
@@ -1408,6 +1449,7 @@ impl eframe::App for App {
         self.poll_job();
         self.poll_dialog(&ctx);
         self.update_meters(&ctx);
+        self.keep_sel_on_music();
         if self.recording() && !self.playing() && self.position() > 0.0 {
             // the take ran into the end
             self.stop_recording();

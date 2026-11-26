@@ -111,6 +111,14 @@ fn font(label: &'static str, file: &str, trim_db: f32, bundled: bool) -> Alt {
     Alt { label, source: Source::SoundFont { font: file.into(), bank: 0, program: 0, name: label.into() }, trim_db, bundled }
 }
 
+/// A preset of a bundled font by bank and program.
+fn preset(label: &'static str, file: &str, bank: u16, program: u8, trim_db: f32) -> Alt {
+    Alt { label, source: Source::SoundFont { font: file.into(), bank, program, name: label.into() }, trim_db, bundled: true }
+}
+
+/// The app's own synthesised font (pads made by the Ambient MIDI Generator).
+const AMBIENT_FONT: &str = "Ambient-Electronic.sf2";
+
 /// The sounds that can play a role, the usual choice first.
 pub fn alternatives(role: Role) -> Vec<Alt> {
     match role {
@@ -148,6 +156,12 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             synth("Solar Wind", 7.9),
             synth("Ashen Pad", 2.0),
             gm("Voice Oohs", 53, 0.7),
+            synth("Breath Choir", 6.9),
+            synth("Amber Pad", 3.3),
+            preset("Warm Analog Pad", AMBIENT_FONT, 0, 88, -0.6),
+            preset("Airy Choir", AMBIENT_FONT, 0, 91, 0.8),
+            preset("Glass Pad", AMBIENT_FONT, 0, 89, 1.3),
+            preset("Orchestra Pad", GM_FONT, 8, 48, 2.4),
         ],
         Role::Strings => vec![
             synth("Memory Strings", 0.0),
@@ -162,6 +176,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             gm("Violin", 40, -4.6),
             synth("String Machine", 2.5),
             synth("Tape Strings", 4.5),
+            synth("Dawn Strings", 3.9),
+            preset("Synth Strings 3", GM_FONT, 8, 50, -2.4),
         ],
         Role::Lead => vec![
             synth("Smoky Lead", 0.0),
@@ -247,6 +263,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             font("FM Piano (FreePats)", "FreePats-FM-Piano1.sf2", -4.0, false),
             font("Upright Piano (FreePats)", "FreePats-UprightPianoKW.sf2", -4.0, false),
             gm("Drawbar Organ", 16, -4.0),
+            preset("Chorused EP", GM_FONT, 8, 4, 0.2),
+            preset("Bell Tine EP", GM_FONT, 12, 4, 0.7),
         ],
         Role::Drone => vec![
             synth("Abyss Drone", 0.0),
@@ -262,6 +280,8 @@ pub fn alternatives(role: Role) -> Vec<Alt> {
             synth("Radiant Drone", -2.8),
             synth("Prism Drone", 4.3),
             synth("Buzz Drone", 1.3),
+            synth("Meadow Drone", -0.5),
+            synth("Loam Drone", 0.7),
         ],
         Role::City => vec![Alt { label: "City FX", source: Source::Kit(KitKind::CityFx), trim_db: 0.0, bundled: true }],
         Role::Drums => vec![

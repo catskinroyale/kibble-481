@@ -177,6 +177,10 @@ pub struct Track {
     /// The Pachinko unit and side its notes go through, which decides which play (D32).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route: Option<crate::pachinko::Route>,
+    /// A bed of background ambience (D36, `ambience`): one field sound under the music,
+    /// shown apart from the tracks with a switch and a level, not as a part.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ambience: bool,
 }
 
 /// A track's volume from the start of a bar (from 0): 100 is as the fader has it, 0 is
@@ -237,6 +241,7 @@ impl Default for Track {
             density: crate::shape::NEUTRAL,
             complexity: crate::shape::NEUTRAL,
             route: None,
+            ambience: false,
         }
     }
 }

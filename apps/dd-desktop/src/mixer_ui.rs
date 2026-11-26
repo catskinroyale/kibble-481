@@ -31,6 +31,10 @@ impl App {
                 let sel = self.sel;
                 let mut clicked = None;
                 for (i, tr) in self.doc.project.tracks.iter_mut().enumerate() {
+                    // (the beds of ambience have their levels under the tracks)
+                    if tr.ambience {
+                        continue;
+                    }
                     let frame = egui::Frame::new()
                         .fill(if i == sel { t.hover } else { t.inset })
                         .corner_radius(4.0)
@@ -300,8 +304,14 @@ fn fader(ui: &mut Ui, db: &mut f32, auto: Option<f32>, t: &Tokens) {
     let painter = ui.painter();
     let track = Rect::from_center_size(pos2(r.center().x, r.center().y), vec2(3.0, r.height() - 12.0));
     painter.rect_filled(track, 1.5, t.track);
+    // the groove in the meter's zones: red over 0 dB, amber down to -18, green below
+    for (lo, hi, col) in [(SILENT_DB, AMBER_DB, VU_GREEN), (AMBER_DB, 0.0, VU_AMBER), (0.0, TOP_DB, VU_RED)] {
+        let z = Rect::from_min_max(pos2(track.left(), y_of(hi)), pos2(track.right(), y_of(lo)));
+        painter.rect_filled(z, 0.0, col.gamma_multiply(0.55));
+    }
     let zero = y_of(0.0);
     painter.hline(r.x_range(), zero, Stroke::new(1.0, t.text_dim.gamma_multiply(0.6)));
+    painter.hline(r.x_range().shrink(4.0), y_of(AMBER_DB), Stroke::new(1.0, t.text_dim.gamma_multiply(0.35)));
     let y = y_of(*db);
     let cap = Rect::from_center_size(pos2(r.center().x, y), vec2(16.0, 9.0));
     let fill = if resp.hovered() || resp.dragged() { t.thumb_hover } else { t.thumb };
@@ -337,28 +347,80 @@ fn pos_db(x: f32) -> f32 {
     }
 }
 
-/// Peak meters, one bar per level, on the fader's scale.
+/// The meters' colour zones, as on a VU meter (D36): green up to the alignment level,
+/// amber above it, red at the top. The alignment level is EBU R68's -18 dBFS (a digital
+/// 0 VU, a sine at 0 dBu); red starts at 0 dB, taken as -0.5 dBFS, just under full
+/// scale (the mixes' own ceiling is 0.95, -0.45 dBFS). On a fader, the same scale: red
+/// over 0 dB (gain added), amber down to -18, green below.
+pub(crate) const AMBER_DB: f32 = -18.0;
+pub(crate) const RED_DB: f32 = -0.5;
+pub(crate) const VU_GREEN: egui::Color32 = egui::Color32::from_rgb(70, 200, 96);
+pub(crate) const VU_AMBER: egui::Color32 = egui::Color32::from_rgb(255, 178, 36);
+pub(crate) const VU_RED: egui::Color32 = egui::Color32::from_rgb(240, 58, 48);
+
+/// A level as dB, the silence floor for nothing.
+fn to_db(level: f32) -> f32 {
+    if level > 1e-6 { 20.0 * level.log10() } else { SILENT_DB }
+}
+
+/// Fill `bar` (from its bottom, or its left) as a VU meter's lamps: each zone's colour
+/// up to the level, the zones faintly beyond it, in segments.
+fn vu_fill(painter: &egui::Painter, bar: Rect, db: f32, active: bool, vertical: bool, t: &Tokens) {
+    painter.rect_filled(bar, 1.0, t.canvas);
+    let len = if vertical { bar.height() } else { bar.width() };
+    let at = |d: f32| db_pos(d) * len;
+    let lit = at(db);
+    let zones = [(SILENT_DB, AMBER_DB, VU_GREEN), (AMBER_DB, RED_DB, VU_AMBER), (RED_DB, TOP_DB, VU_RED)];
+    for (lo, hi, col) in zones {
+        let (a, b) = (at(lo), at(hi));
+        // the zone faintly, so the scale reads green, amber, red even in silence
+        let span = |x0: f32, x1: f32| {
+            if vertical {
+                Rect::from_min_max(pos2(bar.left(), bar.bottom() - x1), pos2(bar.right(), bar.bottom() - x0))
+            } else {
+                Rect::from_min_max(pos2(bar.left() + x0, bar.top()), pos2(bar.left() + x1, bar.bottom()))
+            }
+        };
+        painter.rect_filled(span(a, b), 0.0, col.gamma_multiply(0.12));
+        if lit > a + 0.5 {
+            let c = if active { col } else { col.gamma_multiply(0.35) };
+            painter.rect_filled(span(a, lit.min(b)), 0.0, c);
+        }
+    }
+    // the lamps: thin gaps across the bar every few points
+    let step = 3.0;
+    let mut x = step;
+    while x < len {
+        if vertical {
+            painter.hline(bar.x_range(), bar.bottom() - x, Stroke::new(1.0, t.canvas));
+        } else {
+            painter.vline(bar.left() + x, bar.y_range(), Stroke::new(1.0, t.canvas));
+        }
+        x += step;
+    }
+}
+
+/// Peak meters, one bar per level, on the fader's scale, in VU colours.
 fn meter(ui: &mut Ui, levels: &[f32], active: bool, t: &Tokens) {
     let w = 5.0 * levels.len() as f32 + 2.0 * (levels.len() as f32 - 1.0);
-    let (r, _) = ui.allocate_exact_size(vec2(w, FADER_H), Sense::hover());
+    let (r, resp) = ui.allocate_exact_size(vec2(w, FADER_H), Sense::hover());
     let painter = ui.painter();
     let span = r.height() - 12.0;
     for (i, l) in levels.iter().enumerate() {
         let bar = Rect::from_min_size(pos2(r.left() + i as f32 * 7.0, r.top() + 6.0), vec2(5.0, span));
-        painter.rect_filled(bar, 1.0, t.canvas);
-        let db = if *l > 1e-6 { 20.0 * l.log10() } else { SILENT_DB };
-        let h = span * db_pos(db);
-        if h > 0.5 {
-            let col = if db > -0.5 {
-                t.alert
-            } else if db > -6.0 {
-                t.caution
-            } else {
-                t.accent
-            };
-            let col = if active { col } else { col.gamma_multiply(0.35) };
-            painter.rect_filled(Rect::from_min_max(pos2(bar.left(), bar.bottom() - h), bar.max), 1.0, col);
-        }
+        vu_fill(painter, bar, to_db(*l), active, true, t);
         painter.rect_stroke(bar, 1.0, Stroke::new(1.0, t.button_border.gamma_multiply(0.5)), StrokeKind::Outside);
     }
+    let peak = levels.iter().fold(0.0f32, |m, l| m.max(*l));
+    resp.on_hover_text(format!(
+        "Peak {}. Green below -18 dBFS (the alignment level, 0 VU), amber up to 0 dB, red at 0 dB (full scale)",
+        db_text(to_db(peak))
+    ));
+}
+
+/// A small level meter lying down (the beds of ambience, the track list), in VU colours.
+pub(crate) fn vu_bar(ui: &mut Ui, level: f32, size: egui::Vec2, active: bool, t: &Tokens) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(size, Sense::hover());
+    vu_fill(ui.painter(), r, to_db(level), active, size.y > size.x, t);
+    resp
 }

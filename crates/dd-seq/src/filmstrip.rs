@@ -578,9 +578,9 @@ mod tests {
                 assert_eq!(starts(&p, name, (tail, p.end_tick())), 0, "seed {seed} {name}");
             }
             assert!(starts(&p, "Music Box", b[4]) >= 3, "seed {seed}");
-            let vinyl = track(&p, "Vinyl & Tape");
+            let vinyl = &crate::ambience::merged(&p);
             assert!(vinyl.notes.iter().any(|n| n.key == fx::CRACKLE && n.start == 0 && n.end() == p.end_tick()));
-            let field = track(&p, "Field Recording");
+            let field = &crate::ambience::merged(&p);
             assert!(field.notes.iter().any(|n| n.key == fx::BIRDS) && field.notes.iter().any(|n| n.key == fx::PLAYGROUND));
             // the snare laid back on two and four; the hats' offbeats swung
             let drums = track(&p, "Drums");

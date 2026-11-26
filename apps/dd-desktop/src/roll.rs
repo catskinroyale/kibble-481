@@ -223,7 +223,7 @@ impl App {
         }
         ui.add_enabled_ui(can_regen, |ui| {
             ui.menu_button("New notes for one track", |ui| {
-                for (k, tr) in p.tracks.iter().enumerate() {
+                for (k, tr) in p.tracks.iter().enumerate().filter(|(_, t)| !t.ambience) {
                     let name = if k == self.sel { format!("{}  (selected)", tr.name) } else { tr.name.clone() };
                     if ui.button(name).clicked() {
                         act = Some(SectionAct::RegenerateTrack(i, k));
@@ -412,7 +412,8 @@ impl App {
             self.roll.selected.clear();
             self.roll.seen_track = self.sel;
         }
-        let n_tracks = self.doc.project.tracks.len();
+        // (the beds of ambience aren't parts: they have their own panel)
+        let n_tracks = self.doc.project.tracks.iter().filter(|t| !t.ambience).count().max(1);
         let row_h = (150.0 / n_tracks as f32).clamp(5.0, 16.0);
         let arr_h = row_h * n_tracks as f32 + 4.0;
         let head = Rect::from_min_max(full.min, pos2(full.right(), full.top() + HEAD_H));
@@ -972,8 +973,10 @@ impl App {
         self.grid_lines(&painter, grid, v, t, false);
         let p = &self.doc.project;
         let take = self.live.take.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|tk| (tk.track, tk.preview(p, self.heard())));
-        for (i, tr) in p.tracks.iter().enumerate() {
-            let top = rect.top() + 2.0 + i as f32 * row_h;
+        let shown: Vec<usize> = (0..p.tracks.len()).filter(|&i| !p.tracks[i].ambience).collect();
+        for (row_i, &i) in shown.iter().enumerate() {
+            let tr = &p.tracks[i];
+            let top = rect.top() + 2.0 + row_i as f32 * row_h;
             let row = Rect::from_min_max(pos2(rect.left(), top), pos2(rect.right(), top + row_h));
             if i == self.sel {
                 painter.rect_filled(row, 0.0, t.hover.gamma_multiply(0.6));
@@ -1012,8 +1015,8 @@ impl App {
         if resp.clicked()
             && let Some(pp) = resp.interact_pointer_pos()
         {
-            let i = ((pp.y - rect.top() - 2.0) / row_h) as usize;
-            if i < self.doc.project.tracks.len() {
+            let row_i = ((pp.y - rect.top() - 2.0) / row_h) as usize;
+            if let Some(&i) = shown.get(row_i) {
                 self.sel = i;
             }
         }
@@ -1087,7 +1090,7 @@ impl App {
         // other tracks, faintly
         if self.settings.ghosts {
             for (i, tr) in p.tracks.iter().enumerate() {
-                if i == self.sel || tr.source.is_drums() {
+                if i == self.sel || tr.source.is_drums() || tr.ambience {
                     continue;
                 }
                 let c = rgb(tr.color).gamma_multiply(0.16);
@@ -1106,7 +1109,15 @@ impl App {
                 |r: Rect| !(r.right() < grid.left() || r.left() > grid.right() || r.bottom() < grid.top() || r.top() > grid.bottom());
             // what its density and complexity dials do: notes left out faded, notes added
             // outlined (as written when both are straight up)
-            let shaped = dd_seq::shape::shape(&tr.notes, &tr.source, tr.density, tr.complexity, p.bar_ticks(), p.beat_ticks());
+            let shaped = dd_seq::shape::shape(
+                &tr.notes,
+                &tr.source,
+                tr.density,
+                tr.complexity,
+                p.bar_ticks(),
+                p.beat_ticks(),
+                &dd_seq::shape::scale_of(p),
+            );
             // and what its Pachinko route lets through (faded too)
             let through = dd_seq::pachinko::passed(p, self.sel, &tr.notes);
             let added_through = dd_seq::pachinko::passed(p, self.sel, &shaped.added);

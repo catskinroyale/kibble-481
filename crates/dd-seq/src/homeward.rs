@@ -1093,6 +1093,8 @@ mod tests {
                     | Style::Strata
                     | Style::Lumen
                     | Style::Mantra
+                    | Style::Canopy
+                    | Style::Tarn
             )
         }) {
             for seed in 0..20 {

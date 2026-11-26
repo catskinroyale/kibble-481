@@ -84,14 +84,14 @@ mod tests {
     use super::*;
     use crate::demo::rain_on_neon;
 
-    fn city(p: &Project) -> usize {
-        p.tracks.iter().position(|t| t.name == "City").unwrap()
+    fn city(p: &Project, name: &str) -> usize {
+        p.tracks.iter().position(|t| t.name == name).unwrap()
     }
 
     #[test]
     fn rain_changes_kind_and_comes_and_goes() {
         let mut p = rain_on_neon();
-        let c = city(&p);
+        let c = city(&p, "Rain");
         assert_eq!(rain(&p, c), Some(RainKind::City));
         set_rain(&mut p, c, Some(RainKind::Window));
         assert_eq!(rain(&p, c), Some(RainKind::Window));
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn thunder_toggles() {
         let mut p = rain_on_neon();
-        let c = city(&p);
+        let c = city(&p, "Thunder");
         assert!(has(&p, c, fx::THUNDER));
         set_layer(&mut p, c, fx::THUNDER, false);
         assert!(!has(&p, c, fx::THUNDER));

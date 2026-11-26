@@ -37,7 +37,10 @@ impl Document {
 
     pub fn load(path: &Path) -> Result<Document, String> {
         let s = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        serde_json::from_str(&s).map_err(|e| format!("{}: {e}", path.display()))
+        let mut doc: Document = serde_json::from_str(&s).map_err(|e| format!("{}: {e}", path.display()))?;
+        // (field sounds saved on City tracks open as beds of ambience, D36)
+        dd_seq::ambience::adopt_opened(&mut doc.project);
+        Ok(doc)
     }
 
     /// Where the gallery's images fall in the music as it stands.

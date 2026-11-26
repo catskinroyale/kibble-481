@@ -77,8 +77,10 @@ fn chases(source: &Source, key: u8) -> bool {
     match source {
         Source::Kit(KitKind::Drums) => false,
         Source::Kit(KitKind::CityFx) => {
-            matches!(key, fx::HUM | fx::NEON | fx::TAPE_HISS | fx::RADIO | fx::CRACKLE | fx::BIRDS | fx::PLAYGROUND)
-                || dd_dsp::rain::RainKind::of_key(key).is_some()
+            matches!(
+                key,
+                fx::HUM | fx::NEON | fx::TAPE_HISS | fx::RADIO | fx::CRACKLE | fx::BIRDS | fx::PLAYGROUND | fx::CRICKETS | fx::BREEZE
+            ) || dd_dsp::rain::RainKind::of_key(key).is_some()
                 || (fx::DRONE..fx::DRONE + 12).contains(&key)
                 || (fx::ANALOG_DRONE..fx::ANALOG_DRONE + 12).contains(&key)
         }
@@ -273,10 +275,11 @@ mod tests {
     fn chase_restarts_rain_but_not_thunder() {
         let p = rain_on_neon();
         let tl = Timeline::from_project(&p);
-        let city = p.tracks.iter().position(|t| t.name == "City").unwrap() as u16;
+        let rain = p.tracks.iter().position(|t| t.name == "Rain").unwrap() as u16;
+        let thunder = p.tracks.iter().position(|t| t.name == "Thunder").unwrap() as u16;
         let at = p.bar_secs() * 11.0 + 0.1 + p.bar_secs() * 0.75;
         let c = tl.chase(at);
-        assert!(c.iter().any(|&(t, m, _)| t == city && m == Msg::On(fx::RAIN, 100)));
-        assert!(!c.iter().any(|(t, m, _)| *t == city && matches!(m, Msg::On(fx::THUNDER, _))));
+        assert!(c.iter().any(|&(t, m, _)| t == rain && m == Msg::On(fx::RAIN, 100)));
+        assert!(!c.iter().any(|(t, m, _)| *t == thunder && matches!(m, Msg::On(fx::THUNDER, _))));
     }
 }

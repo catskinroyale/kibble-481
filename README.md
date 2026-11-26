@@ -77,7 +77,7 @@ fill it. Set the key and
 mode (minor, Dorian, Phrygian, harmonic minor), the seed (◀ ▶ to step through) and the
 density in the Score tab; the same settings always write the same piece.
 
-There are sixteen **styles**, each playing the same kinds of section its own way, all
+There are eighteen **styles**, each playing the same kinds of section its own way, all
 with the built-in synth, kits and bundled SoundFonts (nothing extra to download):
 
 - **Nocturne** (66 bpm): the slow, rain-soaked ballad described above.
@@ -253,6 +253,28 @@ with the built-in synth, kits and bundled SoundFonts (nothing extra to download)
   on a boom) and everything sinks back into the depths and the wind. The deepest reverb
   there is and a long dark echo. About -18 LUFS. Its tracks: Wind, Bedrock, Overtones,
   Choir, Sub, Depths, Metal and Bell.
+- **Canopy** (60 bpm, D Lydian): pastoral ambient electronica, serene and hopeful,
+  sunrise in a forest, with no beat. Birdsong and a breeze through the leaves (the new
+  **Breeze** field sound), and a soft drone of sine and rounded tones on the root and
+  fifth (the new **Meadow Drone**) breathing slowly in and out, from first to last. Warm
+  string-machine pads (the new **Dawn Strings**, each chord swelling in over four
+  seconds) through the ensemble chorus; a chorused electric piano plays a few notes now
+  and then with plenty of space around them, a celesta answers higher up, and a
+  glockenspiel rings once in a while, its pitch wobbling as if played from old tape. At
+  the fullest a warm analogue pad glows above the strings. Four bars a chord in the
+  Lydian mode (its II chord is major); a soft hall, light tape. About -16 LUFS. Its
+  tracks: Birdsong, Breeze, Drone, Strings, Glow, Electric Piano, Celesta and
+  Glockenspiel.
+- **Tarn** (54 bpm, A Dorian): warm pastoral ambient, nostalgic and wistful, golden
+  hour over a quiet lake, with no beat. Crickets (the new **Crickets** field sound), a
+  breeze, a record's dust and tape hiss, and a deep analogue drone on the root whose
+  pitch drifts a little (the new **Loam Drone**). Breathy tape-choir pads (the new
+  **Breath Choir**) and a warm filtered saw pad (the new **Amber Pad**) swell in slowly,
+  both wavering like stretched tape; a felt piano (the grand piano, soft and dark) plays
+  one simple motif with long pauses, a little varied each time, and a nylon guitar far
+  off plucks a slow broken chord now and then. A wide cloud of reverb, a long echo and
+  worn tape. About -16.8 LUFS. Its tracks: Crickets, Breeze, Vinyl & Tape, Drone, Tape
+  Choir, Amber Pad, Felt Piano and Nylon Guitar.
 
 Choosing a style sets the tempo it suits (change it after if you like) and, unless **New
 seeds keep my sounds and mix** is on, the sounds it is written for. 🎲 New piece and New
@@ -262,7 +284,12 @@ notes keep the style.
 sections in whole chords, sometimes after an Intro (always in Noir), opening with a Neon
 (now and then a Swell), reaching at least
 one Night shift, never the same kind twice running, and ending on a Fade. **New notes**
-writes a new seed, key and mode to the sections as they stand.
+writes a new seed, key and mode to the sections as they stand. With **Vary dials** lit
+(the default) both also turn each track's density and complexity somewhere new (a third
+of the time left straight up), so a new seed brings a new texture as well as new notes:
+one take sparse and bare in open fifths, the next busy with arpeggios and passing notes.
+The drones and the ambience are left as they are. A new piece in the same style keeps its
+ambience as you set it.
 
 It follows the tempo, metre and length. Change any of them and a composed piece is written
 again to fit: the sections share a change of length in proportion, chords last about six seconds whatever the
@@ -295,8 +322,8 @@ switched on and off by the lamp by its name), then Glide, LFO and Touch; every s
 a small dial, straight up at its usual setting, and every choice (octave, LFO shape, mono
 legato) a neon lamp.
 
-64 factory patches, all original: eight brass, seven pads, five strings, nine leads,
-seven basses, six bells, four keys, four plucks, eleven drones and three atmospheres. Among them are
+69 factory patches, all original: eight brass, nine pads, six strings, nine leads,
+seven basses, six bells, four keys, four plucks, thirteen drones and three atmospheres. Among them are
 the sounds the CS-80's design is known for: brass that blooms and sags, strings with a
 delayed vibrato, resonant high- and low-pass "voices", a solo horn played with touch,
 ring-modulated bells, a clavinet and an organ. The bells keep to whole-number FM and ring
@@ -307,7 +334,7 @@ answer, bass, bells, pluck, keys, drone, city, drums), and the Sound tab offers 
 role's alternatives from a dropdown under the track in the track list, synth patches and
 SoundFont presets together (stopped, choosing one plays a short preview): brass
 from Neon Brass to the FreePats synth brass and a GM brass section, bass from Sub Pulse
-to a fretless, and so on, 75 in all. Each
+to a fretless, and so on, 143 in all. Each
 alternative is level-matched by measurement (within 1.5 dB of its role's usual sound), and
 swapping keeps the track's mix. The composer chooses from the same lists.
 
@@ -317,17 +344,27 @@ drops in a back street), chosen by measuring how far the drops stand above the q
 between them; light rain, and three denser washes (rain on a window, a wet street with
 traffic, heavy city rain) are there when wanted. Each plays as recorded and keeps going for
 as long as the note is held, moving between random stretches with slow crossfades so it
-never audibly loops. The rain, thunder, machinery hum and neon buzz are chosen from the
-dropdown under the City track in the track list. Credits in
-[`assets/samples/README.md`](assets/samples/README.md).
+never audibly loops. Credits in [`assets/samples/README.md`](assets/samples/README.md).
+
+**Ambience.** The field sounds under the music (rain, thunder, a machinery hum, a neon
+buzz, tape hiss, vinyl crackle, a far-off radio, birdsong, a playground, crickets, a
+breeze, and a ship's engines, life support and ticking) aren't tracks of notes but beds of
+ambience, listed under the tracks: each with a switch, a level in dB, a small meter and a ×
+to take it away (rain also chooses which of the nine). **+ Add** puts any of them under the
+music, held from start to end (thunder before the sections, the neon from the second). Each
+style brings its own (Canopy birdsong and a breeze, Tarn crickets, a breeze, tape hiss and
+crackle, Nocturne its rain, Noir none); the score's own effects (risers, booms, distant
+metal) stay a track, **Effects**. They play, render and export as before; pieces saved
+before open with their City tracks split into beds the same way, sounding just as they did.
 
 **The city kit** (from Ambient MIDI Generator, synthesised): machinery
 hum and a buzzing neon sign that loop for as long as you hold the key, thunder, distant
 metal, sub booms, braams, risers, reversed cymbals, glass grains, drones and timpani; a
 derelict ship's hull groaning and pipes clanging (both tuned), steam hissing, metal
 scraping, and throbbing engines, a life-support pump, ticking and tape hiss that loop for
-as long as you hold them; a far-off radio's static, a record's crackle, birdsong and a
-playground across the field, looping too; and a
+as long as you hold them; a far-off radio's static, a record's crackle, birdsong, a
+playground across the field, crickets in the grass and a breeze through the trees,
+looping too; and a
 drum kit of dull and heartbeat kicks, a gated snare far off, taiko, tabla and a ticking
 clock.
 
@@ -353,6 +390,8 @@ Load any other `.sf2` from the Sound tab.
   be quantised. Controller moves are recorded with the notes. Notes are stamped with the
   moment you heard them, allowing for the audio buffer.
 - **Loop** a range of bars (⇧-drag on the ruler) to work on a phrase.
+- **Panic**: the red **!** at the far left of the transport stops playback and silences
+  every note and the reverb's, echo's and tape's tails at once, for a clean start.
 
 ## Editing
 
@@ -363,12 +402,17 @@ Load any other `.sf2` from the Sound tab.
 - **Density and complexity**: two small dials on each track, beside its mute (over solo).
   Straight up plays the notes as written; the written notes never change. **Density**
   left leaves out the weakest notes first (off the beat, short and soft), down to about
-  the strongest sixth; right fills the gaps, striking held notes again and echoing hits,
-  on the quavers and then the semiquavers. **Complexity** left plays fewer notes of each
-  chord (the bass and top kept longest) and fewer of the different notes in each bar's
-  arpeggio or line (the lowest and most played kept longest); right adds the chord's top
-  an octave up, then its bass an octave down, and doubles some single notes an octave up
-  (on a drum kit: fewer drums, the kick and snare kept; then soft ghost notes). The roll
+  the strongest sixth, and near the end lets the few left ring on into the space; right
+  fills the gaps, striking held notes again and echoing hits, on the quavers and then the
+  semiquavers, more and more chords broken into arpeggios (up, down, or up and down).
+  **Complexity** left plays fewer notes of each chord (the bass and top kept longest) and
+  fewer of the different notes in each bar's arpeggio or line (the lowest and most played
+  kept longest), and near the end bares chords to open fifths; right adds the chord's top
+  an octave up, then its bass an octave down, and doubles some single notes an octave up,
+  then colours chords with the scale's next note above their top (sevenths, ninths),
+  harmonises a melody a third below and fills its leaps with passing notes, all in the
+  piece's key and mode (on a drum kit: fewer drums, the kick and snare kept; then soft
+  ghost notes). The roll
   shows notes left out faded and notes added as outlines; playback, WAV and MIDI export
   play them as heard. Double-click a dial to put it back.
 - **Pachinko** (Effects tab): two note gates, A and B, after a eurorack random-gate
@@ -421,7 +465,8 @@ Load any other `.sf2` from the Sound tab.
 
 Each track has a strip: a neon lamp, lit while the track is heard (not muted, nor silenced
 by another track's solo; the track list has the same lamp), pan and width, the fader with
-mute, solo and the ensemble chorus, and at the foot four small dials: reverb and echo sends over a **low cut** and a **high
+mute, solo and the ensemble chorus (the beds of ambience have their levels under the track
+list instead), and at the foot four small dials: reverb and echo sends over a **low cut** and a **high
 cut**. Each dial points straight up at its neutral setting (reverb at the usual 35%, no
 echo, both cuts off): turn the reverb either way, the echo and low cut right, the high cut
 left. Drag up or right to turn clockwise; double-click for neutral. The cuts (12 dB an
@@ -438,6 +483,12 @@ the mixer's, Reverb, Echo and Ensemble: each choice (the reverb space, echo time
 interval, tuning, and Freeze and Ping-pong) is a neon lamp and its name, lit when chosen;
 click one to choose it. Under them are the settings as small dials, two to a row, as on
 the mixer (the shimmer's own are greyed out in the other spaces).
+
+The meters (and the small ones in the track list and the ambience) read like VU lamps:
+**green** below -18 dBFS, the alignment level (EBU R68's digital 0 VU, a 0 dBu sine),
+**amber** from there to 0 dB, **red** at 0 dB (taken as -0.5 dBFS, just under full scale:
+the mixes' own ceiling is 0.95). Each zone shows faintly even in silence, and the faders'
+grooves carry the same zones: red above 0 dB (gain added), amber down to -18, green below.
 
 ## Getting it out
 

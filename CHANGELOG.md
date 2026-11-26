@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.14.0 — 2026-11-26
+
+- **Ambience, not tracks**: the field sounds under the music (rain, thunder, hum, neon,
+  tape hiss, vinyl crackle, radio static, birdsong, playground, crickets, breeze, a ship's
+  engines, life support, ticking) are now beds of ambience, listed under the tracks, each
+  with an on/off lamp, a level in dB, a small meter and a × to take it away; **+ Add**
+  puts any of them under the music. Each style brings its own; a new piece in the same
+  style keeps them as you set them. The track list, roll and mixer show just the music.
+  Older pieces open with their City tracks split into beds the same way, sounding as they
+  did; risers, booms and metal stay a track, **Effects**.
+- **Tape hiss** is now very faint (about 10 dB quieter) in every style that uses it.
+- **Density and complexity do much more**, in the piece's key and mode. Complexity right
+  colours chords with sevenths and ninths, harmonises a melody a third below and fills its
+  leaps with passing notes; left, near the end, bares chords to open fifths. Density right
+  breaks more and more chords into arpeggios (up, down, or up and down); left, near the
+  end, lets the few notes left ring on into the space.
+- **Vary dials** (Score tab, on by default): New notes and New piece turn each track's
+  density and complexity somewhere new, so a new seed brings a new texture too (drones and
+  ambience left alone). A piece written again in the same style now keeps its dials.
+- **Panic** is now a red **!** at the far left of the transport, and stops playback as
+  well as silencing every note and the effects' tails.
+- **VU-style meters**: green below -18 dBFS (the alignment level, 0 VU), amber up to 0 dB,
+  red at 0 dB, drawn as lamps, on the mixer, the track list and the ambience; the faders'
+  grooves show the same zones (red above 0 dB).
+- Momento and Noir no longer pick the electric pianos added for Canopy and Tarn.
+- **Two new pastoral scores**, beatless (the seventeenth and eighteenth styles offered):
+  - **Canopy** (60 bpm, D Lydian): serene and hopeful, sunrise in a forest. Birdsong and
+    a breeze, a soft drone breathing on the root and fifth, warm string pads swelling in
+    over four seconds through the chorus, sparse electric piano and celesta phrases with
+    plenty of space, and now and then a glockenspiel wobbling as if from old tape; a
+    soft hall and light tape.
+  - **Tarn** (54 bpm, A Dorian): warm, nostalgic and wistful, golden hour over a quiet
+    lake. Crickets, a breeze, vinyl dust and tape hiss, a deep drone drifting slightly,
+    breathy tape-choir and filtered saw pads, a felt piano's simple motif with long
+    pauses, and a nylon guitar far off; a wide cloud of reverb and worn tape.
+- **Lydian** joins the modes in the Score tab while a style written in it is chosen.
+- **Five new synth sounds**: Dawn Strings (a warm string machine, slow to swell), Breath
+  Choir (a tape keyboard's breathy voices), Amber Pad (a warm filtered saw pad, slow to
+  open, wavering), Meadow Drone (soft sine and rounded tones, breathing) and Loam Drone
+  (deep and analogue, its pitch wandering).
+- **Seven more pads and keys from the bundled SoundFonts**, now alternatives in the Sound
+  tab: Warm Analog Pad, Airy Choir and Glass Pad (from the app's own Ambient Electronic
+  font), and from GeneralUser GS's variation banks the Orchestra Pad, Synth Strings 3, a
+  chorused tine electric piano (Chorused EP) and a Bell Tine EP.
+- **Two new field sounds** in the city kit, looping as long as they're held: Crickets
+  and Breeze (wind through the trees, the leaves rustling with each gust).
+
 ## 0.13.2 — 2026-11-25
 
 - **Reorder images**: a new step in Plan and export opens a pane of the folder's photos as
