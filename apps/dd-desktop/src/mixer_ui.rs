@@ -424,3 +424,87 @@ pub(crate) fn vu_bar(ui: &mut Ui, level: f32, size: egui::Vec2, active: bool, t:
     vu_fill(ui.painter(), r, to_db(level), active, size.y > size.x, t);
     resp
 }
+
+/// The mixer's fader lying down, for the beds of ambience: the groove in the meter's
+/// zones, the level lit along its top as a thin VU strip, and discreet dB marks under
+/// it (the far left is silence). Double-click for 0 dB.
+pub(crate) fn hfader(ui: &mut Ui, db: &mut f32, level: f32, active: bool, width: f32, t: &Tokens) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(width, 22.0), Sense::click_and_drag());
+    let (x0, x1) = (r.left() + 5.0, r.right() - 5.0);
+    let x_of = |d: f32| x0 + (x1 - x0) * db_pos(d);
+    if (resp.dragged() || resp.clicked())
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        *db = pos_db(((p.x - x0) / (x1 - x0)).clamp(0.0, 1.0));
+    }
+    if resp.double_clicked() {
+        *db = 0.0;
+    }
+    let painter = ui.painter();
+    // the level, a thin strip of lamps along the top
+    vu_fill(painter, Rect::from_min_max(pos2(x0, r.top() + 1.0), pos2(x1, r.top() + 4.0)), to_db(level), active, false, t);
+    // the groove
+    let gy = r.top() + 9.0;
+    let groove = Rect::from_min_max(pos2(x0, gy - 1.5), pos2(x1, gy + 1.5));
+    painter.rect_filled(groove, 1.5, t.track);
+    for (lo, hi, col) in [(SILENT_DB, AMBER_DB, VU_GREEN), (AMBER_DB, 0.0, VU_AMBER), (0.0, TOP_DB, VU_RED)] {
+        let z = Rect::from_min_max(pos2(x_of(lo), groove.top()), pos2(x_of(hi), groove.bottom()));
+        painter.rect_filled(z, 0.0, col.gamma_multiply(if active { 0.55 } else { 0.25 }));
+    }
+    // the marks: a tick at each, a number under the main ones
+    let mark = t.text_dim.gamma_multiply(0.7);
+    for (d, label) in [(-40.0, Some("−40")), (-18.0, Some("−18")), (-6.0, None), (0.0, Some("0")), (TOP_DB, Some("+6"))] {
+        let x = x_of(d);
+        painter.vline(x, (gy + 3.0)..=(gy + 5.5), Stroke::new(1.0, mark));
+        if let Some(l) = label {
+            painter.text(pos2(x, gy + 5.0), Align2::CENTER_TOP, l, egui::FontId::proportional(7.5), mark);
+        }
+    }
+    // the cap
+    let x = x_of(*db);
+    let cap = Rect::from_center_size(pos2(x, gy), vec2(7.0, 11.0));
+    let fill = if resp.hovered() || resp.dragged() { t.thumb_hover } else { t.thumb };
+    painter.rect_filled(cap, 2.0, fill);
+    painter.vline(x, cap.y_range().shrink(2.5), Stroke::new(1.0, t.inset));
+    resp.on_hover_text(format!("{} · drag to set, double-click for 0 dB (far left: silent)", db_text(*db)))
+}
+
+/// A name in `width` that, when too long to fit, scrolls slowly to its end and back
+/// while the pointer rests on it.
+pub(crate) fn marquee(ui: &mut Ui, text: &str, width: f32, font: egui::FontId, color: egui::Color32, bg: egui::Color32) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(width, 18.0), Sense::click());
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
+    let over = (galley.size().x - width).max(0.0);
+    let id = resp.id.with("marquee");
+    let now = ui.input(|i| i.time);
+    let mut shift = 0.0;
+    if resp.hovered() && over > 0.0 {
+        let since: f64 = ui.data_mut(|d| *d.get_temp_mut_or_insert_with(id, || now));
+        // a pause, then 18 points a second to the end, a pause, and back
+        let (wait, speed) = (0.6, 18.0);
+        let run = over as f64 / speed;
+        let cycle = 2.0 * (wait + run);
+        let p = (now - since) % cycle;
+        shift = if p < wait {
+            0.0
+        } else if p < wait + run {
+            (p - wait) * speed
+        } else if p < 2.0 * wait + run {
+            over as f64
+        } else {
+            over as f64 - (p - 2.0 * wait - run) * speed
+        } as f32;
+        ui.ctx().request_repaint();
+    } else {
+        ui.data_mut(|d| d.remove::<f64>(id));
+    }
+    let painter = ui.painter().with_clip_rect(r);
+    painter.galley(pos2(r.left() - shift, r.center().y - galley.size().y / 2.0), galley, color);
+    if over > 0.0 && shift < over - 0.5 {
+        // an ellipsis at the cut-off edge says there's more
+        let edge = Rect::from_min_max(pos2(r.right() - 9.0, r.top()), r.max);
+        painter.rect_filled(edge, 0.0, bg);
+        painter.text(pos2(r.right(), r.center().y), Align2::RIGHT_CENTER, "…", egui::FontId::proportional(10.0), color);
+    }
+    resp
+}

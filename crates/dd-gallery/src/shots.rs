@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn fade_in_rises_from_black_at_each_start() {
-        let s = Slideshow { hold: 8.0, transition: Transition::FadeIn, fade_in: 2.0, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, transition: Transition::FadeIn, fade_in: 2.0, ..Slideshow::default() };
         let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 225, to: 400, fade_in: 50, fade_out: 0 });
         // black until the image's start, then up over 2 s (50 frames)
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn fade_out_falls_to_black_by_each_end() {
-        let s = Slideshow { hold: 8.0, transition: Transition::FadeOut, fade_out: 1.0, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, transition: Transition::FadeOut, fade_out: 1.0, ..Slideshow::default() };
         let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 200, to: 388, fade_in: 0, fade_out: 24 });
         assert_eq!(alpha(&sh, 200, 0), 1.0);
@@ -172,7 +172,14 @@ mod tests {
 
     #[test]
     fn in_and_out_each_their_own_length_within_the_image() {
-        let s = Slideshow { hold: 8.0, transition: Transition::FadeInOut, fade_in: 3.0, fade_out: 1.0, ..Slideshow::default() };
+        let s = Slideshow {
+            hold: 8.0,
+            by_chords: false,
+            transition: Transition::FadeInOut,
+            fade_in: 3.0,
+            fade_out: 1.0,
+            ..Slideshow::default()
+        };
         let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0], Shot { photo: 0, from: 237, to: 388, fade_in: 74, fade_out: 24 });
         assert_eq!(alpha(&sh, 200, 0), 0.0);
@@ -190,6 +197,7 @@ mod tests {
     fn fading_out_the_first_may_fade_in_and_the_last_fade_to_the_end() {
         let s = Slideshow {
             hold: 8.0,
+            by_chords: false,
             transition: Transition::FadeOut,
             fade_out: 1.0,
             first_fade_in: 2.0,
@@ -224,7 +232,7 @@ mod tests {
 
     #[test]
     fn crossfades_mix_the_two_and_cuts_dont() {
-        let s = Slideshow { hold: 8.0, transition: Transition::Crossfade, fade: 2.0, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, transition: Transition::Crossfade, fade: 2.0, ..Slideshow::default() };
         let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         // centred on the change at 16 s: the first whole beneath, the second rising
         assert_eq!(layers(&sh, 375), vec![(0, 1.0)]);

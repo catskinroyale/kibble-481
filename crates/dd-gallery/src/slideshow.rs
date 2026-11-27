@@ -49,7 +49,7 @@ pub fn tempo_to_fit(s: &Slideshow, meter: (u32, u32), bpm: f64, score_bars: u32,
     if fits(bpm) {
         return Some(bpm);
     }
-    if s.by_bars {
+    if s.even_bars() {
         return None;
     }
     let tenths = |b: f64| (b * 10.0).round() as i64;
@@ -147,6 +147,12 @@ pub struct Slideshow {
     pub by_bars: bool,
     /// Bars per image when `by_bars`: usually even, as chords and phrases come in twos.
     pub image_bars: u32,
+    /// Every image a whole phrase of the score: its chord length times one, two, four
+    /// or eight (or a half or quarter of a long chord), the intro whole chords too, so
+    /// every change lands on a chord change or halfway through one. Before `by_bars`.
+    /// New galleries start with it; older documents, without the field, keep their own.
+    #[serde(default)]
+    pub by_chords: bool,
     /// How each image gives way to the next.
     pub transition: Transition,
     /// Crossfade between images, in seconds.
@@ -188,6 +194,7 @@ impl Default for Slideshow {
             exact: false,
             by_bars: false,
             image_bars: 4,
+            by_chords: true,
             transition: Transition::Crossfade,
             fade: 6.0,
             fade_in: 1.0,
@@ -215,6 +222,28 @@ impl Slideshow {
         Ok(if self.order == crate::resolve::PhotoOrder::Custom { crate::resolve::arrange(found, &self.arranged) } else { found })
     }
 
+    /// Whether the images change only on bar lines counted from the start (not exact
+    /// seconds or the music's accents).
+    pub fn even_bars(&self) -> bool {
+        self.chords() || self.by_bars
+    }
+
+    /// Whether the images keep to the chords: `by_chords`, unless exact seconds or bars
+    /// per image were asked for.
+    pub fn chords(&self) -> bool {
+        self.by_chords && !self.exact && !self.by_bars
+    }
+
+    /// Bars of intro: with the chords, rounded up to whole chords (or whole images, when
+    /// an image is shorter than a chord) so the first image starts on a chord change.
+    pub fn intro_on(&self, grid: &Grid) -> u32 {
+        if !self.chords() {
+            return self.intro_bars;
+        }
+        let step = phrase_bars(self, grid).min(grid.chord.max(1));
+        self.intro_bars.div_ceil(step) * step
+    }
+
     /// The fade centred on each change that editors overlap the clips for (a crossfade
     /// or a dip to black), in seconds; none for the other transitions.
     pub fn dissolve(&self) -> f64 {
@@ -237,11 +266,23 @@ pub struct Grid {
     pub beats_per_bar: u32,
     pub bpm: f64,
     pub meter: (u32, u32),
+    /// Bars a chord (1 when not known): the score's harmonic rhythm.
+    pub chord: u32,
 }
 
 impl Grid {
     pub fn new(bpm: f64, meter: (u32, u32)) -> Self {
-        Grid { beat: 60.0 / bpm * 4.0 / meter.1 as f64, beats_per_bar: meter.0, bpm, meter }
+        Grid { beat: 60.0 / bpm * 4.0 / meter.1 as f64, beats_per_bar: meter.0, bpm, meter, chord: 1 }
+    }
+
+    /// A project's grid, its chords' length included.
+    pub fn of(p: &Project) -> Self {
+        Grid { chord: dd_seq::compose::chord_bars_at(p, p.bpm), ..Grid::new(p.bpm, p.meter) }
+    }
+
+    /// The grid at another tempo, the chords as long as the score's would be there.
+    pub fn at(p: &Project, bpm: f64) -> Self {
+        Grid { chord: dd_seq::compose::chord_bars_at(p, bpm), ..Grid::new(bpm, p.meter) }
     }
 
     pub fn bar(&self) -> f64 {
@@ -253,6 +294,28 @@ impl Grid {
         let beats = (secs / self.beat).round() as u32;
         format!("{}.{}", beats / self.beats_per_bar + 1, beats % self.beats_per_bar + 1)
     }
+}
+
+/// The image lengths that keep to the chords of `chord` bars: the chord, two, four or
+/// eight of them, or a half or quarter of one (whole bars, at most MAX_IMAGE_BARS).
+pub fn phrase_choices(chord: u32) -> Vec<u32> {
+    let cb = chord.max(1);
+    let mut out: Vec<u32> = [4u32, 2].into_iter().filter(|d| cb.is_multiple_of(*d)).map(|d| cb / d).collect();
+    out.extend([1u32, 2, 4, 8, 16].into_iter().map(|m| cb * m).filter(|n| *n <= 32.min(MAX_IMAGE_BARS)));
+    out.dedup();
+    out
+}
+
+/// Bars per image with the chords: `image_bars` if it keeps to them, else the choice
+/// nearest the time aimed for (the longer phrase on a tie).
+pub fn phrase_bars(s: &Slideshow, grid: &Grid) -> u32 {
+    let choices = phrase_choices(grid.chord);
+    if choices.contains(&s.image_bars) {
+        return s.image_bars;
+    }
+    let aim = s.hold as f64;
+    let off = |n: u32| (n as f64 * grid.bar() - aim).abs();
+    choices.into_iter().min_by(|a, b| off(*a).total_cmp(&off(*b)).then(b.cmp(a))).unwrap_or(1)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -276,7 +339,10 @@ impl Slot {
     /// The time on screen the settings ask for: exactly `hold` seconds, or the
     /// nearest whole bars.
     pub fn of(s: &Slideshow, grid: &Grid) -> Slot {
-        if s.by_bars {
+        if s.chords() {
+            let count = phrase_bars(s, grid);
+            Slot { count, unit: Unit::Bar, secs: count as f64 * grid.bar() }
+        } else if s.by_bars {
             let count = s.image_bars.clamp(1, MAX_IMAGE_BARS);
             Slot { count, unit: Unit::Bar, secs: count as f64 * grid.bar() }
         } else if s.exact {
@@ -341,7 +407,7 @@ impl Plan {
     /// Count the images a piece of `total` seconds holds.
     pub fn for_track(s: &Slideshow, grid: Grid, total: f64) -> Plan {
         let slot = Slot::of(s, &grid);
-        let intro = s.intro_bars as f64 * grid.bar();
+        let intro = s.intro_on(&grid) as f64 * grid.bar();
         let min_outro = s.outro_bars.max(1) as f64 * grid.bar();
         let room = (total - intro - min_outro).max(0.0);
         let images = (room / slot.secs + 1e-6).floor() as u32;
@@ -360,11 +426,11 @@ impl Plan {
     pub fn for_images(s: &Slideshow, grid: Grid) -> Plan {
         let slot = Slot::of(s, &grid);
         let images = s.images.max(1);
-        let intro = s.intro_bars as f64 * grid.bar();
+        let intro = s.intro_on(&grid) as f64 * grid.bar();
         let pictures = images as f64 * slot.secs;
         let picture_bars = (pictures / grid.bar() - 1e-6).ceil();
         // at least the generator's shortest piece: four bars and the ring-out
-        let bars = (s.intro_bars as f64 + picture_bars + s.outro_bars.max(1) as f64).max(5.0);
+        let bars = (s.intro_on(&grid) as f64 + picture_bars + s.outro_bars.max(1) as f64).max(5.0);
         let total = bars * grid.bar();
         Plan::even(grid, slot, images, intro, total - intro - pictures, total)
     }
@@ -379,7 +445,7 @@ impl Plan {
     /// over the whole track is found in one pass (dynamic programming).
     /// Unchanged if the accents are of a different track.
     pub fn follow(self, s: &Slideshow, accents: &Accents) -> Plan {
-        if s.exact || s.by_bars || self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
+        if s.exact || s.even_bars() || self.images == 0 || (accents.bpm - self.grid.bpm).abs() > 1e-6 || accents.meter != self.grid.meter {
             return self;
         }
         let unit = self.slot.secs / self.slot.count as f64;
@@ -532,7 +598,7 @@ impl Calc {
     pub fn new(s: &Slideshow, grid: Grid, score_secs: f64, photos: u32) -> Calc {
         let slot = Slot::of(s, &grid);
         let bar = grid.bar();
-        let intro = s.intro_bars as f64 * bar;
+        let intro = s.intro_on(&grid) as f64 * bar;
         let outro = s.outro_bars.max(1) as f64 * bar;
         let room = (score_secs - intro - outro).max(0.0);
         let holds = (room / slot.secs + 1e-6).floor() as u32;
@@ -695,7 +761,7 @@ mod tests {
         for (bpm, meter) in [(60.0, (4, 4)), (66.0, (3, 4)), (40.0, (6, 4)), (84.0, (4, 4))] {
             let grid = Grid::new(bpm, meter);
             for n in [1, 7, 30, 100] {
-                let s = Slideshow { images: n, ..Slideshow::default() };
+                let s = Slideshow { images: n, by_chords: false, ..Slideshow::default() };
                 let need = Plan::for_images(&s, grid);
                 assert_eq!(need.images, n);
                 assert!(need.outro >= grid.bar() * 2.0 - 1e-6);
@@ -707,10 +773,50 @@ mod tests {
         }
     }
 
+    /// With the chords, an image is a chord or a power of two of them (or a half or
+    /// quarter of one), never across them: no three-bar images over four-bar chords.
+    #[test]
+    fn images_keep_to_the_chords() {
+        assert_eq!(phrase_choices(4), vec![1, 2, 4, 8, 16, 32]);
+        assert_eq!(phrase_choices(1), vec![1, 2, 4, 8, 16]);
+        assert_eq!(phrase_choices(2), vec![1, 2, 4, 8, 16, 32]);
+        assert_eq!(phrase_choices(3), vec![3, 6, 12, 24]);
+        assert_eq!(phrase_choices(6), vec![3, 6, 12, 24]);
+        for (bpm, chord, image_bars, hold, intro) in
+            [(56.0, 2u32, 4u32, 12.9f32, 2u32), (60.0, 4, 3, 14.0, 2), (124.0, 4, 4, 12.0, 3), (72.0, 3, 4, 10.0, 1), (90.0, 1, 5, 9.0, 1)]
+        {
+            let grid = Grid { chord, ..Grid::new(bpm, (4, 4)) };
+            let s = Slideshow { hold, image_bars, intro_bars: intro, ..Slideshow::default() };
+            assert!(s.chords());
+            let n = phrase_bars(&s, &grid);
+            assert!(phrase_choices(chord).contains(&n), "{n} bars over {chord}-bar chords");
+            let p = Plan::for_track(&s, grid, 64.0 * grid.bar());
+            assert!(p.images > 0);
+            let step = n.min(chord);
+            for t in p.starts() {
+                let bar = (t / grid.bar()).round() as u32;
+                assert!((t / grid.bar() - bar as f64).abs() < 1e-9, "on a bar line");
+                assert_eq!(bar % step, 0, "{bpm} bpm: an image at bar {bar}, chords every {chord}, images {n}");
+            }
+            // the calculator counts the same intro
+            let c = Calc::new(&s, grid, 64.0 * grid.bar(), p.images);
+            assert_eq!(c.intro, p.intro);
+            assert_eq!(c.holds, p.images);
+        }
+        // a whole number of bars asked for that keeps to the chords stays
+        let grid = Grid { chord: 4, ..Grid::new(60.0, (4, 4)) };
+        assert_eq!(phrase_bars(&Slideshow { image_bars: 8, hold: 4.0, ..Slideshow::default() }, &grid), 8);
+        // and one that doesn't goes to the nearest the time aimed for
+        assert_eq!(phrase_bars(&Slideshow { image_bars: 3, hold: 12.0, ..Slideshow::default() }, &grid), 4);
+        // exact seconds and bars per image, if asked for, come first
+        assert!(!Slideshow { exact: true, ..Slideshow::default() }.chords());
+        assert!(!Slideshow { by_bars: true, ..Slideshow::default() }.chords());
+    }
+
     #[test]
     fn track_plan_adds_up() {
         let grid = Grid::new(60.0, (4, 4));
-        let s = Slideshow::default();
+        let s = Slideshow { by_chords: false, ..Slideshow::default() };
         let p = Plan::for_track(&s, grid, 180.0);
         assert!(p.images > 0);
         assert!((p.intro + p.images as f64 * p.slot.secs + p.outro - 180.0).abs() < 1e-6);
@@ -725,7 +831,7 @@ mod tests {
     fn exact_seconds_and_the_calculator() {
         // 66 bpm in 4/4: bars of 3.636 s; every image exactly 8 s, two bars either end
         let grid = Grid::new(66.0, (4, 4));
-        let s = Slideshow { hold: 8.0, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
         let total = 100.0 * grid.bar();
         let p = Plan::for_track(&s, grid, total);
         assert!(p.spans().all(|(a, b)| ((b - a) - 8.0).abs() < 1e-9), "every image exactly 8 s");
@@ -771,7 +877,7 @@ mod tests {
     /// In seconds, a tempo can make the score hold the photos without new sections.
     #[test]
     fn a_tempo_that_fits_the_photos() {
-        let s = Slideshow { hold: 8.0, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, exact: true, intro_bars: 2, outro_bars: 2, ..Slideshow::default() };
         let bpm = tempo_to_fit(&s, (4, 4), 66.0, 40, 20).expect("a tempo");
         let grid = Grid::new(bpm, (4, 4));
         assert_eq!(Calc::new(&s, grid, 40.0 * grid.bar(), 20).needed_bars, 40);
@@ -797,7 +903,15 @@ mod music {
     fn changes_follow_the_score() {
         let p = rain_on_neon();
         let grid = Grid::new(p.bpm, p.meter);
-        let s = Slideshow { hold: 8.0, intro_bars: 0, outro_bars: 2, fit: Fit::TrackToImages, images: 9, ..Slideshow::default() };
+        let s = Slideshow {
+            hold: 8.0,
+            by_chords: false,
+            intro_bars: 0,
+            outro_bars: 2,
+            fit: Fit::TrackToImages,
+            images: 9,
+            ..Slideshow::default()
+        };
         let even = Plan::for_images(&s, grid);
         let plan = even.clone().follow(&s, &Accents::of(&p));
         assert_eq!(plan.images, 9);

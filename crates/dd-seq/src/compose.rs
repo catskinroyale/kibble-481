@@ -397,11 +397,15 @@ pub struct Recipe {
     /// How busy the bells, plucks and drums are: 0 = sparse, 1 = busy.
     pub density: f32,
     pub style: Style,
+    /// Chords in square phrases: one, two or four bars a chord, never three or six,
+    /// so the harmony moves with images changing every 2, 4 or 8 bars (D37).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub square: bool,
 }
 
 impl Default for Recipe {
     fn default() -> Self {
-        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Nocturne }
+        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Nocturne, square: false }
     }
 }
 
@@ -415,6 +419,7 @@ impl Recipe {
             mode: *r.pick(&[Mode::Aeolian, Mode::Aeolian, Mode::Dorian, Mode::Phrygian, Mode::HarmonicMinor]),
             density: r.range_f(0.3, 0.75) as f32,
             style: Style::Nocturne,
+            square: false,
         }
     }
 
@@ -671,21 +676,57 @@ fn chord_at(chords: &[Chord], tick: u32) -> &Chord {
     chords.iter().rev().find(|c| c.start <= tick).unwrap_or(&chords[0])
 }
 
-/// About six seconds a chord (four when driven, ten when dark), in whole bars.
-fn chord_bars(style: Style, bar_secs: f64, bars: u32) -> u32 {
+/// About six seconds a chord (four when driven, ten when dark), in whole bars; in
+/// square phrases, the nearest of one, two or four bars.
+fn chord_bars(style: Style, bar_secs: f64, bars: u32, square: bool) -> u32 {
     let (secs, most) = style.chord_secs();
-    ((secs / bar_secs).round() as u32).clamp(1, most).min(bars.max(1))
+    let n = if square {
+        let want = (secs / bar_secs).max(1e-6).log2();
+        [1u32, 2, 4]
+            .into_iter()
+            .filter(|b| *b <= most)
+            .min_by(|a, b| ((*a as f64).log2() - want).abs().total_cmp(&((*b as f64).log2() - want).abs()))
+            .unwrap_or(1)
+    } else {
+        ((secs / bar_secs).round() as u32).clamp(1, most)
+    };
+    n.min(bars.max(1))
+}
+
+/// How many bars each chord of a composed piece lasts, at its own tempo or another
+/// (`bpm`): the styles written by their own modules keep theirs whatever the tempo.
+/// A piece not composed counts as a chord a bar.
+pub fn chord_bars_at(p: &Project, bpm: f64) -> u32 {
+    let Some(r) = p.recipe else { return 1 };
+    match r.style.base() {
+        Style::Nocturne | Style::Pursuit | Style::Blackout | Style::Momento | Style::Noir | Style::Overcity | Style::Derelict => {
+            let q = Project { bpm, meter: p.meter, ..Project::default() };
+            chord_bars(r.style.base(), q.bar_secs(), p.length_bars.max(2), r.square)
+        }
+        s => s.chord_secs().1,
+    }
+}
+
+/// Section lengths moved to whole chords of `cb` bars (at least one each), the parts kept.
+pub fn snap_plan(plan: &[(Part, u32)], cb: u32) -> Vec<(Part, u32)> {
+    let cb = cb.max(1);
+    plan.iter().map(|(part, n)| (*part, ((*n as f64 / cb as f64).round() as u32).max(1) * cb)).collect()
 }
 
 /// The usual arrangement for a length: Neon, Swell, Night shift and Fade starting at
 /// a sixth, a half and five sixths, on chord changes (short pieces drop the later ones).
 /// Noir opens with an Intro of a chord or two first, where there's room.
 pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
-    let style = style.base();
+    default_plan_for(&Recipe { style, ..Recipe::default() }, bpm, meter, bars)
+}
+
+/// [`default_plan`] for a recipe, in its square phrases if it asks for them.
+pub fn default_plan_for(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+    let style = r.style.base();
     const PARTS: [Part; 4] = [Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
-    let cb = chord_bars(style, p.bar_secs(), bars);
+    let cb = chord_bars(style, p.bar_secs(), bars, r.square);
     let snap = |frac: f64| ((bars as f64 * frac / cb as f64).round() as u32 * cb).min(bars);
     if style == Style::Derelict && bars >= cb * 5 {
         // the void, creeping tension, its tightening, a brief eruption, and a long
@@ -777,11 +818,11 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
 pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
-    let cb = chord_bars(r.style, p.bar_secs(), bars).max(1);
+    let cb = chord_bars(r.style, p.bar_secs(), bars, r.square).max(1);
     let units = (bars / cb).max(1);
     let mut rng = Rng::stream(r.seed, "form");
     if units < 3 {
-        return default_plan(r.style, bpm, meter, bars);
+        return default_plan_for(r, bpm, meter, bars);
     }
     let most = units.min(7) as i32;
     let n = rng.range(3.min(most), most.min(3 + units as i32 / 4)).max(3) as usize;
@@ -863,7 +904,7 @@ pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(P
 /// Write a piece for this recipe at the project's tempo, metre and length, in the
 /// usual arrangement. The tracks, sounds, mix, sections and effects are all new.
 pub fn compose(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Project {
-    compose_plan(r, bpm, meter, &default_plan(r.style, bpm, meter, bars))
+    compose_plan(r, bpm, meter, &default_plan_for(r, bpm, meter, bars))
 }
 
 /// Write a piece for this recipe to an arrangement of sections, each a part and a
@@ -884,7 +925,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let end = bars * bar;
     let bar_secs = p.bar_secs();
     let style = r.style;
-    let chord_bars = chord_bars(style, bar_secs, bars);
+    let chord_bars = chord_bars(style, bar_secs, bars, r.square);
     let chord_ticks = chord_bars * bar;
     let chords = chords(r, &p, chord_ticks, end);
     let density = r.density.clamp(0.0, 1.0) as f64;
@@ -3894,7 +3935,12 @@ mod tests {
         // each seed sweeps the harp its own way
         let mut runs = std::collections::BTreeSet::new();
         for seed in 0..16 {
-            let p = compose(&Recipe { seed, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Derelict }, 48.0, (4, 4), 40);
+            let p = compose(
+                &Recipe { seed, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Derelict, square: false },
+                48.0,
+                (4, 4),
+                40,
+            );
             let pluck = p.tracks.iter().find(|t| t.name == "Pluck").unwrap();
             let first = pluck.notes.first().map_or(0, |n| n.start);
             runs.insert(pluck.notes.iter().map(|n| (n.start - first, n.key)).collect::<Vec<_>>());

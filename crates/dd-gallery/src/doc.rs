@@ -58,11 +58,11 @@ impl Document {
 /// `hold` seconds each, or on bar lines, moved onto the music's accents if asked), no
 /// more than there are photos when that's known.
 pub fn plan(p: &Project, g: &Slideshow, photos: Option<usize>) -> Plan {
-    let grid = Grid::new(p.bpm, p.meter);
+    let grid = Grid::of(p);
     // (older documents may ask to size the track; the calculator does that now)
     let g = Slideshow { fit: Fit::ImagesToTrack, ..g.clone() };
     let plan = Plan::for_track(&g, grid, p.music_secs());
-    let follow = g.follow_music && !g.exact && !g.by_bars;
+    let follow = g.follow_music && !g.exact && !g.even_bars();
     match photos {
         // the score holds them all: as many images as photos, the accents only moving
         // where each change falls (else following the music could hold fewer than the
@@ -82,6 +82,34 @@ mod tests {
     use super::*;
     use crate::slideshow::Calc;
     use dd_seq::compose::{Recipe, compose};
+
+    /// With the chords, on composed pieces in every style and at several tempos, each
+    /// image starts on a chord change (or halfway through a chord), never three bars
+    /// into four; in square phrases, every 2, 4 or 8 bars.
+    #[test]
+    fn images_change_with_the_chords() {
+        use dd_seq::compose::{Style, chord_bars_at};
+        for (k, style) in Style::ALL.into_iter().enumerate() {
+            for bpm in [48.0, 66.0, 90.0, 124.0] {
+                for square in [false, true] {
+                    let r = Recipe { style, square, ..Recipe::random(k as u64) };
+                    let p = compose(&r, bpm, style.meter_from((4, 4)), 32);
+                    let cb = chord_bars_at(&p, p.bpm);
+                    if square {
+                        assert!(cb.is_power_of_two(), "{} at {bpm}: {cb} bars a chord", style.label());
+                    }
+                    let g = Slideshow { hold: 12.0, ..Slideshow::default() };
+                    let plan = plan(&p, &g, None);
+                    let grid = Grid::of(&p);
+                    let n = crate::slideshow::phrase_bars(&g, &grid);
+                    for t in plan.starts() {
+                        let bar = (t / grid.bar()).round() as u32;
+                        assert_eq!(bar % n.min(cb), 0, "{} at {bpm}: image at bar {bar}, {cb} bars a chord", style.label());
+                    }
+                }
+            }
+        }
+    }
 
     /// Set to the calculator's length, the score holds every photo, following the music
     /// or not.

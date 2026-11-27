@@ -96,6 +96,21 @@ impl RainKind {
         }
     }
 
+    /// A name short enough for a narrow row.
+    pub fn short(self) -> &'static str {
+        match self {
+            RainKind::Sill => "Rain, sill",
+            RainKind::Drips => "Drips",
+            RainKind::Umbrella => "Umbrella",
+            RainKind::Roof => "Rain, roof",
+            RainKind::Backstreet => "Back street",
+            RainKind::Light => "Light rain",
+            RainKind::Window => "Rain, window",
+            RainKind::WetStreet => "Wet street",
+            RainKind::City => "City rain",
+        }
+    }
+
     fn bytes(self) -> &'static [u8] {
         match self {
             RainKind::City => include_bytes!("../../../assets/samples/city-rain.ogg"),

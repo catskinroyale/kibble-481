@@ -349,8 +349,11 @@ never audibly loops. Credits in [`assets/samples/README.md`](assets/samples/READ
 **Ambience.** The field sounds under the music (rain, thunder, a machinery hum, a neon
 buzz, tape hiss, vinyl crackle, a far-off radio, birdsong, a playground, crickets, a
 breeze, and a ship's engines, life support and ticking) aren't tracks of notes but beds of
-ambience, listed under the tracks: each with a switch, a level in dB, a small meter and a ×
-to take it away (rain also chooses which of the nine). **+ Add** puts any of them under the
+ambience, listed under the tracks: each a compact row with **M** to mute it, its name (a
+long one scrolls slowly to its end while the pointer rests on it), a fader lying down with
+its level lit along the top and discreet marks at -40, -18, 0 and +6 dB, in the meters'
+green, amber and red (the far left is silent), and a × to take it away. Click a rain's
+name to choose which of the nine. **+ Add** puts any of them under the
 music, held from start to end (thunder before the sections, the neon from the second). Each
 style brings its own (Canopy birdsong and a breeze, Tarn crickets, a breeze, tape hiss and
 crackle, Nocturne its rain, Noir none); the score's own effects (risers, booms, distant
@@ -507,7 +510,13 @@ sort together and never overwrite each other (stems and the Resolve package's fi
 - **Gallery for DaVinci Resolve**: choose a photo folder in the Gallery tab and export. You
   get the soundtrack, an `.fcpxml` timeline with every photo at its change, the changes as
   `.edl` markers, and a cue list. In Resolve: **File › Import › Timeline**, pick the
-  `.fcpxml`, let it import the media. Each image is on screen for **exact seconds** (every
+  `.fcpxml`, let it import the media. Each image is on screen **with the chords** (the
+  default for a new gallery: a whole phrase of the score, its chord length times one, two,
+  four, eight or sixteen, or a half or quarter of a long chord, starting on a chord
+  change, the intro rounded up to whole chords to match, so the pictures never cut three
+  bars into a four-bar phrase; a score that changes chord every three bars can be
+  **written in square phrases**, one, two or four bars a chord, with a button there), for
+  **exact seconds** (every
   one the same, wherever the bar lines fall), **on bar lines** (the nearest whole bars, 4
   to 16 s, moved onto the music's accents if you like), or a set number of **bars per
   image** (2, 4, 6, 8, 12, 16 or any; usually even, as phrases come in twos), whatever
@@ -527,7 +536,7 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   bars over going to the last section); change any proposal there, or leave them and drag
   the sections' ends in the piano roll. **Set the sections to these** applies them: each
   section whose length changes is written again at its new length. The calculator weighs
-  the **tempo** as well: in bars per image the tempo sets how long each image is on screen
+  the **tempo** as well: with the chords or in bars per image the tempo sets how long each image is on screen
   (the sections how many the score holds), so it offers the tempo that gives the time you
   aim for, with a table of each bar count's time now, the tempo for your time and the
   bars your photos would need; in seconds it offers, where one exists, the tempo at which

@@ -27,7 +27,7 @@ const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
   kibble-481-cli fonts                             list the loaded SoundFonts and their presets
 
 Gallery options (else as the .kibble file has them):
-  --photos <dir> [--by-date] [--fps 24|25|30|50|60] [--hold <secs>] [--bars-per-image <n>]
+  --photos <dir> [--by-date] [--fps 24|25|30|50|60] [--hold <secs>] [--bars-per-image <n>] [--with-chords]
   [--transition crossfade|black|cut|in|out|inout] [--fade <secs>] [--fade-in <secs>]
   [--fade-out <secs>] [--first-fade-in <secs>] [--stretch-final-fade] [--fit-track]
 
@@ -78,6 +78,9 @@ fn gallery_flags(args: &[String], doc: &mut Document) -> Result<(), String> {
     if let Some(n) = flag(args, "--bars-per-image") {
         g.image_bars = n.parse().map_err(|_| "--bars-per-image takes a whole number of bars")?;
         g.by_bars = true;
+    }
+    if args.iter().any(|a| a == "--with-chords") {
+        (g.by_chords, g.by_bars, g.exact) = (true, false, false);
     }
     if let Some(n) = flag(args, "--transition") {
         g.transition = match n.to_ascii_lowercase().as_str() {

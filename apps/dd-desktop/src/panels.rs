@@ -5,7 +5,8 @@ use dd_dsp::fx::{EchoTime, Interval, Space, Tuning};
 use dd_dsp::rain::RainKind;
 use dd_gallery::resolve::{FRAME_RATES, PhotoOrder};
 use dd_gallery::slideshow::{
-    Calc, EXACT_MIN, Grid, MAX_FADE, MAX_HOLD, MAX_IMAGE_BARS, MIN_HOLD, Transition, tempo_for, tempo_to_fit, timecode,
+    Calc, EXACT_MIN, Grid, MAX_FADE, MAX_HOLD, MAX_IMAGE_BARS, MIN_HOLD, Transition, phrase_bars, phrase_choices, tempo_for, tempo_to_fit,
+    timecode,
 };
 use dd_seq::compose::{KEY_NAMES, Mode, Style};
 use dd_seq::engine::Cmd;
@@ -599,62 +600,39 @@ impl App {
             egui::Frame::new()
                 .fill(t.inset)
                 .corner_radius(4.0)
-                .inner_margin(egui::Margin::symmetric(6, 4))
+                .inner_margin(egui::Margin::symmetric(5, 2))
                 .stroke(Stroke::new(1.0, t.divider))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 5.0;
+                        toggle(ui, "M", &mut tr.strip.mute, t.mute, "Mute");
                         let on = !tr.strip.mute;
-                        if widgets::lamp(ui, on, rgb(tr.color), 13.0)
-                            .on_hover_text(if on { "On: click to silence it" } else { "Off: click to hear it" })
-                            .clicked()
-                        {
-                            tr.strip.mute = !tr.strip.mute;
-                        }
-                        let name_w = 92.0;
+                        let colour = if on { t.text } else { t.text_dim };
+                        let font = t.font(11.0);
+                        let name_w = 84.0;
                         match rain {
                             Some(k) => {
-                                egui::ComboBox::from_id_salt(("bed-rain", i))
-                                    .width(name_w)
-                                    .selected_text(egui::RichText::new(k.label()).font(t.font(11.0)))
-                                    .show_ui(ui, |ui| {
-                                        for kind in RainKind::ALL {
-                                            if ui.selectable_label(kind == k, kind.label()).clicked() {
-                                                rain_to = Some((i, kind));
-                                            }
+                                let resp = crate::mixer_ui::marquee(ui, &format!("{} ▾", k.short()), name_w, font, colour, t.inset)
+                                    .on_hover_text(format!("{}: click for another rain", k.label()));
+                                egui::Popup::menu(&resp).show(|ui| {
+                                    for kind in RainKind::ALL {
+                                        if ui.selectable_label(kind == k, kind.label()).clicked() {
+                                            rain_to = Some((i, kind));
                                         }
-                                    })
-                                    .response
-                                    .on_hover_text("Which rain");
+                                    }
+                                });
                             }
                             None => {
-                                ui.add_sized(
-                                    vec2(name_w, 18.0),
-                                    egui::Label::new(egui::RichText::new(bed.name).font(t.font(11.5)).color(if on {
-                                        t.text
-                                    } else {
-                                        t.text_dim
-                                    }))
-                                    .truncate(),
-                                )
-                                .on_hover_text(bed.help);
+                                crate::mixer_ui::marquee(ui, bed.name, name_w, font, colour, t.inset).on_hover_text(bed.help);
                             }
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
-                            if ui.small_button("×").on_hover_text("Take this bed away").clicked() {
+                            if ui.small_button("×").on_hover_text("Take this sound away").clicked() {
                                 remove = Some(i);
                             }
-                            crate::mixer_ui::vu_bar(ui, peak, vec2(36.0, 6.0), on, t);
-                            ui.spacing_mut().slider_width = (ui.available_width() - 44.0).max(40.0);
-                            ui.add(
-                                egui::Slider::new(&mut tr.strip.gain_db, -40.0..=6.0)
-                                    .show_value(true)
-                                    .suffix(" dB")
-                                    .max_decimals(0)
-                                    .trailing_fill(true),
-                            )
-                            .on_hover_text("Its level");
+                            let w = ui.available_width().max(50.0);
+                            crate::mixer_ui::hfader(ui, &mut tr.strip.gain_db, peak, on, w, t);
                         });
                     });
                 });
@@ -1374,6 +1352,9 @@ impl App {
         let t = Tokens::get(ui.ctx());
         let photos = self.doc.gallery.photos().unwrap_or_default();
         let mut choose = false;
+        let mut square = false;
+        let grid_now = Grid::of(&self.doc.project);
+        let composed = self.doc.project.recipe.is_some_and(|r| !r.square);
         let g = &mut self.doc.gallery;
         widgets::section(ui, "photos", "Photos", true, |ui| {
             widgets::inset(ui, |ui| {
@@ -1413,26 +1394,32 @@ impl App {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     fx_strip(ui, &t, "Images", "How long each image is on screen, fades included", |ui| {
-                        if widgets::lamp_row(ui, "Exact seconds", g.exact && !g.by_bars, true)
-                            .on_hover_text("Every image exactly the same time on screen, on an even count, whether or not it lands on a bar line")
+                        if widgets::lamp_row(ui, "With the chords", g.chords(), true)
+                            .on_hover_text("Every image a whole phrase of the score (a chord, or two, four or eight of them), starting on a chord change: the pictures move with the harmony, never across it")
                             .clicked()
                         {
-                            (g.exact, g.by_bars) = (true, false);
-                        }
-                        if widgets::lamp_row(ui, "On bar lines", !g.exact && !g.by_bars, true)
-                            .on_hover_text("The nearest whole bars to the time asked, so each change lands on a bar line")
-                            .clicked()
-                        {
-                            (g.exact, g.by_bars) = (false, false);
+                            (g.exact, g.by_bars, g.by_chords) = (false, false, true);
                         }
                         if widgets::lamp_row(ui, "Bars per image", g.by_bars, true)
                             .on_hover_text("Every image the same whole number of bars (usually 2, 4 or 8, as phrases come in twos), whatever the tempo: the tempo sets how long that is on screen")
                             .clicked()
                         {
-                            g.by_bars = true;
+                            (g.exact, g.by_bars, g.by_chords) = (false, true, false);
+                        }
+                        if widgets::lamp_row(ui, "On bar lines", !g.exact && !g.even_bars(), true)
+                            .on_hover_text("The nearest whole bars to the time asked, so each change lands on a bar line (an odd number of bars can cut across the phrases)")
+                            .clicked()
+                        {
+                            (g.exact, g.by_bars, g.by_chords) = (false, false, false);
+                        }
+                        if widgets::lamp_row(ui, "Exact seconds", g.exact && !g.even_bars(), true)
+                            .on_hover_text("Every image exactly the same time on screen, whether or not it lands on a bar or a beat")
+                            .clicked()
+                        {
+                            (g.exact, g.by_bars, g.by_chords) = (true, false, false);
                         }
                         strip_rule(ui, &t);
-                        if widgets::lamp_row(ui, "Follow accents", g.follow_music && !g.exact && !g.by_bars, !g.exact && !g.by_bars)
+                        if widgets::lamp_row(ui, "Follow accents", g.follow_music && !g.exact && !g.even_bars(), !g.exact && !g.even_bars())
                             .on_hover_text("On bar lines only: move each change to a section, a phrase or a part coming in, so the times vary around the one asked")
                             .clicked()
                         {
@@ -1449,7 +1436,53 @@ impl App {
                 });
             });
             ui.add_space(6.0);
-            if g.by_bars {
+            if g.chords() {
+                let cb = grid_now.chord;
+                let each = phrase_bars(g, &grid_now);
+                widgets::inset(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Bars per image");
+                        for n in phrase_choices(cb) {
+                            if ui
+                                .selectable_label(each == n, format!("{n}"))
+                                .on_hover_text(format!("Each image {n} bars, {:.1} s at {} bpm", n as f64 * grid_now.bar(), grid_now.bpm))
+                                .clicked()
+                            {
+                                g.image_bars = n;
+                            }
+                        }
+                    });
+                    let chord = if cb == 1 { "every bar".to_string() } else { format!("every {cb} bars") };
+                    ui.label(
+                        egui::RichText::new(format!("The score changes chord {chord}: each image starts on a chord change"))
+                            .font(t.font(10.5))
+                            .color(t.text_dim),
+                    );
+                    if !cb.is_power_of_two() && composed {
+                        ui.label(
+                            egui::RichText::new(format!("{cb} bars a chord groups the bars in threes, against the beat's twos and fours"))
+                                .font(t.font(10.5))
+                                .color(t.caution),
+                        );
+                        if ui
+                            .button("Write it in square phrases")
+                            .on_hover_text("The score written again with one, two or four bars a chord, so images can change every 2, 4 or 8 bars. ⌘Z undoes it")
+                            .clicked()
+                        {
+                            square = true;
+                        }
+                    }
+                    let intro = g.intro_on(&grid_now);
+                    if intro != g.intro_bars {
+                        ui.label(
+                            egui::RichText::new(format!("The intro is {intro} bars, so the first image starts on a chord change"))
+                                .font(t.font(10.5))
+                                .color(t.text_dim),
+                        );
+                    }
+                });
+                ui.add_space(4.0);
+            } else if g.by_bars {
                 widgets::inset(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Bars per image");
@@ -1469,12 +1502,12 @@ impl App {
                 });
                 ui.add_space(4.0);
             }
-            let (lo, hi) = if g.exact || g.by_bars { (EXACT_MIN, 30.0) } else { (MIN_HOLD, MAX_HOLD) };
+            let (lo, hi) = if g.exact || g.even_bars() { (EXACT_MIN, 30.0) } else { (MIN_HOLD, MAX_HOLD) };
             let mut hold = g.hold as f64;
             let spec = SliderSpec {
                 id: "hold",
-                label: if g.by_bars { "Aim for" } else { "On screen" },
-                help: if g.by_bars {
+                label: if g.even_bars() { "Aim for" } else { "On screen" },
+                help: if g.even_bars() {
                     "The time on screen you'd like each image to have: the calculator offers the tempo that gives it"
                 } else if g.exact {
                     "Each image's time, fade included: exactly this, every one"
@@ -1611,8 +1644,10 @@ impl App {
         widgets::section(ui, "plan", "Plan and export", true, |ui| {
             let p = &self.doc.project;
             let g = &mut self.doc.gallery;
-            let grid = dd_gallery::slideshow::Grid::new(p.bpm, p.meter);
+            let grid = Grid::of(p);
             let c = Calc::new(g, grid, p.music_secs(), n_photos);
+            // bars an image, when the images are counted in bars
+            let bars_each = if g.chords() { phrase_bars(g, &grid) } else { g.image_bars };
             let score_bars = (p.music_secs() / grid.bar()).round() as u32;
             widgets::subtitle(ui, "Calculator", "Sums to plan with before changing anything");
             widgets::inset(ui, |ui| {
@@ -1626,8 +1661,8 @@ impl App {
                     }
                 });
             });
-            let each = if g.by_bars {
-                format!("{} bars, {:.1} s at {} bpm", g.image_bars, c.each, p.bpm)
+            let each = if g.even_bars() {
+                format!("{bars_each} bars, {:.1} s at {} bpm", c.each, p.bpm)
             } else if g.exact {
                 format!("{:.1} s exactly", c.each)
             } else {
@@ -1635,7 +1670,7 @@ impl App {
                 format!("{:.1} s ({} bar{})", c.each, fmt_bars(bars), if (bars - 1.0).abs() < 1e-6 { "" } else { "s" })
             };
             let lines = [
-                format!("Each image: {each}{}", if g.follow_music && !g.exact && !g.by_bars { ", varying with the music" } else { "" }),
+                format!("Each image: {each}{}", if g.follow_music && !g.exact && !g.even_bars() { ", varying with the music" } else { "" }),
                 format!(
                     "This score: {score_bars} bars ({}) holds {} images, with {:.1} s over for the outro.",
                     timecode(p.music_secs()),
@@ -1678,23 +1713,26 @@ impl App {
             // the tempo: with images in whole bars it sets their time on screen (the
             // sections set how many the score holds); in seconds it can fit the photos
             // into the sections as they are
-            if g.by_bars {
+            if g.even_bars() {
                 widgets::subtitle(
                     ui,
                     "Tempo",
                     "In whole bars the tempo sets how long each image is on screen, and the sections how many images the score holds",
                 );
                 let aim = g.hold as f64;
+                // with the chords, only a tempo at which the chords still fit the images
+                let by_chords = g.chords();
+                let keeps = |n: u32, b: f64| !by_chords || phrase_choices(Grid::at(p, b).chord).contains(&n);
                 if (c.each - aim).abs() < 0.05 {
                     widgets::note(ui, format!("At {} bpm each image is the {aim:.1} s aimed for.", p.bpm), "");
                 } else {
-                    match tempo_for(p.meter, g.image_bars, aim) {
+                    match tempo_for(p.meter, bars_each, aim).filter(|b| keeps(bars_each, *b)) {
                         Some(b) => {
                             widgets::note(
                                 ui,
                                 format!(
-                                    "For {aim:.1} s on screen, set the tempo to {b} bpm: still {} bars an image, and the score still needs {} bars.",
-                                    g.image_bars, c.needed_bars
+                                    "For {aim:.1} s on screen, set the tempo to {b} bpm: still {bars_each} bars an image, and the score still needs {} bars.",
+                                    c.needed_bars
                                 ),
                                 "",
                             );
@@ -1711,8 +1749,8 @@ impl App {
                         None => widgets::note(
                             ui,
                             egui::RichText::new(format!(
-                                "No tempo from 30 to 220 bpm makes {} bars last {aim:.1} s: try more or fewer bars per image.",
-                                g.image_bars
+                                "No tempo from 30 to 220 bpm makes {bars_each} bars last {aim:.1} s{}: try more or fewer bars per image.",
+                                if g.chords() { " with the chords" } else { "" }
                             ))
                             .color(t.caution)
                             .text(),
@@ -1730,16 +1768,14 @@ impl App {
                         head(ui, format!("For {aim:.1} s"));
                         head(ui, format!("{n_photos} photos need"));
                         ui.end_row();
-                        for n in [2u32, 4, 6, 8, 12, 16] {
-                            if ui
-                                .selectable_label(g.image_bars == n, format!("{n}"))
-                                .on_hover_text(format!("Each image {n} bars"))
-                                .clicked()
-                            {
+                        let rows = if g.chords() { phrase_choices(grid.chord) } else { vec![2u32, 4, 6, 8, 12, 16] };
+                        let intro = g.intro_on(&grid);
+                        for n in rows {
+                            if ui.selectable_label(bars_each == n, format!("{n}")).on_hover_text(format!("Each image {n} bars")).clicked() {
                                 g.image_bars = n;
                             }
                             ui.label(format!("{:.1} s", n as f64 * grid.bar()));
-                            match tempo_for(p.meter, n, aim) {
+                            match tempo_for(p.meter, n, aim).filter(|b| keeps(n, *b)) {
                                 Some(b) => {
                                     if ui.small_button(format!("{b} bpm")).on_hover_text(format!("{n} bars an image, at {b} bpm")).clicked()
                                     {
@@ -1751,7 +1787,7 @@ impl App {
                                     ui.label(egui::RichText::new("out of range").color(t.text_dim));
                                 }
                             }
-                            ui.label(format!("{} bars", g.intro_bars + n_photos * n + g.outro_bars.max(1)));
+                            ui.label(format!("{} bars", intro + n_photos * n + g.outro_bars.max(1)));
                             ui.end_row();
                         }
                     });
@@ -1965,6 +2001,9 @@ impl App {
                 "",
             );
         });
+        if square {
+            self.square_phrases();
+        }
         if let Some(b) = set_bpm {
             self.doc.project.bpm = b;
             self.fit = None;

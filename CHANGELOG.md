@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.1 — 2026-11-27
+
+- **Images with the chords** (Gallery › Timing, the default for a new gallery): each image
+  is a whole phrase of the score (its chord length times 1, 2, 4, 8 or 16, or a half or
+  quarter of a long chord), starting on a chord change, the intro rounded up to whole
+  chords, so pictures no longer change three bars into a four-bar phrase. The tempo
+  offered for the time you aim for keeps the chords and images together. A score that
+  changes chord every three bars can be **written in square phrases** (one, two or four
+  bars a chord) from there. `--with-chords` in the CLI.
+- **Ambience rows, tidied**: M to mute; short names (a long one scrolls slowly when you
+  rest the pointer on it; click a rain's name to choose another); the slider and its dB
+  readout replaced by a small fader lying down, in the meters' green, amber and red with
+  discreet marks at -40, -18, 0 and +6 dB, the level lit along its top, silent at the far
+  left.
+
 ## 0.14.0 — 2026-11-26
 
 - **Ambience, not tracks**: the field sounds under the music (rain, thunder, hum, neon,

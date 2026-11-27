@@ -317,12 +317,12 @@ mod tests {
     use crate::slideshow::{Grid, Slideshow, Transition};
 
     fn gallery(fade: f32, transition: Transition, fps: u32) -> Slideshow {
-        Slideshow { hold: 8.0, fade, transition, fps, ..Slideshow::default() }
+        Slideshow { hold: 8.0, by_chords: false, fade, transition, fps, ..Slideshow::default() }
     }
 
     fn plan() -> Plan {
         // 60 bpm in 4/4: 4 s bars, 8 s images after a two-bar intro
-        let s = Slideshow { hold: 8.0, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, ..Slideshow::default() };
         Plan::for_track(&s, Grid::new(60.0, (4, 4)), 60.0)
     }
 
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn soundtrack_without_an_intro() {
-        let s = Slideshow { hold: 8.0, intro_bars: 0, ..Slideshow::default() };
+        let s = Slideshow { hold: 8.0, by_chords: false, intro_bars: 0, ..Slideshow::default() };
         let p = Plan::for_track(&s, Grid::new(60.0, (4, 4)), 60.0);
         let photos: Vec<PathBuf> = (1..=p.images).map(|i| PathBuf::from(format!("/{i}.jpg"))).collect();
         let x = fcpxml(&p, &photos, Path::new("/t.wav"), p.audio(), &gallery(1.0, Transition::Crossfade, 25), "T");

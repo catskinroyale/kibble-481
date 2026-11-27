@@ -676,6 +676,19 @@ impl App {
         self.recompose_to(recipe, keep, same_style, None);
     }
 
+    /// Write the piece again in square phrases (one, two or four bars a chord), its
+    /// sections moved to whole chords of the new length, its sounds, dials and beds kept.
+    pub(crate) fn square_phrases(&mut self) {
+        let p = &self.doc.project;
+        let Some(r) = p.recipe else { return };
+        let recipe = Recipe { square: true, ..r };
+        let probe = Project { recipe: Some(recipe), ..p.clone() };
+        let cb = dd_seq::compose::chord_bars_at(&probe, p.bpm);
+        let plan = p.plan().map(|plan| dd_seq::compose::snap_plan(&plan, cb));
+        self.recompose_to(recipe, true, true, plan);
+        self.status = format!("Written again in square phrases: {cb} bar{} a chord", if cb == 1 { "" } else { "s" });
+    }
+
     /// Write the piece again for a recipe, to an arrangement of sections if one is
     /// given, else to the current one (if the composer can write it).
     fn recompose_to(&mut self, recipe: Recipe, keep: bool, same_style: bool, plan: Option<Vec<(dd_seq::project::Part, u32)>>) {

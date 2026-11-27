@@ -984,6 +984,35 @@ after a standard.
 - **Level**: the demo -14.7 LUFS, Tarn -16.9 (about the same without the hiss), Tarn with
   every dial at an extreme -17.4; peaks -1.2 to -2.9 dBFS.
 
+## D37 — Images with the chords; compact ambience rows (2026-11-27)
+
+- **The problem**: on bar lines the gallery chose the nearest whole bars to the time asked,
+  often three (12.9 s at 56 bpm), and following the accents could pick any count; three-bar
+  images over four-bar chords and phrases feel like a waltz across the beat. Some
+  styles also change chord every three bars at some tempos (`chord_bars` rounds seconds
+  to bars), so even four-bar images could cut across them.
+- **With the chords** (`Slideshow::by_chords`, the default for a new gallery; older
+  documents, without the field, keep their mode): each image is the score's chord length
+  (`compose::chord_bars_at`: the styles with their own modules keep theirs; a piece not
+  composed counts a chord a bar) times 1, 2, 4, 8 or 16, or a half or quarter of a long
+  chord (`phrase_choices`), the one chosen if it keeps to the chords, else the nearest the
+  time aimed for (the longer on a tie). The intro rounds up to whole chords (or whole
+  images, if shorter) so every change lands on a chord change or halfway through one.
+  Exact seconds or bars per image, if set, come first (`Slideshow::chords`). The tempo
+  offered for the time aimed for is one at which the chords still fit the images
+  (`Grid::at`).
+- **Square phrases** (`Recipe::square`, off by default and left out of files when off, so
+  every piece written before is unchanged): `chord_bars` takes the nearest of 1, 2 or 4
+  bars (log scale, no more than the style's most). The gallery offers it when the chords
+  come in threes or sixes; the piece is written again with its sections moved to whole
+  chords (`snap_plan`), sounds, dials and beds kept; ⌘Z undoes it.
+- **Ambience rows**: M to mute (the lamp read as decoration); short rain names
+  (`RainKind::short`); a long name scrolls slowly to its end and back while hovered
+  (`mixer_ui::marquee`); the slider and its dB readout replaced by the mixer's fader lying
+  down (`mixer_ui::hfader`): the zones in the groove, the level as a thin VU strip along
+  the top, marks at -40, -18, -6, 0 and +6, down to silence at the far left.
+- **CLI**: `--with-chords`.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)
