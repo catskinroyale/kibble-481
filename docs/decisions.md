@@ -1013,6 +1013,27 @@ after a standard.
   the top, marks at -40, -18, -6, 0 and +6, down to silence at the far left.
 - **CLI**: `--with-chords`.
 
+## D38 — A new tempo keeps every note in its place (2026-11-27)
+
+- **The bug**: setting the tempo (from the gallery's calculator, or anywhere) writes an
+  unedited piece again at the new tempo, and the composer chooses some things in seconds:
+  the chords' length in bars (`chord_bars`), the bells', bass's and plucks' subdivisions,
+  an ending's last swell. Nocturne from 66 to 46 bpm: its brass and strings went from two
+  bars a chord to one, 40% busier, while every other part slowed by 30%; heard as the
+  instruments slowing at different rates.
+- **Fix**: `Recipe::written_at`, the tempo a piece is written for (0: the one it plays
+  at; left out of files when 0). When only the tempo changes on an unedited piece, the
+  app keeps it (`compose::at_any_tempo`), and `compose_plan` writes the notes at that
+  tempo and plays them at the new one: the same notes and controllers in ticks, every
+  part slowing or quickening together, the piece still unedited. Plans and
+  `chord_bars_at` read the same tempo, so the gallery's chords stay true. A new style,
+  New notes, New piece and square phrases start again from the tempo played at. An
+  edited piece already kept its notes.
+- **Playhead**: at a new tempo the engine is moved to the same beat, not the same second
+  (it used to jump to another bar mid-play).
+- A test writes every style again at 0.62×, 0.8×, 1.25× and 1.5× its tempo and finds
+  every note and controller unchanged.
+
 ## Open
 
 - Bake the factory patches into a `Kibble-481-Synths.sf2` (as midigen's `make_soundfont.rs` does)

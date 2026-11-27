@@ -401,11 +401,22 @@ pub struct Recipe {
     /// so the harmony moves with images changing every 2, 4 or 8 bars (D37).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub square: bool,
+    /// The tempo the piece is written for, whatever it plays at (0: the tempo it plays
+    /// at). Set when a piece is written again at a new tempo, so every note keeps its
+    /// place in the bar and the whole piece slows or quickens together, rather than the
+    /// parts timed in seconds (chords, bells' subdivisions) changing while the rest
+    /// keep to the beat (D38).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub written_at: f64,
+}
+
+fn is_zero(n: &f64) -> bool {
+    *n == 0.0
 }
 
 impl Default for Recipe {
     fn default() -> Self {
-        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Nocturne, square: false }
+        Recipe { seed: 1, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Nocturne, square: false, written_at: 0.0 }
     }
 }
 
@@ -420,6 +431,7 @@ impl Recipe {
             density: r.range_f(0.3, 0.75) as f32,
             style: Style::Nocturne,
             square: false,
+            written_at: 0.0,
         }
     }
 
@@ -678,9 +690,9 @@ fn chord_at(chords: &[Chord], tick: u32) -> &Chord {
 
 /// About six seconds a chord (four when driven, ten when dark), in whole bars; in
 /// square phrases, the nearest of one, two or four bars.
-fn chord_bars(style: Style, bar_secs: f64, bars: u32, square: bool) -> u32 {
+fn chord_bars(style: Style, bar_secs: f64, bars: u32, r: &Recipe) -> u32 {
     let (secs, most) = style.chord_secs();
-    let n = if square {
+    let n = if r.square {
         let want = (secs / bar_secs).max(1e-6).log2();
         [1u32, 2, 4]
             .into_iter()
@@ -698,13 +710,21 @@ fn chord_bars(style: Style, bar_secs: f64, bars: u32, square: bool) -> u32 {
 /// A piece not composed counts as a chord a bar.
 pub fn chord_bars_at(p: &Project, bpm: f64) -> u32 {
     let Some(r) = p.recipe else { return 1 };
+    let bpm = if r.written_at > 0.0 { r.written_at } else { bpm };
     match r.style.base() {
         Style::Nocturne | Style::Pursuit | Style::Blackout | Style::Momento | Style::Noir | Style::Overcity | Style::Derelict => {
             let q = Project { bpm, meter: p.meter, ..Project::default() };
-            chord_bars(r.style.base(), q.bar_secs(), p.length_bars.max(2), r.square)
+            chord_bars(r.style.base(), q.bar_secs(), p.length_bars.max(2), &r)
         }
         s => s.chord_secs().1,
     }
+}
+
+/// The recipe to write a piece again at another tempo with: its chords held at the
+/// bars they have now, so every part keeps its place in the bar.
+pub fn at_any_tempo(p: &Project) -> Option<Recipe> {
+    let r = p.recipe?;
+    Some(if r.written_at > 0.0 { r } else { Recipe { written_at: p.bpm, ..r } })
 }
 
 /// Section lengths moved to whole chords of `cb` bars (at least one each), the parts kept.
@@ -722,11 +742,12 @@ pub fn default_plan(style: Style, bpm: f64, meter: (u32, u32), bars: u32) -> Vec
 
 /// [`default_plan`] for a recipe, in its square phrases if it asks for them.
 pub fn default_plan_for(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+    let bpm = if r.written_at > 0.0 { r.written_at } else { bpm };
     let style = r.style.base();
     const PARTS: [Part; 4] = [Part::Neon, Part::Swell, Part::NightShift, Part::Fade];
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
-    let cb = chord_bars(style, p.bar_secs(), bars, r.square);
+    let cb = chord_bars(style, p.bar_secs(), bars, r);
     let snap = |frac: f64| ((bars as f64 * frac / cb as f64).round() as u32 * cb).min(bars);
     if style == Style::Derelict && bars >= cb * 5 {
         // the void, creeping tension, its tightening, a brief eruption, and a long
@@ -816,9 +837,10 @@ pub fn default_plan_for(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> V
 /// night shift, never the same kind twice running, and ending on a fade. The same
 /// recipe always draws the same one.
 pub fn random_plan(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Vec<(Part, u32)> {
+    let bpm = if r.written_at > 0.0 { r.written_at } else { bpm };
     let p = Project { bpm, meter, length_bars: bars.max(2), ..Project::default() };
     let bars = p.length_bars;
-    let cb = chord_bars(r.style, p.bar_secs(), bars, r.square).max(1);
+    let cb = chord_bars(r.style, p.bar_secs(), bars, r).max(1);
     let units = (bars / cb).max(1);
     let mut rng = Rng::stream(r.seed, "form");
     if units < 3 {
@@ -911,6 +933,13 @@ pub fn compose(r: &Recipe, bpm: f64, meter: (u32, u32), bars: u32) -> Project {
 /// number of bars; the piece is as long as they are.
 pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)]) -> Project {
     let plan: Vec<(Part, u32)> = if plan.is_empty() { vec![(Part::Neon, 2)] } else { plan.to_vec() };
+    // written for another tempo: the notes as they are there, played at this one
+    if r.written_at > 0.0 && (r.written_at - bpm).abs() > 1e-9 {
+        let mut p = compose_plan(&Recipe { written_at: 0.0, ..*r }, r.written_at, meter, &plan);
+        p.bpm = bpm;
+        p.recipe = Some(*r);
+        return p;
+    }
     // Vigil is Overcity written for other instruments
     if r.style == Style::Vigil {
         let mut p = compose_plan(&Recipe { style: Style::Overcity, ..*r }, bpm, meter, &plan);
@@ -925,7 +954,7 @@ pub fn compose_plan(r: &Recipe, bpm: f64, meter: (u32, u32), plan: &[(Part, u32)
     let end = bars * bar;
     let bar_secs = p.bar_secs();
     let style = r.style;
-    let chord_bars = chord_bars(style, bar_secs, bars, r.square);
+    let chord_bars = chord_bars(style, bar_secs, bars, r);
     let chord_ticks = chord_bars * bar;
     let chords = chords(r, &p, chord_ticks, end);
     let density = r.density.clamp(0.0, 1.0) as f64;
@@ -3936,7 +3965,7 @@ mod tests {
         let mut runs = std::collections::BTreeSet::new();
         for seed in 0..16 {
             let p = compose(
-                &Recipe { seed, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Derelict, square: false },
+                &Recipe { seed, root: 2, mode: Mode::Aeolian, density: 0.5, style: Style::Derelict, square: false, written_at: 0.0 },
                 48.0,
                 (4, 4),
                 40,
@@ -4399,6 +4428,30 @@ mod section_tests {
                     at.sort_unstable();
                     at.dedup();
                     assert_eq!(at.len(), n, "{style:?} seed {seed} {}", t.name);
+                }
+            }
+        }
+    }
+
+    /// Written again at another tempo, a piece plays the same notes in ticks, so every part
+    /// slows or quickens together. Before, a style that times its chords in seconds doubled
+    /// its pads' pace while the rest slowed, and bells changed their subdivision (D38).
+    #[test]
+    fn a_new_tempo_keeps_every_part_in_step() {
+        for style in Style::ALL {
+            for seed in 1..4u64 {
+                let r = Recipe { style, ..Recipe::random(seed) };
+                let a = compose(&r, style.tempo(), style.meter_from((4, 4)), 32);
+                let pinned = at_any_tempo(&a).unwrap();
+                for f in [0.62, 0.8, 1.25, 1.5] {
+                    let bpm = ((style.tempo() * f * 10.0).round() / 10.0).clamp(30.0, 220.0);
+                    let b = compose_plan(&pinned, bpm, a.meter, &a.plan().unwrap());
+                    assert_eq!(b.bpm, bpm);
+                    for (ta, tb) in a.tracks.iter().zip(&b.tracks) {
+                        assert!(ta.notes == tb.notes && ta.ctrls == tb.ctrls, "{} seed {seed} at {bpm}: the {}", style.label(), ta.name);
+                    }
+                    assert_eq!(chord_bars_at(&b, bpm), chord_bars_at(&a, a.bpm));
+                    assert_eq!(fingerprint(&b), b.composed, "untouched at the new tempo");
                 }
             }
         }

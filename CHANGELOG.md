@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.2 — 2026-11-27
+
+- **Fixed: a new tempo no longer pulls the parts apart.** Setting the tempo (the
+  gallery's "Set the tempo", or the tempo field) on an unedited piece wrote it again with
+  some parts timed in seconds, so chords and bells could double their pace while the
+  rest slowed. The piece now keeps every note in its place in the bar, and all of it
+  slows or quickens together. Playing, the playhead stays on the same beat.
+
 ## 0.14.1 — 2026-11-27
 
 - **Images with the chords** (Gallery › Timing, the default for a new gallery): each image

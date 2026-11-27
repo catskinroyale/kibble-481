@@ -280,9 +280,10 @@ impl Grid {
         Grid { chord: dd_seq::compose::chord_bars_at(p, p.bpm), ..Grid::new(p.bpm, p.meter) }
     }
 
-    /// The grid at another tempo, the chords as long as the score's would be there.
+    /// The grid at another tempo: a piece written again at a new tempo keeps its chords'
+    /// bars (D38), so they're as long in bars as now.
     pub fn at(p: &Project, bpm: f64) -> Self {
-        Grid { chord: dd_seq::compose::chord_bars_at(p, bpm), ..Grid::new(bpm, p.meter) }
+        Grid { chord: dd_seq::compose::chord_bars_at(p, p.bpm), ..Grid::new(bpm, p.meter) }
     }
 
     pub fn bar(&self) -> f64 {

@@ -463,6 +463,12 @@ impl App {
         }
         let music_changed = self.synced_music.as_ref().is_none_or(|q| !same_music(q, &p)) || rebuild_all;
         if music_changed && !dragging && !self.recording() {
+            // at a new tempo the playhead stays on the same beat, not the same second
+            if let Some(old) = self.synced_music.as_ref().map(|q| q.bpm).filter(|b| *b != p.bpm && p.bpm > 0.0) {
+                let at = self.position() * old / p.bpm;
+                self.send(Cmd::Seek(at));
+                self.play_from *= old / p.bpm;
+            }
             self.send(Cmd::Timeline(Arc::new(Timeline::from_project(&p))));
             self.synced_music = Some(p.clone());
         }
@@ -681,7 +687,7 @@ impl App {
     pub(crate) fn square_phrases(&mut self) {
         let p = &self.doc.project;
         let Some(r) = p.recipe else { return };
-        let recipe = Recipe { square: true, ..r };
+        let recipe = Recipe { square: true, written_at: 0.0, ..r };
         let probe = Project { recipe: Some(recipe), ..p.clone() };
         let cb = dd_seq::compose::chord_bars_at(&probe, p.bpm);
         let plan = p.plan().map(|plan| dd_seq::compose::snap_plan(&plan, cb));
@@ -909,6 +915,8 @@ impl App {
         let before = std::mem::replace(&mut self.shape, now.clone());
         match (before.recipe, now.recipe) {
             (Some(old), Some(r)) if old != r => {
+                // a new style chooses its chord length from the tempo again
+                let r = if r.style != old.style { Recipe { written_at: 0.0, ..r } } else { r };
                 // a new seed brings new sounds, unless they're kept; a new style always
                 // brings its own (another style's instruments don't suit it)
                 let keep = r.style == old.style && (r.seed == old.seed || self.settings.keep_sounds);
@@ -916,6 +924,15 @@ impl App {
                 self.status = format!("\u{201c}{}\u{201d}: {}, seed {}", self.doc.project.title, r.key_label(), r.seed);
             }
             (_, Some(r)) if before.untouched => {
+                // at a new tempo the piece keeps its notes in the bar, so every part slows
+                // or quickens together (else the parts the composer times in seconds,
+                // its chords and bells, would change while the rest kept to the beat)
+                let r = if now.bpm != before.bpm && now.meter == before.meter {
+                    let was = Project { bpm: before.bpm, ..self.doc.project.clone() };
+                    dd_seq::compose::at_any_tempo(&was).unwrap_or(r)
+                } else {
+                    r
+                };
                 self.recompose(r, true, true);
                 self.status = format!("Written again for {} bars at {} bpm", self.doc.project.length_bars, self.doc.project.bpm);
             }
