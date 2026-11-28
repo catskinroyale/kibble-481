@@ -1557,26 +1557,31 @@ impl App {
                     suffix: " s",
                     ..Default::default()
                 };
-                if g.transition == Transition::FadeOut {
-                    // fading out only: the first image may still fade up from black
-                    let mut first = g.first_fade_in as f64;
-                    let spec = SliderSpec {
-                        id: "first_fade_in",
-                        label: "First image fade in",
-                        help: "How long the first image takes to fade up from black as it starts (0: it cuts in like the rest); the others cut in",
-                        min: 0.0,
-                        max: MAX_FADE,
-                        default: 0.0,
-                        step: 0.1,
-                        decimals: 1,
-                        suffix: " s",
-                        ..Default::default()
-                    };
-                    if widgets::slider(ui, &spec, &mut first, true) {
-                        g.first_fade_in = first as f32;
-                    }
-                } else if widgets::slider(ui, &spec, &mut fade_in, g.transition.fades_in()) {
+                // the first image's own fade up from black: fading out only, the others cut
+                // in; fading in and out, 0 keeps it as the others
+                let first_spec = SliderSpec {
+                    id: "first_fade_in",
+                    label: "First image fade in",
+                    help: if g.transition == Transition::FadeOut {
+                        "How long the first image takes to fade up from black as it starts (0: it cuts in like the rest); the others cut in"
+                    } else {
+                        "How long the first image takes to fade up from black as it starts, in place of the fade in above (0: the same as the others)"
+                    },
+                    min: 0.0,
+                    max: MAX_FADE,
+                    default: 0.0,
+                    step: 0.1,
+                    decimals: 1,
+                    suffix: " s",
+                    ..Default::default()
+                };
+                let mut first = g.first_fade_in as f64;
+                if g.transition != Transition::FadeOut && widgets::slider(ui, &spec, &mut fade_in, g.transition.fades_in()) {
                     g.fade_in = fade_in as f32;
+                }
+                if matches!(g.transition, Transition::FadeOut | Transition::FadeInOut) && widgets::slider(ui, &first_spec, &mut first, true)
+                {
+                    g.first_fade_in = first as f32;
                 }
                 let mut fade_out = g.fade_out as f64;
                 let spec = SliderSpec {
@@ -1621,8 +1626,8 @@ impl App {
             let spec = SliderSpec {
                 id: "outro",
                 label: "Outro",
-                help: "Bars of music after the last image (credits); at least one, as the music rings out",
-                min: 1.0,
+                help: "Bars of music after the last image (credits); 0 and the last image runs to the end of the music",
+                min: 0.0,
                 max: 32.0,
                 default: 2.0,
                 step: 1.0,
@@ -1787,7 +1792,7 @@ impl App {
                                     ui.label(egui::RichText::new("out of range").color(t.text_dim));
                                 }
                             }
-                            ui.label(format!("{} bars", intro + n_photos * n + g.outro_bars.max(1)));
+                            ui.label(format!("{} bars", intro + n_photos * n + g.outro_bars));
                             ui.end_row();
                         }
                     });
@@ -1963,7 +1968,7 @@ impl App {
             widgets::inset(ui, |ui| {
                 ui.checkbox(&mut self.settings.stems_with_gallery, "Stems too")
                     .on_hover_text("A WAV of each track as well, for mixing on Resolve's Fairlight page");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui
                         .button("Export for DaVinci Resolve…")
                         .on_hover_text("Soundtrack, FCPXML timeline, EDL markers and a cue list in one folder")
@@ -1971,13 +1976,18 @@ impl App {
                     {
                         self.export_resolve();
                     }
-                    if ui
-                        .add_enabled(!photos.is_empty(), egui::Button::new("Export HD video…"))
-                        .on_hover_text("Your photos over the soundtrack with this transition, as a 1920×1080 H.264 video at the frame rate above (needs ffmpeg)")
-                        .on_disabled_hover_text("Choose a photo folder first")
-                        .clicked()
-                    {
-                        self.export_video();
+                    for size in dd_gallery::slideshow::VideoSize::ALL {
+                        let (w, h) = size.dims();
+                        if ui
+                            .add_enabled(!photos.is_empty(), egui::Button::new(format!("Export {} video…", size.label())))
+                            .on_hover_text(format!(
+                                "Your photos over the soundtrack with this transition, as a {w}×{h} H.264 video at the frame rate above (needs ffmpeg)"
+                            ))
+                            .on_disabled_hover_text("Choose a photo folder first")
+                            .clicked()
+                        {
+                            self.export_video(size);
+                        }
                     }
                     if ui.button("Copy cue list").clicked() {
                         ui.ctx().copy_text(plan.cue_csv(fade));

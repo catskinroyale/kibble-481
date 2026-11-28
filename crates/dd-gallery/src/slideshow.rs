@@ -121,6 +121,35 @@ impl Transition {
     }
 }
 
+/// The video export's frame size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VideoSize {
+    /// HD, 1920×1080.
+    #[default]
+    Hd,
+    /// 4K UHD, 3840×2160.
+    Uhd,
+}
+
+impl VideoSize {
+    pub const ALL: [VideoSize; 2] = [VideoSize::Hd, VideoSize::Uhd];
+
+    /// Width and height in pixels.
+    pub fn dims(self) -> (u32, u32) {
+        match self {
+            VideoSize::Hd => (1920, 1080),
+            VideoSize::Uhd => (3840, 2160),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            VideoSize::Hd => "HD",
+            VideoSize::Uhd => "4K",
+        }
+    }
+}
+
 /// Kept so older documents open; the plan now always follows the score as it stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Fit {
@@ -161,14 +190,15 @@ pub struct Slideshow {
     pub fade_in: f32,
     /// Fading each image out to black (FadeOut, FadeInOut), in seconds.
     pub fade_out: f32,
-    /// Fading out only: the first image's fade up from black, in seconds (0: none).
+    /// Fading out (only, or in and out): the first image's fade up from black, in seconds
+    /// (0: as the others, which cut in when fading out only).
     pub first_fade_in: f32,
     /// The last image's fade out drawn out to the end of the soundtrack, its reverb
     /// tail included, so the picture reaches black as the sound dies away.
     pub stretch_final_fade: bool,
     /// Bars of music before the first image.
     pub intro_bars: u32,
-    /// Bars of music after the last image; at least one, the final ring-out.
+    /// Bars of music after the last image (0: the last image runs to the music's end).
     pub outro_bars: u32,
     /// Mark the image changes on the timeline.
     pub show_on_timeline: bool,
@@ -183,6 +213,8 @@ pub struct Slideshow {
     pub arranged: Vec<String>,
     /// Frames a second of the exported timeline and markers.
     pub fps: u32,
+    /// The video export's frame size.
+    pub video: VideoSize,
 }
 
 impl Default for Slideshow {
@@ -209,6 +241,7 @@ impl Default for Slideshow {
             order: crate::resolve::PhotoOrder::Name,
             arranged: Vec::new(),
             fps: 25,
+            video: VideoSize::Hd,
         }
     }
 }
@@ -409,7 +442,7 @@ impl Plan {
     pub fn for_track(s: &Slideshow, grid: Grid, total: f64) -> Plan {
         let slot = Slot::of(s, &grid);
         let intro = s.intro_on(&grid) as f64 * grid.bar();
-        let min_outro = s.outro_bars.max(1) as f64 * grid.bar();
+        let min_outro = s.outro_bars as f64 * grid.bar();
         let room = (total - intro - min_outro).max(0.0);
         let images = (room / slot.secs + 1e-6).floor() as u32;
         let outro = total - intro - images as f64 * slot.secs;
@@ -423,15 +456,15 @@ impl Plan {
     }
 
     /// The track needed for the given number of images; `bars` gives its
-    /// length in whole bars, final ring-out bar included.
+    /// length in whole bars, the outro included.
     pub fn for_images(s: &Slideshow, grid: Grid) -> Plan {
         let slot = Slot::of(s, &grid);
         let images = s.images.max(1);
         let intro = s.intro_on(&grid) as f64 * grid.bar();
         let pictures = images as f64 * slot.secs;
         let picture_bars = (pictures / grid.bar() - 1e-6).ceil();
-        // at least the generator's shortest piece: four bars and the ring-out
-        let bars = (s.intro_on(&grid) as f64 + picture_bars + s.outro_bars.max(1) as f64).max(5.0);
+        // at least the generator's shortest piece: five bars
+        let bars = (s.intro_on(&grid) as f64 + picture_bars + s.outro_bars as f64).max(5.0);
         let total = bars * grid.bar();
         Plan::even(grid, slot, images, intro, total - intro - pictures, total)
     }
@@ -452,7 +485,7 @@ impl Plan {
         let unit = self.slot.secs / self.slot.count as f64;
         let beats = (unit / self.grid.beat).round().max(1.0) as usize;
         let at = |secs: f64| (secs / unit).round() as usize;
-        let (intro, last) = (at(self.intro), at(self.total - s.outro_bars.max(1) as f64 * self.grid.bar()));
+        let (intro, last) = (at(self.intro), at(self.total - s.outro_bars as f64 * self.grid.bar()));
         if last <= intro {
             return self;
         }
@@ -600,7 +633,7 @@ impl Calc {
         let slot = Slot::of(s, &grid);
         let bar = grid.bar();
         let intro = s.intro_on(&grid) as f64 * bar;
-        let outro = s.outro_bars.max(1) as f64 * bar;
+        let outro = s.outro_bars as f64 * bar;
         let room = (score_secs - intro - outro).max(0.0);
         let holds = (room / slot.secs + 1e-6).floor() as u32;
         let left_over = room - holds as f64 * slot.secs;
@@ -826,6 +859,12 @@ mod tests {
         assert_eq!(csv.lines().count(), p.images as usize + 1);
         assert_eq!(csv.lines().nth(1).unwrap(), "1,0:08.00,0:20.00,12.00,13.00,3.1,1.00");
         assert_eq!(p.audio(), 180.0 + REVERB_TAIL);
+        // no outro: the last image runs to the music's end
+        let s = Slideshow { hold: 12.0, by_chords: false, exact: true, outro_bars: 0, ..s };
+        let p = Plan::for_track(&s, grid, 176.0);
+        assert_eq!((p.images, p.outro, p.end), (14, 0.0, 176.0));
+        let p = Plan::for_images(&Slideshow { images: 3, ..s }, grid);
+        assert_eq!((p.total, p.outro), (8.0 + 36.0, 0.0));
     }
 
     #[test]

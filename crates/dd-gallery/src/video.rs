@@ -1,6 +1,6 @@
 //! A gallery as a finished video (D33): the photos at their changes over the soundtrack,
-//! with the gallery's transition, in 1080p H.264 (an `.mp4` or `.mov`) at its frames a
-//! second.
+//! with the gallery's transition, in H.264 (an `.mp4` or `.mov`) at its frames a second,
+//! HD (1920×1080) or 4K UHD (3840×2160) as the gallery's `video` says (D40).
 //!
 //! Every frame is drawn here, from the same schedule as the exported timeline
 //! (`shots`): frame `n` is the picture at `n / fps` seconds, so the changes land on the
@@ -20,10 +20,7 @@ use dd_seq::render::render_wav;
 
 use crate::doc::Document;
 use crate::shots::{Shot, layers, shots};
-
-/// HD: the frame's size.
-pub const WIDTH: u32 = 1920;
-pub const HEIGHT: u32 = 1080;
+use crate::slideshow::VideoSize;
 
 /// Where ffmpeg is: `$KIBBLE_FFMPEG`, beside the app, on the `PATH`, or where Homebrew
 /// and the usual installers put it.
@@ -50,19 +47,21 @@ const NO_FFMPEG: &str = "Video export needs ffmpeg, which isn't bundled: install
 
 /// The H.264 encoder to use and its settings: x264 at a high quality for stills, else
 /// the system's.
-fn encoder(ff: &Path) -> Vec<String> {
+fn encoder(ff: &Path, size: VideoSize) -> Vec<String> {
     let list = Command::new(ff)
         .args(["-hide_banner", "-encoders"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default();
     let has = |name: &str| list.lines().any(|l| l.split_whitespace().nth(1) == Some(name));
+    // the system encoders' rate, four times as many pixels in 4K
+    let rate = if size == VideoSize::Uhd { "60M" } else { "16M" };
     let v: &[&str] = if has("libx264") {
         &["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-tune", "stillimage", "-profile:v", "high"]
     } else if has("h264_videotoolbox") {
-        &["-c:v", "h264_videotoolbox", "-b:v", "16M", "-profile:v", "high"]
+        &["-c:v", "h264_videotoolbox", "-b:v", rate, "-profile:v", "high"]
     } else if has("h264_mf") {
-        &["-c:v", "h264_mf", "-b:v", "16M"]
+        &["-c:v", "h264_mf", "-b:v", rate]
     } else {
         &["-c:v", "mpeg4", "-q:v", "2"]
     };
@@ -71,9 +70,9 @@ fn encoder(ff: &Path) -> Vec<String> {
 
 /// A photo as the frame shows it: scaled to fit (turned as its camera says), centred
 /// on black, as RGB bytes.
-fn load(ff: &Path, photo: &Path) -> Result<Vec<u8>, String> {
+fn load(ff: &Path, photo: &Path, (w, h): (u32, u32)) -> Result<Vec<u8>, String> {
     let fit = format!(
-        "scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease:flags=lanczos,pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=rgb24"
+        "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=rgb24"
     );
     let out = Command::new(ff)
         .args(["-v", "error", "-i"])
@@ -82,7 +81,7 @@ fn load(ff: &Path, photo: &Path) -> Result<Vec<u8>, String> {
         .stdin(Stdio::null())
         .output()
         .map_err(|e| e.to_string())?;
-    let size = (WIDTH * HEIGHT * 3) as usize;
+    let size = (w * h * 3) as usize;
     if out.stdout.len() != size {
         let why = String::from_utf8_lossy(&out.stderr);
         return Err(why.lines().last().unwrap_or("not a picture ffmpeg reads").to_string());
@@ -108,6 +107,8 @@ pub fn thumbnail_png(photo: &Path, max: u32) -> Option<Vec<u8>> {
 /// What a video export did.
 #[derive(Debug, Default)]
 pub struct Made {
+    /// The frame's width and height.
+    pub dims: (u32, u32),
     pub frames: u64,
     pub fps: u32,
     pub secs: f64,
@@ -115,10 +116,22 @@ pub struct Made {
     pub audio: f64,
     /// Photos that couldn't be read, shown as black.
     pub unread: Vec<String>,
+    /// The score as a MIDI file and the image changes as a cue list, beside the video,
+    /// to import again later.
+    pub midi: PathBuf,
+    pub cues: PathBuf,
+}
+
+/// The MIDI file and cue list saved beside a video at `out`: `<name>.mid` and
+/// `<name>-cues.csv`, as the Resolve export names its cue list.
+pub fn companions(out: &Path) -> (PathBuf, PathBuf) {
+    let name = out.file_stem().map_or("Untitled".into(), |n| n.to_string_lossy().into_owned());
+    (out.with_extension("mid"), out.with_file_name(format!("{name}-cues.csv")))
 }
 
 /// Render the gallery as a video at `out` (`.mp4`, or `.mov`): the soundtrack first
-/// (to a WAV beside it, removed after), then every frame. `progress` counts to 1000.
+/// (to a WAV beside it, removed after), then every frame; then the score's MIDI file
+/// and the cue list beside it (`companions`). `progress` counts to 1000.
 pub fn export_video(doc: &Document, fonts: &FontBank, out: &Path, progress: &AtomicU32, cancel: &AtomicBool) -> Result<Made, String> {
     let ff = ffmpeg().ok_or(NO_FFMPEG)?;
     let g = &doc.gallery;
@@ -145,13 +158,20 @@ pub fn export_video(doc: &Document, fonts: &FontBank, out: &Path, progress: &Ato
     });
     let made = audio.and_then(|secs| {
         let shots = shots(&plan, photos.len(), g, fps, frames_for(secs, fps));
-        encode(&ff, &photos, &shots, &wav, secs, fps, out, progress, cancel)
+        encode(&ff, &photos, &shots, &wav, secs, fps, g.video, out, progress, cancel)
     });
     let _ = std::fs::remove_file(&wav);
     if made.is_err() {
         let _ = std::fs::remove_file(out);
     }
-    made
+    let mut made = made?;
+    // the score and the image changes, to import again
+    (made.midi, made.cues) = companions(out);
+    dd_seq::midi_file::save(&doc.project, &made.midi)
+        .map_err(|e| format!("The video is made, but the MIDI file couldn't be saved: {e}"))?;
+    std::fs::write(&made.cues, plan.limit(photos.len() as u32).cue_csv(g.dissolve()))
+        .map_err(|e| format!("The video is made, but the cue list couldn't be saved: {e}"))?;
+    Ok(made)
 }
 
 /// The video's frames: as long as the soundtrack, to the next whole frame.
@@ -168,40 +188,27 @@ fn encode(
     wav: &Path,
     audio_secs: f64,
     fps: u32,
+    video: VideoSize,
     out: &Path,
     progress: &AtomicU32,
     cancel: &AtomicBool,
 ) -> Result<Made, String> {
     let frames = frames_for(audio_secs, fps);
+    let dims @ (w, h) = video.dims();
     let rate = fps.to_string();
     let mut cmd = Command::new(ff);
-    cmd.args([
-        "-y",
-        "-v",
-        "error",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-        &format!("{WIDTH}x{HEIGHT}"),
-        "-framerate",
-        &rate,
-        "-i",
-        "-",
-        "-i",
-    ])
-    .arg(wav)
-    .args(["-map", "0:v", "-map", "1:a"])
-    .args(encoder(ff))
-    // Rec. 709, as HD is
-    .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709"])
-    .args(["-color_trc", "bt709", "-r", &rate, "-fps_mode", "cfr", "-g", &(fps * 2).to_string()])
-    .args(["-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart"])
-    .arg(out)
-    .stdin(Stdio::piped())
-    .stdout(Stdio::null())
-    .stderr(Stdio::piped());
+    cmd.args(["-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{w}x{h}"), "-framerate", &rate, "-i", "-", "-i"])
+        .arg(wav)
+        .args(["-map", "0:v", "-map", "1:a"])
+        .args(encoder(ff, video))
+        // Rec. 709, as HD is (and 4K in SDR)
+        .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709"])
+        .args(["-color_trc", "bt709", "-r", &rate, "-fps_mode", "cfr", "-g", &(fps * 2).to_string()])
+        .args(["-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart"])
+        .arg(out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("Couldn't start ffmpeg: {e}"))?;
     let mut stdin = child.stdin.take().ok_or("ffmpeg has no input")?;
     let mut stderr = child.stderr.take().ok_or("ffmpeg has no output")?;
@@ -210,7 +217,7 @@ fn encode(
         let _ = stderr.read_to_string(&mut s);
         s
     });
-    let size = (WIDTH * HEIGHT * 3) as usize;
+    let size = (w * h * 3) as usize;
     let mut frame = vec![0u8; size];
     let mut cache: HashMap<usize, Vec<u8>> = HashMap::new();
     let mut unread = Vec::new();
@@ -230,7 +237,7 @@ fn encode(
             for &(j, a) in &seen {
                 let photo = &photos[shots[j].photo];
                 let img = cache.entry(j).or_insert_with(|| {
-                    load(ff, photo).unwrap_or_else(|e| {
+                    load(ff, photo, dims).unwrap_or_else(|e| {
                         unread.push(format!("{}: {e}", photo.display()));
                         vec![0; size]
                     })
@@ -266,13 +273,13 @@ fn encode(
         return Err(format!("ffmpeg couldn't make the video: {}", errors.lines().last().unwrap_or("no reason given")));
     }
     progress.store(1000, Ordering::Relaxed);
-    Ok(Made { frames, fps, secs: frames as f64 / fps as f64, audio: audio_secs, unread })
+    Ok(Made { dims, frames, fps, secs: frames as f64 / fps as f64, audio: audio_secs, unread, ..Made::default() })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slideshow::{Slideshow, Transition};
+    use crate::slideshow::{Slideshow, Transition, VideoSize};
 
     /// A plain colour as a 24-bit BMP.
     fn bmp(path: &Path, w: u32, h: u32, rgb: [u8; 3]) {
@@ -310,7 +317,17 @@ mod tests {
         let o = Command::new(ffmpeg().unwrap())
             .args(["-v", "error", "-i"])
             .arg(path)
-            .args(["-vf", &format!("select=eq(n\\,{n}),crop=2:2:959:539"), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            .args([
+                "-vf",
+                &format!("select=eq(n\\,{n}),crop=2:2:iw/2-1:ih/2-1"),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ])
             .output()
             .unwrap();
         [o.stdout[0], o.stdout[1], o.stdout[2]]
@@ -356,6 +373,16 @@ mod tests {
         assert_eq!(made.frames, (made.audio * 30.0).ceil() as u64);
         assert!(made.audio >= doc.project.music_secs());
         assert!(!dir.join("gallery.soundtrack.wav").exists());
+        // the score and the changes beside it, to import again
+        assert_eq!((made.midi.clone(), made.cues.clone()), (dir.join("gallery.mid"), dir.join("gallery-cues.csv")));
+        let back = dd_seq::midi_file::load(&made.midi, &FontBank::default()).unwrap();
+        assert_eq!(
+            back.tracks.iter().map(|t| t.notes.len()).sum::<usize>(),
+            doc.project.tracks.iter().map(|t| t.notes.len()).sum::<usize>()
+        );
+        let cues = std::fs::read_to_string(&made.cues).unwrap();
+        assert_eq!(cues.lines().count(), 3, "{cues}");
+        assert!(cues.lines().nth(1).unwrap().starts_with("1,0:02.00,0:06.00"), "{cues}");
         // the intro black; the first photo rising from black from 2 s (frame 60) over 1 s
         let lit = |c: [u8; 3]| c.iter().map(|v| *v as u32).sum::<u32>();
         assert!(lit(pixel(&out, 59)) < 40);
@@ -367,6 +394,42 @@ mod tests {
         assert!(lit(pixel(&out, 180)) < 40);
         let green = pixel(&out, 215);
         assert!(green[1] > 230 && green[0] < 40, "{green:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 4K: twice the size each way, the same frames and timings.
+    #[test]
+    fn uhd_video_is_3840_by_2160() {
+        if ffmpeg().is_none() {
+            eprintln!("no ffmpeg: skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("kibble-video-4k-{}", std::process::id()));
+        let photos = dir.join("photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        bmp(&photos.join("1.bmp"), 64, 48, [250, 20, 20]);
+        let r = dd_seq::compose::Recipe { seed: 7, ..Default::default() };
+        let p = dd_seq::compose::compose(&r, 120.0, (4, 4), 8);
+        let gallery = Slideshow {
+            folder: Some(photos.clone()),
+            hold: 4.0,
+            exact: true,
+            follow_music: false,
+            intro_bars: 1,
+            transition: Transition::Cut,
+            fps: 24,
+            video: VideoSize::Uhd,
+            ..Slideshow::default()
+        };
+        let doc = Document { project: p, gallery, ..Document::default() };
+        let out = dir.join("gallery.mp4");
+        let made = export_video(&doc, &FontBank::default(), &out, &AtomicU32::new(0), &AtomicBool::new(false)).unwrap();
+        assert_eq!(made.dims, (3840, 2160));
+        let info = probe(&out, "stream=width,height,r_frame_rate");
+        assert!(info.contains("width=3840") && info.contains("height=2160") && info.contains("r_frame_rate=24/1"), "{info}");
+        // the photo, scaled to fit, from 2 s
+        let red = pixel(&out, 60);
+        assert!(red[0] > 230 && red[1] < 40, "{red:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

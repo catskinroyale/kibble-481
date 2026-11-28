@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.3 — 2026-11-28
+
+- **4K video.** The gallery exports as a 3840×2160 (4K UHD) video as well as HD: *Gallery
+  as 4K video…* in the Export menu, *Export 4K video…* in Plan and export, or `--4k` on
+  the command line. Same frames, fades and timings; photos are scaled from their full
+  size, so use ones at least 3840 pixels wide for a sharp picture.
+- **First image fade in for Fade in and out.** As with Fade out, the first photo can have
+  its own fade up from black, longer (a title's slow rise) or shorter than the others' (0
+  keeps it as theirs).
+- **The video saves its MIDI and cue list.** Beside the video go the score as a MIDI
+  file and the image changes as a cue list (`<name>.mid`, `<name>-cues.csv`), to import
+  again later.
+- **The outro can be 0 bars**, the last photo running to the end of the music (the
+  reverb tail after it in black, or under a stretched final fade).
+
 ## 0.14.2 — 2026-11-27
 
 - **Fixed: a new tempo no longer pulls the parts apart.** Setting the tempo (the

@@ -8,7 +8,7 @@
 //! `bass`, `city`, `drone` (select that track), `added` (add a Neon section),
 //! `pursuit`, `blackout`, `momento`, `noir`, `overcity`, `derelict`, `homeward`, `return`, `chamber`, `orbit`, `nebula`, `vigil`, `cinder`, `filmstrip`, `strata` (write the piece in that style), `volume` (the volume lane,
 //! with some bars set), `reorder` (the pane reordering the gallery's photos, from the
-//! folder `KIBBLE_SCREENSHOT_PHOTOS` names).
+//! folder `KIBBLE_SCREENSHOT_PHOTOS` names), `inout` (the gallery fading in and out, no outro).
 //! `KIBBLE_SCREENSHOT_INPUT` plays input first, `;`-separated, six frames apart:
 //! `c:x,y` clicks there, `w:x,y,dy` scrolls there (points); `p:x,y` presses there,
 //! `m:x,y` moves there and `r:x,y` lets go there, for drags.

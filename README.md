@@ -523,14 +523,16 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   the tempo. Between them: a **crossfade**, a **fade to black** and up again, or a
   **cut**, with the fade's length yours; or every photo can **fade in** from black as it
   starts, **fade out** to black as it ends, or **fade in and out**, each fade its own
-  length (both fit within the shortest image). Fading out only, the first photo can still
-  fade in (**First image fade in**); and **Stretch final fade** draws the last photo's
+  length (both fit within the shortest image). Fading out, or in and out, the first photo
+  has its own fade in (**First image fade in**: fading out only, the others cut in; in and
+  out, 0 keeps it as the others); and **Stretch final fade** draws the last photo's
   fade out on to the very end of the soundtrack, so it reaches black as the reverb tail
   dies away. The plan
   always follows the score as it stands, with no more images than photos (the rest goes to
   the outro). The **calculator** in Plan and export works out, before you change
   anything, how many images the score holds and what's left over, and how many bars your
-  photos need with the intro and outro, and says how far to trim or lengthen the score.
+  photos need with the intro and outro (the outro can be 0 bars: the last photo runs
+  to the end of the music), and says how far to trim or lengthen the score.
   It lists the sections with their lengths now and the lengths proposed, the change shared
   among them in proportion (whole 4-bar phrases where the sections are made of them, any
   bars over going to the last section); change any proposal there, or leave them and drag
@@ -547,15 +549,17 @@ sort together and never overwrite each other (stems and the Resolve package's fi
   drag them into the order you want (or right-click one to send it to the front or the
   end, or click one and use the arrow keys), then **Save and close**. Both exports use
   that order (**Your order** under Photos); photos added later go at the end.
-- **Gallery as HD video** (Export menu, or Plan and export): the same photos over the
-  soundtrack as a finished 1920×1080 H.264 video (`.mp4` or `.mov`, AAC audio, Rec. 709)
+- **Gallery as HD or 4K video** (Export menu, or Plan and export): the same photos over the
+  soundtrack as a finished 1920×1080 (HD) or 3840×2160 (4K UHD) H.264 video (`.mp4` or `.mov`, AAC audio, Rec. 709)
   at the gallery's frame rate (24, 25, 30, 50 or 60). Every frame is drawn from the same
   schedule as the Resolve timeline, so each change and fade lands on the frame the
   timeline and markers give, and the video runs exactly as long as the soundtrack with
   its tail (to the next whole frame). Photos are scaled to fit, with black bars around
   portrait or odd-shaped ones. It needs **ffmpeg**, which isn't bundled (macOS:
   `brew install ffmpeg`; Windows: `ffmpeg.exe` beside Kibble-481 or on the `PATH`; or
-  set `KIBBLE_FFMPEG`).
+  set `KIBBLE_FFMPEG`). Beside the video go the score as a MIDI file (`<name>.mid`, to
+  import again) and the image changes as a cue list (`<name>-cues.csv`, as the Resolve
+  export writes it).
 - **Import** any MIDI file as a project, or add its tracks to this one. Files from Ambient
   MIDI Generator (Neon Noir, Megacity Rain, Neon Glide) get their score kit and city effects
   back.
@@ -569,7 +573,7 @@ kibble-481-cli render rain.kibble rain.wav [--stem Brass]
 kibble-481-cli midi rain.kibble rain.mid
 kibble-481-cli import megacity.mid megacity.kibble
 kibble-481-cli resolve rain.kibble out/ --photos ~/Pictures/tokyo --fps 25 --hold 8 [--fit-track] [--stems]
-kibble-481-cli video rain.kibble rain.mp4 --photos ~/Pictures/tokyo --fps 25 --transition inout --fade-in 1.5 --fade-out 0.8
+kibble-481-cli video rain.kibble rain.mp4 --photos ~/Pictures/tokyo --fps 25 --transition inout --fade-in 1.5 --fade-out 0.8   # --4k for 3840×2160
 kibble-481-cli patches | fonts
 ```
 
@@ -579,7 +583,7 @@ kibble-481-cli patches | fonts
 |---|---|
 | `crates/dd-dsp` | the polysynth (`poly.rs`, `patch.rs`), the city kit and its player, reverb, echo, ensemble. No UI. |
 | `crates/dd-seq` | project model, timeline, the engine and mixer (live and offline), SoundFont instruments, recording and quantise, MIDI and WAV |
-| `crates/dd-gallery` | slideshow timing, the frame schedule (`shots.rs`), Resolve FCPXML/EDL, the `.kibble` document, the Resolve package export, the HD video export (`video.rs`, via ffmpeg) |
+| `crates/dd-gallery` | slideshow timing, the frame schedule (`shots.rs`), Resolve FCPXML/EDL, the `.kibble` document, the Resolve package export, the HD and 4K video export (`video.rs`, via ffmpeg) |
 | `apps/dd-desktop` | the egui app (`kibble-481`); `about.rs` (version, details, licences), `update.rs` (the update check) |
 | `apps/dd-cli` | `kibble-481-cli` |
 

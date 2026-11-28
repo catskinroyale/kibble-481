@@ -1040,3 +1040,25 @@ after a standard.
   so exported MIDI sounds like the app in any DAW.
 - Tempo changes within a piece; per-note pitch curves (MPE); automation of synth parameters.
 - Ken Burns moves on gallery stills in the FCPXML.
+
+## D39 — First fade in for in and out; the video's companions; no outro (2026-11-28)
+
+- **First image fade in** applies to Fade in and out too: the first photo's own fade up
+  from black, in place of the others' fade in. `first_fade_in` 0 means "as the others"
+  in both modes (fading out only, the others cut in), so older documents are unchanged.
+- **The HD video saves its MIDI file and cue list** beside it (`video::companions`:
+  `<name>.mid`, `<name>-cues.csv`, the Resolve export's cue format), so a finished video
+  can be traced back and its score imported again. Only after the video is made; a
+  failure to write either is reported, the video kept.
+- **The outro can be 0 bars**: the last photo runs to the music's end. The reverb tail
+  still follows (in black, or under a stretched final fade); the shortest generated piece
+  stays five bars.
+
+## D40 — 4K video (2026-11-28)
+
+- The video export comes in two sizes, `VideoSize::{Hd, Uhd}` (1920×1080, 3840×2160),
+  kept as the gallery's `video` so a document remembers its last; both buttons (Export
+  menu, Plan and export) set it and export. Same schedule (`shots`), so timings are the
+  same at either size; Rec. 709 SDR, H.264 (x264 at CRF 17, or the system encoder at
+  60 Mb/s for 4K, 16 Mb/s for HD). The Resolve FCPXML stays a 1080p timeline (Resolve
+  scales it to any project).

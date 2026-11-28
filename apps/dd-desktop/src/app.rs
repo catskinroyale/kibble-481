@@ -325,6 +325,9 @@ impl App {
                 cc.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::unique("dd-edit-layer"), 1usize));
             }
             app.about.open = snap.wants("about");
+            if snap.wants("inout") {
+                (app.doc.gallery.transition, app.doc.gallery.outro_bars) = (dd_gallery::slideshow::Transition::FadeInOut, 0);
+            }
             if let Some(dir) = std::env::var_os("KIBBLE_SCREENSHOT_PHOTOS") {
                 app.doc.gallery.folder = Some(dir.into());
             }
@@ -1080,7 +1083,9 @@ impl App {
         });
     }
 
-    pub(crate) fn export_video(&mut self) {
+    /// Export the gallery as a video of `size` (kept as the gallery's choice).
+    pub(crate) fn export_video(&mut self, size: dd_gallery::slideshow::VideoSize) {
+        self.doc.gallery.video = size;
         if self.doc.gallery.folder.is_none() {
             self.status = "Choose a photo folder on the Gallery tab first: the video shows its photos".into();
             return;
@@ -1110,11 +1115,15 @@ impl App {
                 n => format!(" ({n} photos couldn't be read and show as black)"),
             };
             Ok(format!(
-                "Exported {}: 1920×1080, {} fps, {} frames ({}){unread}",
+                "Exported {}: {}×{}, {} fps, {} frames ({}){unread}; with {} and {}",
                 path.display(),
+                made.dims.0,
+                made.dims.1,
                 made.fps,
                 made.frames,
-                dd_gallery::slideshow::timecode(made.secs)
+                dd_gallery::slideshow::timecode(made.secs),
+                made.midi.file_name().unwrap_or_default().to_string_lossy(),
+                made.cues.file_name().unwrap_or_default().to_string_lossy()
             ))
         });
     }
@@ -1313,13 +1322,18 @@ impl App {
                     ui.close();
                     self.export_resolve();
                 }
-                if ui
-                    .button("Gallery as HD video…")
-                    .on_hover_text("Your photos over the soundtrack with the gallery's transition, 1920×1080 H.264 at its frame rate (needs ffmpeg)")
-                    .clicked()
-                {
-                    ui.close();
-                    self.export_video();
+                for size in dd_gallery::slideshow::VideoSize::ALL {
+                    let (w, h) = size.dims();
+                    if ui
+                        .button(format!("Gallery as {} video…", size.label()))
+                        .on_hover_text(format!(
+                            "Your photos over the soundtrack with the gallery's transition, {w}×{h} H.264 at its frame rate (needs ffmpeg)"
+                        ))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.export_video(size);
+                    }
                 }
             });
             ui.add_space(8.0);

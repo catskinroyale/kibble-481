@@ -21,15 +21,16 @@ const USAGE: &str = "kibble-481-cli: Kibble-481 from the command line
   kibble-481-cli resolve <in.kibble> <out-dir> [gallery options] [--stems]
                                                soundtrack, FCPXML timeline, EDL markers and cues
   kibble-481-cli video <in.kibble> <out.mp4|.mov> [gallery options]
-                                               the photos over the soundtrack as a 1080p H.264
-                                               video at the frame rate (needs ffmpeg)
+                                               the photos over the soundtrack as a 1080p (or with
+                                               --4k, 2160p) H.264 video at the frame rate (needs ffmpeg), with
+                                               its MIDI file and cue list beside it
   kibble-481-cli patches                           list the synth's factory patches
   kibble-481-cli fonts                             list the loaded SoundFonts and their presets
 
 Gallery options (else as the .kibble file has them):
   --photos <dir> [--by-date] [--fps 24|25|30|50|60] [--hold <secs>] [--bars-per-image <n>] [--with-chords]
   [--transition crossfade|black|cut|in|out|inout] [--fade <secs>] [--fade-in <secs>]
-  [--fade-out <secs>] [--first-fade-in <secs>] [--stretch-final-fade] [--fit-track]
+  [--fade-out <secs>] [--first-fade-in <secs>] [--stretch-final-fade] [--fit-track] [--4k]
 
 SoundFonts are read from $KIBBLE_SOUNDFONTS or the bundled soundfonts folder.";
 
@@ -107,6 +108,9 @@ fn gallery_flags(args: &[String], doc: &mut Document) -> Result<(), String> {
     }
     if let Some(v) = secs("--first-fade-in")? {
         g.first_fade_in = v;
+    }
+    if args.iter().any(|a| a == "--4k") {
+        g.video = dd_gallery::slideshow::VideoSize::Uhd;
     }
     if args.iter().any(|a| a == "--stretch-final-fade") {
         g.stretch_final_fade = true;
@@ -220,14 +224,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let out = arg(2)?;
             let made = dd_gallery::video::export_video(&doc, &f, &out, &progress, &cancel)?;
             println!(
-                "{}: 1920x1080, {} fps, {} frames ({:.3} s; soundtrack {:.3} s), {}",
+                "{}: {}x{}, {} fps, {} frames ({:.3} s; soundtrack {:.3} s), {}",
                 out.display(),
+                made.dims.0,
+                made.dims.1,
                 made.fps,
                 made.frames,
                 made.secs,
                 made.audio,
                 doc.gallery.transition.label().to_lowercase()
             );
+            println!("{}\n{}", made.midi.display(), made.cues.display());
             for u in &made.unread {
                 eprintln!("warning: couldn't read {u}; it shows as black");
             }

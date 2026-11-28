@@ -73,8 +73,9 @@ pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32, end: u64) -> V
                 .enumerate()
                 .map(|(i, &(a, b))| Shot { photo: i, from: a + fi / 2, to: b - fo / 2, fade_in: fi, fade_out: fo })
                 .collect();
-            // fading out only: the first image may still fade up from black, within its time
-            if s.transition == Transition::FadeOut
+            // the first image's own fade up from black, within its time: fading out only, it
+            // may still fade in; fading in and out, it may take longer (or shorter) than the rest
+            if (s.transition == Transition::FadeOut || s.first_fade_in > 0.0)
                 && let (Some(first), Some(&(a, b))) = (out.first_mut(), spans.first())
             {
                 let up = even(at(s.first_fade_in.max(0.0) as f64).min((b - a).saturating_sub(fo)));
@@ -228,6 +229,28 @@ mod tests {
         let sh = shots(&p, 99, &s, 25, end);
         assert_eq!(sh[0].fade_in, 0);
         assert!(layers(&sh, b).is_empty());
+    }
+
+    #[test]
+    fn fading_in_and_out_the_first_may_fade_in_on_its_own() {
+        let s = Slideshow {
+            hold: 8.0,
+            by_chords: false,
+            transition: Transition::FadeInOut,
+            fade_in: 1.0,
+            fade_out: 1.0,
+            first_fade_in: 4.0,
+            ..Slideshow::default()
+        };
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
+        // the first over 4 s (100 frames), the rest over 1 s as before
+        assert_eq!(sh[0], Shot { photo: 0, from: 250, to: 388, fade_in: 100, fade_out: 24 });
+        assert_eq!(sh[1], Shot { photo: 1, from: 412, to: 588, fade_in: 24, fade_out: 24 });
+        assert_eq!(alpha(&sh, 250, 0), 0.5);
+        // 0: the first as the others
+        let s = Slideshow { first_fade_in: 0.0, ..s };
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
+        assert_eq!(sh[0].fade_in, 24);
     }
 
     #[test]
