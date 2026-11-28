@@ -1355,6 +1355,12 @@ impl App {
         let mut square = false;
         let grid_now = Grid::of(&self.doc.project);
         let composed = self.doc.project.recipe.is_some_and(|r| !r.square);
+        // the shortest image as the plan stands, for the fades that must fit within it
+        let shortest = {
+            let n = if photos.is_empty() { self.doc.gallery.images } else { photos.len() as u32 };
+            let h = self.doc.plan_for(n as usize).holds().0;
+            if h.is_finite() { h } else { 0.0 }
+        };
         let g = &mut self.doc.gallery;
         widgets::section(ui, "photos", "Photos", true, |ui| {
             widgets::inset(ui, |ui| {
@@ -1598,6 +1604,29 @@ impl App {
                 };
                 if widgets::slider(ui, &spec, &mut fade_out, g.transition.fades_out()) {
                     g.fade_out = fade_out as f32;
+                }
+                // fades longer than the images: say what they become
+                let (fi, fo) = g.edge_fades();
+                if shortest > 0.0 && fi + fo > shortest + 1e-6 {
+                    let k = shortest / (fi + fo);
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(format!(
+                            "The fades ({:.1} s) are longer than an image ({:.1} s): each is shortened to fit ({}), so the pictures never rest at full brightness. Try shorter fades, or more bars per image.",
+                            fi + fo,
+                            shortest,
+                            match (fi > 0.0, fo > 0.0) {
+                                (true, true) => format!("{:.1} s in, {:.1} s out", fi * k, fo * k),
+                                (true, false) => format!("{:.1} s in", fi * k),
+                                _ => format!("{:.1} s out", fo * k),
+                            }
+                        ))
+                        .font(t.font(10.5))
+                        .color(t.caution),
+                    ).wrap());
+                    });
                 }
                 if g.transition.fades_out() {
                     widgets::inset(ui, |ui| {

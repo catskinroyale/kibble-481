@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.4 — 2026-11-28
+
+- **Fixed: the first image fade in is honoured when the fades are longer than the
+  images.** With fades longer than an image (say 4 s in and 4 s out on 7.3 s images) every
+  fade was shortened alike, the first image's own fade in too, so a 4 s first fade came
+  out at 3.6 s and fell away at once. The first image now rises over its full fade in
+  (keeping at least a quarter of it to fade out), fading out in what's left; and the
+  Timing panel says when the fades don't fit and what they become.
+
 ## 0.14.3 — 2026-11-28
 
 - **4K video.** The gallery exports as a 3840×2160 (4K UHD) video as well as HD: *Gallery

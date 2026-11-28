@@ -326,7 +326,9 @@ impl App {
             }
             app.about.open = snap.wants("about");
             if snap.wants("inout") {
-                (app.doc.gallery.transition, app.doc.gallery.outro_bars) = (dd_gallery::slideshow::Transition::FadeInOut, 0);
+                let g = &mut app.doc.gallery;
+                (g.transition, g.outro_bars, g.fade_in, g.fade_out, g.first_fade_in) =
+                    (dd_gallery::slideshow::Transition::FadeInOut, 0, 8.0, 8.0, 4.0);
             }
             if let Some(dir) = std::env::var_os("KIBBLE_SCREENSHOT_PHOTOS") {
                 app.doc.gallery.folder = Some(dir.into());

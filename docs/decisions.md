@@ -1050,6 +1050,10 @@ after a standard.
   `<name>.mid`, `<name>-cues.csv`, the Resolve export's cue format), so a finished video
   can be traced back and its score imported again. Only after the video is made; a
   failure to write either is reported, the video kept.
+- When the fades are longer than an image they're shortened alike, but the first image's
+  own fade in comes first, in full, up to its length less a quarter of it (or the others'
+  fade out if shorter); its fade out takes what's left. The Timing panel warns when the
+  fades don't fit, giving the lengths they become.
 - **The outro can be 0 bars**: the last photo runs to the music's end. The reverb tail
   still follows (in black, or under a stretched final fade); the shortest generated piece
   stays five bars.

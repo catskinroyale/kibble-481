@@ -78,8 +78,12 @@ pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32, end: u64) -> V
             if (s.transition == Transition::FadeOut || s.first_fade_in > 0.0)
                 && let (Some(first), Some(&(a, b))) = (out.first_mut(), spans.first())
             {
-                let up = even(at(s.first_fade_in.max(0.0) as f64).min((b - a).saturating_sub(fo)));
-                (first.from, first.fade_in) = (a + up / 2, up);
+                // its own fade in first, in full (keeping at least a quarter of the image,
+                // or the others' fade out if shorter, to fade out in); its fade out in what's left
+                let len = b - a;
+                let up = even(at(s.first_fade_in.max(0.0) as f64).min(len - fo.min(len / 4)));
+                let down = even(fo.min(len - up));
+                (first.from, first.fade_in, first.to, first.fade_out) = (a + up / 2, up, b - down / 2, down);
             }
             // the last image's fade out drawn out to the end of the soundtrack, so the
             // picture goes to black as the reverb tail dies away
@@ -88,7 +92,7 @@ pub fn shots(plan: &Plan, photos: usize, s: &Slideshow, fps: u32, end: u64) -> V
                 && let (Some(last), Some(&(_, b))) = (out.last_mut(), spans.last())
             {
                 // from where its fade would start, an even number of frames to the end
-                let start = (b - fo).max(last.from);
+                let start = (b - last.fade_out).max(last.from);
                 if end > start + 1 {
                     let len = even(end - start);
                     (last.to, last.fade_out) = (end - len / 2, len);
@@ -251,6 +255,13 @@ mod tests {
         let s = Slideshow { first_fade_in: 0.0, ..s };
         let sh = shots(&plan(&s), 99, &s, 25, 99_999);
         assert_eq!(sh[0].fade_in, 24);
+        // fades longer than the images (8 s images, 6 s each way): the others share the
+        // image, 4 s each; the first rises over its full 5 s, fading out in the 3 s left
+        let s = Slideshow { fade_in: 6.0, fade_out: 6.0, first_fade_in: 5.0, ..s };
+        let sh = shots(&plan(&s), 99, &s, 25, 99_999);
+        assert_eq!(sh[1], Shot { photo: 1, from: 450, to: 550, fade_in: 100, fade_out: 100 });
+        assert_eq!(sh[0], Shot { photo: 0, from: 262, to: 362, fade_in: 124, fade_out: 76 });
+        assert!((0..1500).all(|f| layers(&sh, f).len() <= 1));
     }
 
     #[test]
